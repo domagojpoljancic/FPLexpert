@@ -1,0 +1,1 @@
+"""Bounded OpenAI synthesis layer."""

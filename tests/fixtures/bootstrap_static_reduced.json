@@ -1,0 +1,1087 @@
+{
+  "game_settings": {
+    "league_join_private_max": 30,
+    "league_join_public_max": 5,
+    "league_max_size_public_classic": 20,
+    "league_max_size_public_h2h": 16,
+    "league_max_size_private_h2h": 16,
+    "league_max_ko_rounds_private_h2h": 3,
+    "league_prefix_public": "League",
+    "league_points_h2h_win": 3,
+    "league_points_h2h_lose": 0,
+    "league_points_h2h_draw": 1,
+    "league_ko_first_instead_of_random": false,
+    "cup_start_event_id": null,
+    "cup_stop_event_id": null,
+    "cup_qualifying_method": null,
+    "cup_type": null,
+    "featured_entries": [],
+    "element_sell_at_purchase_price": false,
+    "percentile_ranks": [
+      1,
+      5,
+      10,
+      15,
+      20,
+      25,
+      30,
+      35,
+      40,
+      45,
+      50,
+      55,
+      60,
+      65,
+      70,
+      75,
+      80,
+      85,
+      90,
+      95
+    ],
+    "underdog_differential": 5,
+    "squad_squadplay": 11,
+    "squad_squadsize": 15,
+    "squad_special_min": null,
+    "squad_special_max": null,
+    "squad_team_limit": 3,
+    "squad_total_spend": 1000,
+    "ui_currency_multiplier": 10,
+    "ui_use_special_shirts": false,
+    "ui_special_shirt_exclusions": [],
+    "stats_form_days": 30,
+    "sys_vice_captain_enabled": true,
+    "transfers_cap": 20,
+    "transfers_sell_on_fee": 0.5,
+    "max_extra_free_transfers": 4,
+    "league_h2h_tiebreak_stats": [
+      "+goals_scored",
+      "-goals_conceded"
+    ],
+    "timezone": "UTC"
+  },
+  "element_types": [
+    {
+      "id": 1,
+      "plural_name": "Goalkeepers",
+      "plural_name_short": "GKP",
+      "singular_name": "Goalkeeper",
+      "singular_name_short": "GKP",
+      "squad_select": 2,
+      "squad_min_select": null,
+      "squad_max_select": null,
+      "squad_min_play": 1,
+      "squad_max_play": 1,
+      "ui_shirt_specific": true,
+      "sub_positions_locked": [
+        12
+      ],
+      "element_count": 65
+    },
+    {
+      "id": 2,
+      "plural_name": "Defenders",
+      "plural_name_short": "DEF",
+      "singular_name": "Defender",
+      "singular_name_short": "DEF",
+      "squad_select": 5,
+      "squad_min_select": null,
+      "squad_max_select": null,
+      "squad_min_play": 3,
+      "squad_max_play": 5,
+      "ui_shirt_specific": false,
+      "sub_positions_locked": [],
+      "element_count": 193
+    },
+    {
+      "id": 3,
+      "plural_name": "Midfielders",
+      "plural_name_short": "MID",
+      "singular_name": "Midfielder",
+      "singular_name_short": "MID",
+      "squad_select": 5,
+      "squad_min_select": null,
+      "squad_max_select": null,
+      "squad_min_play": 2,
+      "squad_max_play": 5,
+      "ui_shirt_specific": false,
+      "sub_positions_locked": [],
+      "element_count": 259
+    },
+    {
+      "id": 4,
+      "plural_name": "Forwards",
+      "plural_name_short": "FWD",
+      "singular_name": "Forward",
+      "singular_name_short": "FWD",
+      "squad_select": 3,
+      "squad_min_select": null,
+      "squad_max_select": null,
+      "squad_min_play": 1,
+      "squad_max_play": 3,
+      "ui_shirt_specific": false,
+      "sub_positions_locked": [],
+      "element_count": 70
+    }
+  ],
+  "chips": [
+    {
+      "id": 1,
+      "name": "wildcard",
+      "number": 1,
+      "start_event": 2,
+      "stop_event": 19,
+      "chip_type": "transfer",
+      "overrides": {
+        "rules": {},
+        "scoring": {},
+        "element_types": [],
+        "pick_multiplier": null
+      }
+    },
+    {
+      "id": 2,
+      "name": "wildcard",
+      "number": 1,
+      "start_event": 20,
+      "stop_event": 38,
+      "chip_type": "transfer",
+      "overrides": {
+        "rules": {},
+        "scoring": {},
+        "element_types": [],
+        "pick_multiplier": null
+      }
+    },
+    {
+      "id": 3,
+      "name": "freehit",
+      "number": 1,
+      "start_event": 2,
+      "stop_event": 19,
+      "chip_type": "transfer",
+      "overrides": {
+        "rules": {},
+        "scoring": {},
+        "element_types": [],
+        "pick_multiplier": null
+      }
+    },
+    {
+      "id": 4,
+      "name": "bboost",
+      "number": 1,
+      "start_event": 1,
+      "stop_event": 19,
+      "chip_type": "team",
+      "overrides": {
+        "rules": {},
+        "scoring": {},
+        "element_types": [],
+        "pick_multiplier": null
+      }
+    },
+    {
+      "id": 5,
+      "name": "3xc",
+      "number": 1,
+      "start_event": 1,
+      "stop_event": 19,
+      "chip_type": "team",
+      "overrides": {
+        "rules": {},
+        "scoring": {},
+        "element_types": [],
+        "pick_multiplier": null
+      }
+    },
+    {
+      "id": 6,
+      "name": "freehit",
+      "number": 1,
+      "start_event": 20,
+      "stop_event": 38,
+      "chip_type": "transfer",
+      "overrides": {
+        "rules": {},
+        "scoring": {},
+        "element_types": [],
+        "pick_multiplier": null
+      }
+    },
+    {
+      "id": 7,
+      "name": "bboost",
+      "number": 1,
+      "start_event": 20,
+      "stop_event": 38,
+      "chip_type": "team",
+      "overrides": {
+        "rules": {},
+        "scoring": {},
+        "element_types": [],
+        "pick_multiplier": null
+      }
+    },
+    {
+      "id": 8,
+      "name": "3xc",
+      "number": 1,
+      "start_event": 20,
+      "stop_event": 38,
+      "chip_type": "team",
+      "overrides": {
+        "rules": {},
+        "scoring": {},
+        "element_types": [],
+        "pick_multiplier": null
+      }
+    }
+  ],
+  "events": [
+    {
+      "id": 1,
+      "name": "Gameweek 1",
+      "deadline_time": "2026-08-21T17:30:00Z",
+      "finished": false,
+      "data_checked": false,
+      "is_current": false,
+      "is_next": true,
+      "is_previous": false
+    },
+    {
+      "id": 2,
+      "name": "Gameweek 2",
+      "deadline_time": "2026-08-28T17:30:00Z",
+      "finished": false,
+      "data_checked": false,
+      "is_current": false,
+      "is_next": false,
+      "is_previous": false
+    },
+    {
+      "id": 3,
+      "name": "Gameweek 3",
+      "deadline_time": "2026-09-04T17:30:00Z",
+      "finished": false,
+      "data_checked": false,
+      "is_current": false,
+      "is_next": false,
+      "is_previous": false
+    },
+    {
+      "id": 4,
+      "name": "Gameweek 4",
+      "deadline_time": "2026-09-12T12:30:00Z",
+      "finished": false,
+      "data_checked": false,
+      "is_current": false,
+      "is_next": false,
+      "is_previous": false
+    },
+    {
+      "id": 5,
+      "name": "Gameweek 5",
+      "deadline_time": "2026-09-18T17:30:00Z",
+      "finished": false,
+      "data_checked": false,
+      "is_current": false,
+      "is_next": false,
+      "is_previous": false
+    },
+    {
+      "id": 6,
+      "name": "Gameweek 6",
+      "deadline_time": "2026-10-10T12:30:00Z",
+      "finished": false,
+      "data_checked": false,
+      "is_current": false,
+      "is_next": false,
+      "is_previous": false
+    },
+    {
+      "id": 7,
+      "name": "Gameweek 7",
+      "deadline_time": "2026-10-17T12:30:00Z",
+      "finished": false,
+      "data_checked": false,
+      "is_current": false,
+      "is_next": false,
+      "is_previous": false
+    },
+    {
+      "id": 8,
+      "name": "Gameweek 8",
+      "deadline_time": "2026-10-24T12:30:00Z",
+      "finished": false,
+      "data_checked": false,
+      "is_current": false,
+      "is_next": false,
+      "is_previous": false
+    },
+    {
+      "id": 9,
+      "name": "Gameweek 9",
+      "deadline_time": "2026-10-31T13:30:00Z",
+      "finished": false,
+      "data_checked": false,
+      "is_current": false,
+      "is_next": false,
+      "is_previous": false
+    },
+    {
+      "id": 10,
+      "name": "Gameweek 10",
+      "deadline_time": "2026-11-07T13:30:00Z",
+      "finished": false,
+      "data_checked": false,
+      "is_current": false,
+      "is_next": false,
+      "is_previous": false
+    },
+    {
+      "id": 11,
+      "name": "Gameweek 11",
+      "deadline_time": "2026-11-21T13:30:00Z",
+      "finished": false,
+      "data_checked": false,
+      "is_current": false,
+      "is_next": false,
+      "is_previous": false
+    },
+    {
+      "id": 12,
+      "name": "Gameweek 12",
+      "deadline_time": "2026-11-28T13:30:00Z",
+      "finished": false,
+      "data_checked": false,
+      "is_current": false,
+      "is_next": false,
+      "is_previous": false
+    },
+    {
+      "id": 13,
+      "name": "Gameweek 13",
+      "deadline_time": "2026-12-02T18:30:00Z",
+      "finished": false,
+      "data_checked": false,
+      "is_current": false,
+      "is_next": false,
+      "is_previous": false
+    },
+    {
+      "id": 14,
+      "name": "Gameweek 14",
+      "deadline_time": "2026-12-05T13:30:00Z",
+      "finished": false,
+      "data_checked": false,
+      "is_current": false,
+      "is_next": false,
+      "is_previous": false
+    },
+    {
+      "id": 15,
+      "name": "Gameweek 15",
+      "deadline_time": "2026-12-12T13:30:00Z",
+      "finished": false,
+      "data_checked": false,
+      "is_current": false,
+      "is_next": false,
+      "is_previous": false
+    },
+    {
+      "id": 16,
+      "name": "Gameweek 16",
+      "deadline_time": "2026-12-19T13:30:00Z",
+      "finished": false,
+      "data_checked": false,
+      "is_current": false,
+      "is_next": false,
+      "is_previous": false
+    },
+    {
+      "id": 17,
+      "name": "Gameweek 17",
+      "deadline_time": "2026-12-26T13:30:00Z",
+      "finished": false,
+      "data_checked": false,
+      "is_current": false,
+      "is_next": false,
+      "is_previous": false
+    },
+    {
+      "id": 18,
+      "name": "Gameweek 18",
+      "deadline_time": "2026-12-30T18:30:00Z",
+      "finished": false,
+      "data_checked": false,
+      "is_current": false,
+      "is_next": false,
+      "is_previous": false
+    },
+    {
+      "id": 19,
+      "name": "Gameweek 19",
+      "deadline_time": "2027-01-02T13:30:00Z",
+      "finished": false,
+      "data_checked": false,
+      "is_current": false,
+      "is_next": false,
+      "is_previous": false
+    },
+    {
+      "id": 20,
+      "name": "Gameweek 20",
+      "deadline_time": "2027-01-06T18:30:00Z",
+      "finished": false,
+      "data_checked": false,
+      "is_current": false,
+      "is_next": false,
+      "is_previous": false
+    },
+    {
+      "id": 21,
+      "name": "Gameweek 21",
+      "deadline_time": "2027-01-16T13:30:00Z",
+      "finished": false,
+      "data_checked": false,
+      "is_current": false,
+      "is_next": false,
+      "is_previous": false
+    },
+    {
+      "id": 22,
+      "name": "Gameweek 22",
+      "deadline_time": "2027-01-23T13:30:00Z",
+      "finished": false,
+      "data_checked": false,
+      "is_current": false,
+      "is_next": false,
+      "is_previous": false
+    },
+    {
+      "id": 23,
+      "name": "Gameweek 23",
+      "deadline_time": "2027-01-30T13:30:00Z",
+      "finished": false,
+      "data_checked": false,
+      "is_current": false,
+      "is_next": false,
+      "is_previous": false
+    },
+    {
+      "id": 24,
+      "name": "Gameweek 24",
+      "deadline_time": "2027-02-06T13:30:00Z",
+      "finished": false,
+      "data_checked": false,
+      "is_current": false,
+      "is_next": false,
+      "is_previous": false
+    },
+    {
+      "id": 25,
+      "name": "Gameweek 25",
+      "deadline_time": "2027-02-10T18:30:00Z",
+      "finished": false,
+      "data_checked": false,
+      "is_current": false,
+      "is_next": false,
+      "is_previous": false
+    },
+    {
+      "id": 26,
+      "name": "Gameweek 26",
+      "deadline_time": "2027-02-20T13:30:00Z",
+      "finished": false,
+      "data_checked": false,
+      "is_current": false,
+      "is_next": false,
+      "is_previous": false
+    },
+    {
+      "id": 27,
+      "name": "Gameweek 27",
+      "deadline_time": "2027-02-27T13:30:00Z",
+      "finished": false,
+      "data_checked": false,
+      "is_current": false,
+      "is_next": false,
+      "is_previous": false
+    },
+    {
+      "id": 28,
+      "name": "Gameweek 28",
+      "deadline_time": "2027-03-03T18:30:00Z",
+      "finished": false,
+      "data_checked": false,
+      "is_current": false,
+      "is_next": false,
+      "is_previous": false
+    },
+    {
+      "id": 29,
+      "name": "Gameweek 29",
+      "deadline_time": "2027-03-13T13:30:00Z",
+      "finished": false,
+      "data_checked": false,
+      "is_current": false,
+      "is_next": false,
+      "is_previous": false
+    },
+    {
+      "id": 30,
+      "name": "Gameweek 30",
+      "deadline_time": "2027-03-20T13:30:00Z",
+      "finished": false,
+      "data_checked": false,
+      "is_current": false,
+      "is_next": false,
+      "is_previous": false
+    },
+    {
+      "id": 31,
+      "name": "Gameweek 31",
+      "deadline_time": "2027-04-10T12:30:00Z",
+      "finished": false,
+      "data_checked": false,
+      "is_current": false,
+      "is_next": false,
+      "is_previous": false
+    },
+    {
+      "id": 32,
+      "name": "Gameweek 32",
+      "deadline_time": "2027-04-17T12:30:00Z",
+      "finished": false,
+      "data_checked": false,
+      "is_current": false,
+      "is_next": false,
+      "is_previous": false
+    },
+    {
+      "id": 33,
+      "name": "Gameweek 33",
+      "deadline_time": "2027-04-24T12:30:00Z",
+      "finished": false,
+      "data_checked": false,
+      "is_current": false,
+      "is_next": false,
+      "is_previous": false
+    },
+    {
+      "id": 34,
+      "name": "Gameweek 34",
+      "deadline_time": "2027-05-01T12:30:00Z",
+      "finished": false,
+      "data_checked": false,
+      "is_current": false,
+      "is_next": false,
+      "is_previous": false
+    },
+    {
+      "id": 35,
+      "name": "Gameweek 35",
+      "deadline_time": "2027-05-08T12:30:00Z",
+      "finished": false,
+      "data_checked": false,
+      "is_current": false,
+      "is_next": false,
+      "is_previous": false
+    },
+    {
+      "id": 36,
+      "name": "Gameweek 36",
+      "deadline_time": "2027-05-15T12:30:00Z",
+      "finished": false,
+      "data_checked": false,
+      "is_current": false,
+      "is_next": false,
+      "is_previous": false
+    },
+    {
+      "id": 37,
+      "name": "Gameweek 37",
+      "deadline_time": "2027-05-23T12:30:00Z",
+      "finished": false,
+      "data_checked": false,
+      "is_current": false,
+      "is_next": false,
+      "is_previous": false
+    },
+    {
+      "id": 38,
+      "name": "Gameweek 38",
+      "deadline_time": "2027-05-30T13:30:00Z",
+      "finished": false,
+      "data_checked": false,
+      "is_current": false,
+      "is_next": false,
+      "is_previous": false
+    }
+  ],
+  "teams": [
+    {
+      "id": 1,
+      "name": "Arsenal",
+      "short_name": "ARS"
+    },
+    {
+      "id": 2,
+      "name": "Aston Villa",
+      "short_name": "AVL"
+    },
+    {
+      "id": 3,
+      "name": "Bournemouth",
+      "short_name": "BOU"
+    },
+    {
+      "id": 4,
+      "name": "Brentford",
+      "short_name": "BRE"
+    },
+    {
+      "id": 5,
+      "name": "Brighton",
+      "short_name": "BHA"
+    },
+    {
+      "id": 6,
+      "name": "Chelsea",
+      "short_name": "CHE"
+    },
+    {
+      "id": 7,
+      "name": "Coventry City",
+      "short_name": "COV"
+    },
+    {
+      "id": 8,
+      "name": "Crystal Palace",
+      "short_name": "CRY"
+    },
+    {
+      "id": 9,
+      "name": "Everton",
+      "short_name": "EVE"
+    },
+    {
+      "id": 10,
+      "name": "Fulham",
+      "short_name": "FUL"
+    },
+    {
+      "id": 11,
+      "name": "Hull City",
+      "short_name": "HUL"
+    },
+    {
+      "id": 12,
+      "name": "Ipswich Town",
+      "short_name": "IPS"
+    },
+    {
+      "id": 13,
+      "name": "Leeds",
+      "short_name": "LEE"
+    },
+    {
+      "id": 14,
+      "name": "Liverpool",
+      "short_name": "LIV"
+    },
+    {
+      "id": 15,
+      "name": "Man City",
+      "short_name": "MCI"
+    },
+    {
+      "id": 16,
+      "name": "Man Utd",
+      "short_name": "MUN"
+    },
+    {
+      "id": 17,
+      "name": "Newcastle",
+      "short_name": "NEW"
+    },
+    {
+      "id": 18,
+      "name": "Nott'm Forest",
+      "short_name": "NFO"
+    },
+    {
+      "id": 19,
+      "name": "Spurs",
+      "short_name": "TOT"
+    },
+    {
+      "id": 20,
+      "name": "Sunderland",
+      "short_name": "SUN"
+    }
+  ],
+  "elements": [
+    {
+      "id": 1,
+      "web_name": "Raya",
+      "team": 1,
+      "element_type": 1,
+      "now_cost": 60,
+      "status": "a",
+      "chance_of_playing_next_round": null
+    },
+    {
+      "id": 2,
+      "web_name": "Arrizabalaga",
+      "team": 1,
+      "element_type": 1,
+      "now_cost": 50,
+      "status": "a",
+      "chance_of_playing_next_round": null
+    },
+    {
+      "id": 3,
+      "web_name": "Meslier",
+      "team": 1,
+      "element_type": 1,
+      "now_cost": 50,
+      "status": "a",
+      "chance_of_playing_next_round": null
+    },
+    {
+      "id": 4,
+      "web_name": "Gabriel",
+      "team": 1,
+      "element_type": 2,
+      "now_cost": 80,
+      "status": "a",
+      "chance_of_playing_next_round": null
+    },
+    {
+      "id": 5,
+      "web_name": "J.Timber",
+      "team": 1,
+      "element_type": 2,
+      "now_cost": 65,
+      "status": "i",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 6,
+      "web_name": "Saliba",
+      "team": 1,
+      "element_type": 2,
+      "now_cost": 60,
+      "status": "i",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 7,
+      "web_name": "Lewis-Skelly",
+      "team": 1,
+      "element_type": 3,
+      "now_cost": 55,
+      "status": "a",
+      "chance_of_playing_next_round": null
+    },
+    {
+      "id": 8,
+      "web_name": "Calafiori",
+      "team": 1,
+      "element_type": 2,
+      "now_cost": 55,
+      "status": "a",
+      "chance_of_playing_next_round": null
+    },
+    {
+      "id": 9,
+      "web_name": "Hincapie",
+      "team": 1,
+      "element_type": 2,
+      "now_cost": 55,
+      "status": "a",
+      "chance_of_playing_next_round": null
+    },
+    {
+      "id": 10,
+      "web_name": "White",
+      "team": 1,
+      "element_type": 2,
+      "now_cost": 55,
+      "status": "a",
+      "chance_of_playing_next_round": 100
+    },
+    {
+      "id": 11,
+      "web_name": "Mosquera",
+      "team": 1,
+      "element_type": 2,
+      "now_cost": 55,
+      "status": "a",
+      "chance_of_playing_next_round": null
+    },
+    {
+      "id": 12,
+      "web_name": "Saka",
+      "team": 1,
+      "element_type": 3,
+      "now_cost": 95,
+      "status": "a",
+      "chance_of_playing_next_round": null
+    },
+    {
+      "id": 13,
+      "web_name": "Rice",
+      "team": 1,
+      "element_type": 3,
+      "now_cost": 75,
+      "status": "a",
+      "chance_of_playing_next_round": null
+    },
+    {
+      "id": 14,
+      "web_name": "Eze",
+      "team": 1,
+      "element_type": 3,
+      "now_cost": 65,
+      "status": "a",
+      "chance_of_playing_next_round": null
+    },
+    {
+      "id": 15,
+      "web_name": "\u00d8degaard",
+      "team": 1,
+      "element_type": 3,
+      "now_cost": 65,
+      "status": "a",
+      "chance_of_playing_next_round": null
+    },
+    {
+      "id": 16,
+      "web_name": "Madueke",
+      "team": 1,
+      "element_type": 3,
+      "now_cost": 65,
+      "status": "a",
+      "chance_of_playing_next_round": null
+    },
+    {
+      "id": 17,
+      "web_name": "Merino",
+      "team": 1,
+      "element_type": 3,
+      "now_cost": 60,
+      "status": "a",
+      "chance_of_playing_next_round": null
+    },
+    {
+      "id": 18,
+      "web_name": "Martinelli",
+      "team": 1,
+      "element_type": 3,
+      "now_cost": 65,
+      "status": "a",
+      "chance_of_playing_next_round": null
+    },
+    {
+      "id": 19,
+      "web_name": "Zubimendi",
+      "team": 1,
+      "element_type": 3,
+      "now_cost": 55,
+      "status": "a",
+      "chance_of_playing_next_round": null
+    },
+    {
+      "id": 20,
+      "web_name": "Dowman",
+      "team": 1,
+      "element_type": 3,
+      "now_cost": 55,
+      "status": "a",
+      "chance_of_playing_next_round": null
+    },
+    {
+      "id": 22,
+      "web_name": "Nwaneri",
+      "team": 1,
+      "element_type": 3,
+      "now_cost": 55,
+      "status": "a",
+      "chance_of_playing_next_round": null
+    },
+    {
+      "id": 23,
+      "web_name": "F\u00e1bio Vieira",
+      "team": 1,
+      "element_type": 3,
+      "now_cost": 55,
+      "status": "a",
+      "chance_of_playing_next_round": null
+    },
+    {
+      "id": 24,
+      "web_name": "Nelson",
+      "team": 1,
+      "element_type": 3,
+      "now_cost": 55,
+      "status": "a",
+      "chance_of_playing_next_round": null
+    },
+    {
+      "id": 25,
+      "web_name": "Gy\u00f6keres",
+      "team": 1,
+      "element_type": 4,
+      "now_cost": 75,
+      "status": "a",
+      "chance_of_playing_next_round": null
+    },
+    {
+      "id": 26,
+      "web_name": "Havertz",
+      "team": 1,
+      "element_type": 4,
+      "now_cost": 75,
+      "status": "a",
+      "chance_of_playing_next_round": null
+    },
+    {
+      "id": 27,
+      "web_name": "G.Jesus",
+      "team": 1,
+      "element_type": 4,
+      "now_cost": 60,
+      "status": "a",
+      "chance_of_playing_next_round": null
+    },
+    {
+      "id": 452,
+      "web_name": "Bruno G.",
+      "team": 1,
+      "element_type": 3,
+      "now_cost": 70,
+      "status": "a",
+      "chance_of_playing_next_round": null
+    },
+    {
+      "id": 557,
+      "web_name": "Tzolis",
+      "team": 1,
+      "element_type": 3,
+      "now_cost": 65,
+      "status": "a",
+      "chance_of_playing_next_round": null
+    },
+    {
+      "id": 28,
+      "web_name": "Martinez",
+      "team": 2,
+      "element_type": 1,
+      "now_cost": 50,
+      "status": "a",
+      "chance_of_playing_next_round": null
+    },
+    {
+      "id": 29,
+      "web_name": "M.Bizot",
+      "team": 2,
+      "element_type": 1,
+      "now_cost": 45,
+      "status": "a",
+      "chance_of_playing_next_round": null
+    },
+    {
+      "id": 30,
+      "web_name": "Digne",
+      "team": 2,
+      "element_type": 2,
+      "now_cost": 45,
+      "status": "u",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 31,
+      "web_name": "Konsa",
+      "team": 2,
+      "element_type": 2,
+      "now_cost": 45,
+      "status": "a",
+      "chance_of_playing_next_round": null
+    },
+    {
+      "id": 32,
+      "web_name": "Cash",
+      "team": 2,
+      "element_type": 2,
+      "now_cost": 45,
+      "status": "a",
+      "chance_of_playing_next_round": null
+    },
+    {
+      "id": 33,
+      "web_name": "Mings",
+      "team": 2,
+      "element_type": 2,
+      "now_cost": 45,
+      "status": "a",
+      "chance_of_playing_next_round": null
+    },
+    {
+      "id": 34,
+      "web_name": "Pau",
+      "team": 2,
+      "element_type": 2,
+      "now_cost": 45,
+      "status": "a",
+      "chance_of_playing_next_round": null
+    },
+    {
+      "id": 35,
+      "web_name": "Bogarde",
+      "team": 2,
+      "element_type": 3,
+      "now_cost": 50,
+      "status": "a",
+      "chance_of_playing_next_round": null
+    },
+    {
+      "id": 36,
+      "web_name": "Maatsen",
+      "team": 2,
+      "element_type": 2,
+      "now_cost": 45,
+      "status": "a",
+      "chance_of_playing_next_round": null
+    },
+    {
+      "id": 37,
+      "web_name": "Lindel\u00f6f",
+      "team": 2,
+      "element_type": 2,
+      "now_cost": 45,
+      "status": "a",
+      "chance_of_playing_next_round": null
+    },
+    {
+      "id": 38,
+      "web_name": "A.Garc\u00eda",
+      "team": 2,
+      "element_type": 2,
+      "now_cost": 40,
+      "status": "a",
+      "chance_of_playing_next_round": null
+    },
+    {
+      "id": 39,
+      "web_name": "Nedeljkovic",
+      "team": 2,
+      "element_type": 2,
+      "now_cost": 40,
+      "status": "a",
+      "chance_of_playing_next_round": null
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+manager:
+  team_id: 1
+  classic_league_ids: []
+  timezone: Europe/Zagreb
+  risk_profile: moderate
+
+planning:
+  horizon: 6
+  weights: [1.00, 0.90, 0.78, 0.66, 0.55, 0.45]
+  max_hit: 8
+  hits_enabled: true
+
+freshness:
+  public_fpl_max_age_minutes: 180
+  private_squad_max_age_hours: 24
+  financial_state_max_age_hours: 24
+  news_max_age_hours: 12
+  official_outcomes_max_age_hours: 72
+
+publishing:
+  dry_run: true
+  markdown_history: true
+  issue_publishing: false
+  material_change_only: true
+
+models:
+  daily_model: gpt-5-mini
+  deadline_model: gpt-5
+  review_model: gpt-5-mini
+  reasoning_effort: medium
+  web_search_budget: 3
+  max_output_tokens: 4000
+
+cost:
+  per_run_soft_limit_usd: 1.50
+  monthly_soft_limit_usd: 40.0
+  # Local soft limits only — not billing guarantees
+
+review:
+  lookback_gameweeks: 6
+  compare_recorded_alternatives: true
+  min_evidence_before_param_change: 3
+
+alerts:
+  deadline_window_minutes: 180
+  safety_floor_minutes: 20
+  material_change_xp_delta: 1.5
+  material_change_price_tenths: 1

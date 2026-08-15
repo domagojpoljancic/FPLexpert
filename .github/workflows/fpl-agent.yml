@@ -1,0 +1,53 @@
+name: fpl-agent
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "dry_run | daily | deadline | weekly_review"
+        default: dry_run
+      publish:
+        description: "Set true to allow publish path"
+        default: "false"
+  schedule:
+    # Staggered; not top-of-hour. GitHub may delay/drop schedules.
+    - cron: "17 6 * * *"
+    - cron: "41 */2 * * *"
+
+permissions: {}
+
+concurrency:
+  group: fpl-agent-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: astral-sh/setup-uv@d0b4409defa78023132408eefae4a196edc17865 # v6.1.0
+        with:
+          enable-cache: true
+      - name: Sync and test
+        run: |
+          uv sync
+          uv run fpl-agent validate-config
+          uv run fpl-agent doctor --mode dry_run
+          uv run pytest -q
+      - name: Offline analyze
+        run: uv run fpl-agent analyze --mode dry_run --offline
+
+  # Publisher job elevated only when explicitly requested; still dry-run by default config.
+  publish:
+    needs: preflight
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: astral-sh/setup-uv@d0b4409defa78023132408eefae4a196edc17865 # v6.1.0
+      - name: Dry-run note
+        run: echo "Publishing mutations remain gated by config publishing.dry_run and bundle state machine."

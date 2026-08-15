@@ -1,0 +1,47 @@
+# Secrets and private state
+.env
+.env.*
+!.env.example
+data/private-state/**
+!data/private-state/.gitkeep
+**/team-state*.json
+**/*private*state*.json
+**/*_B64*
+
+# Local caches and run outputs that may contain private material
+data/cache/**
+!data/cache/.gitkeep
+data/snapshots/**
+!data/snapshots/.gitkeep
+data/decision-ledger/**
+!data/decision-ledger/.gitkeep
+data/outcomes/**
+!data/outcomes/.gitkeep
+data/evaluation/**
+!data/evaluation/.gitkeep
+reports/**
+!reports/.gitkeep
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.hypothesis/
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+*.swp
