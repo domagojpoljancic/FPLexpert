@@ -151,8 +151,18 @@ def load_yaml_settings(path: Path) -> dict[str, Any]:
     return data
 
 
+def default_settings_path() -> Path:
+    env = os.environ.get("FPL_SETTINGS_PATH")
+    if env:
+        return Path(env)
+    local = Path("config/settings.yaml")
+    if local.exists():
+        return local
+    return Path("config/settings.example.yaml")
+
+
 def load_settings(path: Path | None = None) -> Settings:
-    settings_path = path or Path(os.environ.get("FPL_SETTINGS_PATH", "config/settings.example.yaml"))
+    settings_path = path or default_settings_path()
     raw = load_yaml_settings(settings_path)
     try:
         return Settings(**raw)

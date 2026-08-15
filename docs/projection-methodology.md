@@ -27,6 +27,31 @@
 
 - Ownership / EO.
 
+## Preseason variant (`preseason-v1`)
+
+Before a season starts there is no current-season form, so `projections/preseason.py`
+uses different inputs:
+
+1. Points per 90 from last season's `total_points / (minutes / 90)`, shrunk toward a
+   price-based prior with strength 12 nineties.
+2. Start probability from last season's `starts / 38`, shrunk toward a price prior;
+   goalkeepers are treated as near-binary (clear number one vs backup).
+3. Fixture difficulty from each fixture's `team_h_difficulty` / `team_a_difficulty`,
+   applied separately to attacking and defensive point shares by position.
+4. Home/away multipliers of 1.05 / 0.95.
+5. FPL's published `ep_next` blended into gameweek 1 only, at weight 0.35.
+6. Availability from `status` and `chance_of_playing_next_round`.
+
+Blank and double gameweeks fall out of the fixture list naturally, since each
+fixture contributes its own term.
+
+### Known limitations
+
+Premium attackers are systematically compressed: the model has no explicit
+penalty-taker, set-piece, or shot-quality term, so it tends to prefer mid-priced
+value over £13m+ forwards. Treat "premium not selected" as a model property to
+challenge, not as proven advice.
+
 ## Validation status
 
 - Implemented and deterministic.

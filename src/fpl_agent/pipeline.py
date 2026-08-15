@@ -47,14 +47,18 @@ def run_pipeline(
     private = None
     private_path = Path("data/private-state/current.json")
     catalog: dict[int, dict[str, Any]] = {}
-    fixture = Path("tests/fixtures/bootstrap_static_reduced.json")
-    if fixture.exists():
-        boot = json.loads(fixture.read_text(encoding="utf-8"))
+    gw = 1
+    for candidate in (
+        Path("data/cache/bootstrap-static.json"),
+        Path("tests/fixtures/bootstrap_static_reduced.json"),
+    ):
+        if not candidate.exists():
+            continue
+        boot = json.loads(candidate.read_text(encoding="utf-8"))
         catalog = {int(e["id"]): e for e in boot.get("elements") or []}
         events = boot.get("events") or []
         gw = next((int(e["id"]) for e in events if e.get("is_next")), 1)
-    else:
-        gw = 1
+        break
 
     if private_path.exists():
         private = load_and_validate_private_state(

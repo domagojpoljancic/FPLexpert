@@ -10,10 +10,11 @@ WIP read-only Fantasy Premier League decision-support system. It recommends tran
 | 2026/27 rules engine | Working (verified 2026-08-15) |
 | FPL adapters + team-state resolver | Working (offline fixtures + opt-in live smoke) |
 | Projections v1 baseline | Working (unvalidated empirically) |
+| Preseason projections + initial squad optimiser | Working (`suggest-squad`, exact XI knapsack) |
 | Strategy / scenarios | Working (bounded beam; catalog-backed transfers still thin) |
 | Rivals / news / monitor | Working (contracts + classifiers) |
 | Decision ledger / replay | Working |
-| OpenAI synthesis | Stub client + validation (live SDK optional) |
+| OpenAI synthesis | Live Responses client + daily assistant (`daily`); needs `OPENAI_API_KEY` for web/Reddit search |
 | Reports / publishing state machine | Working (GitHub mutations dry-run by default) |
 | GitHub Actions | Scaffolded; full-season unattended blocked pending external watchdog |
 | Evaluation gates | Partial — see `docs/evaluation-plan.md` |
@@ -28,6 +29,12 @@ uv run fpl-agent validate-config
 uv run fpl-agent doctor
 uv run pytest
 uv run fpl-agent analyze --mode dry_run --offline
+
+# Suggest a legal 15-player squad for the next gameweek
+uv run fpl-agent suggest-squad
+
+# Daily assistant for your locked squad (uses OpenAI+web search if OPENAI_API_KEY is set)
+uv run fpl-agent daily
 ```
 
 Copy `config/settings.example.yaml` and set your real `manager.team_id`. Sync private squad finance via `fpl-agent team-state validate PATH` (no FPL login).

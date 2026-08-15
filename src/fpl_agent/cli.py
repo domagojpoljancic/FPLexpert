@@ -9,7 +9,7 @@ from pathlib import Path
 import typer
 
 from fpl_agent import __version__
-from fpl_agent.config import load_settings
+from fpl_agent.config import default_settings_path, load_settings
 from fpl_agent.errors import AgentError, ExitCode
 from fpl_agent.observability import configure_logging, redact_value
 
@@ -26,15 +26,16 @@ def _exit(code: ExitCode) -> None:
 
 @app.command("validate-config")
 def validate_config(
-    path: Path = typer.Option(
-        Path("config/settings.example.yaml"),
+    path: Path | None = typer.Option(
+        None,
         "--path",
-        help="Path to YAML settings",
+        help="Path to YAML settings (defaults to config/settings.yaml if present)",
     ),
 ) -> None:
     """Validate configuration file and environment overlays."""
+    settings_path = path or default_settings_path()
     try:
-        settings = load_settings(path)
+        settings = load_settings(settings_path)
     except AgentError as exc:
         typer.echo(f"INVALID: {exc}", err=True)
         _exit(exc.exit_code)
@@ -44,7 +45,7 @@ def validate_config(
 
 @app.command("doctor")
 def doctor(
-    path: Path = typer.Option(Path("config/settings.example.yaml"), "--path"),
+    path: Path | None = typer.Option(None, "--path"),
     mode: str = typer.Option("dry_run", "--mode"),
 ) -> None:
     """Environment and workspace health checks without printing secrets."""
@@ -63,9 +64,10 @@ def doctor(
         typer.echo(f"dependency check failed: {exc}", err=True)
         _exit(ExitCode.INVALID_CONFIG)
 
+    settings_path = path or default_settings_path()
     try:
-        settings = load_settings(path)
-        typer.echo(f"config readable: {path}")
+        settings = load_settings(settings_path)
+        typer.echo(f"config readable: {settings_path}")
         typer.echo(f"team_id configured: {settings.manager.team_id > 0}")
     except AgentError as exc:
         typer.echo(f"config error: {exc}", err=True)
@@ -197,6 +199,32 @@ def team_state_encode(path: Path) -> None:
     _exit(ExitCode.SUCCESS)
 
 
+@app.command("daily")
+def daily(
+    offline: bool = typer.Option(False, "--offline", help="Use cached FPL snapshots only"),
+    live_ai: bool = typer.Option(
+        False,
+        "--live-ai",
+        help="Require live OpenAI (fail if OPENAI_API_KEY missing)",
+    ),
+    save: bool = typer.Option(True, "--save/--no-save", help="Write report under reports/"),
+) -> None:
+    """Daily squad assistant: news/status check + keep/watch/revise suggestions."""
+    from fpl_agent.daily import render_daily_text, run_daily, write_daily_artifact
+
+    try:
+        report = run_daily(offline=offline, require_live_ai=live_ai)
+    except AgentError as exc:
+        typer.echo(f"FAILED: {exc}", err=True)
+        _exit(exc.exit_code)
+    text = render_daily_text(report)
+    typer.echo(text)
+    if save:
+        path = write_daily_artifact(report)
+        typer.echo(f"\nSaved {path}")
+    _exit(ExitCode.SUCCESS)
+
+
 @app.command("analyze")
 def analyze(
     mode: str = typer.Option("dry_run", "--mode"),
@@ -223,6 +251,58 @@ def monitor(offline: bool = typer.Option(False, "--offline")) -> None:
 
     summary = run_monitor(offline=offline)
     typer.echo(json.dumps(summary, indent=2, default=str))
+    _exit(ExitCode.SUCCESS)
+
+
+@app.command("suggest-squad")
+def suggest_squad(
+    path: Path | None = typer.Option(None, "--path", help="Settings path"),
+    offline: bool = typer.Option(False, "--offline", help="Use cached snapshots only"),
+    budget: float = typer.Option(100.0, "--budget", help="Budget in £m"),
+) -> None:
+    """Suggest a legal initial 15-player squad for the next gameweek."""
+    from fpl_agent.strategy.draft import optimise_initial_squad
+    from fpl_agent.suggest import load_public_data, projections_for_horizon
+
+    settings = load_settings(path or default_settings_path())
+    from fpl_agent.rules.season import load_season_rules_2026_27
+
+    rules = load_season_rules_2026_27()
+    try:
+        bootstrap, fixtures = load_public_data(offline=offline)
+    except AgentError as exc:
+        typer.echo(f"FAILED: {exc}", err=True)
+        _exit(exc.exit_code)
+
+    projections, gameweeks = projections_for_horizon(
+        bootstrap=bootstrap,
+        fixtures=fixtures,
+        weights=settings.planning.weights,
+    )
+    squad = optimise_initial_squad(projections, rules, budget_tenths=int(round(budget * 10)))
+
+    teams = {int(t["id"]): str(t["short_name"]) for t in bootstrap.get("teams") or []}
+    labels = {1: "GKP", 2: "DEF", 3: "MID", 4: "FWD"}
+    xi_ids = {p.player_id for p in squad.xi}
+
+    typer.echo(f"Suggested squad for GW{gameweeks[0]} (horizon GW{gameweeks[0]}-{gameweeks[-1]})")
+    typer.echo(f"Formation {squad.formation} | cost £{squad.total_cost_tenths / 10:.1f}m | bank £{squad.bank_tenths / 10:.1f}m")
+    typer.echo("")
+    typer.echo(f"{'POS':<4}{'PLAYER':<18}{'TEAM':<6}{'PRICE':>6}{'GW1':>7}{'6GW':>8}  ROLE")
+    for player in squad.players:
+        role = "XI" if player.player_id in xi_ids else "bench"
+        if player.player_id == squad.captain.player_id:
+            role = "XI (C)"
+        elif player.player_id == squad.vice_captain.player_id:
+            role = "XI (V)"
+        gw1 = player.xp_by_gw[0] if player.xp_by_gw else 0.0
+        typer.echo(
+            f"{labels[player.element_type]:<4}{player.web_name[:17]:<18}"
+            f"{teams.get(player.team_id, '?'):<6}{player.price_tenths / 10:>6.1f}"
+            f"{gw1:>7.1f}{player.weighted_xp:>8.1f}  {role}"
+        )
+    typer.echo("")
+    typer.echo("Projections are an unvalidated preseason baseline; you make all FPL changes.")
     _exit(ExitCode.SUCCESS)
 
 
