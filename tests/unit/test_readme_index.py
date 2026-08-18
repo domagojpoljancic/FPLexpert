@@ -61,16 +61,15 @@ def test_parses_new_predeadline_markdown_shape(tmp_path: Path) -> None:
         "# Pre-deadline FPL review — Gameweek 1\n"
         "\n"
         "Plan: **WATCH**\n"
+        "Headline: Watch O'Nien\n"
         "AI: **gpt-5** (live OpenAI).\n"
         "Price watch: **NO ACTION** (overnight rises/falls — not news).\n"
         "\n"
-        "## Can you act on transfer advice?\n"
+        "## TLDR\n"
         "\n"
-        "**Yes.** The squad file is fresh enough.\n"
+        "- Plan: **WATCH**\n"
         "\n"
-        "## Watch O'Nien\n"
-        "\n"
-        "## What changed\n",
+        "## Do this\n",
         encoding="utf-8",
     )
     news = list_report_files(reports, kind="predeadline", limit=3)

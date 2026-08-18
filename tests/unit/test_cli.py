@@ -63,6 +63,78 @@ def test_materialize_from_env(tmp_path, monkeypatch) -> None:
     assert raw not in result.stderr
 
 
+def test_team_state_lookup_raya(tmp_path) -> None:
+    result = runner.invoke(
+        app,
+        [
+            "team-state",
+            "lookup",
+            "--bootstrap",
+            "tests/fixtures/bootstrap_static_reduced.json",
+            "Raya",
+            "Gabriel",
+            "Rice",
+        ],
+    )
+    assert result.exit_code == 0, result.stdout + result.stderr
+    assert "OK" in result.stdout
+    assert "ids 1 4" in result.stdout
+
+
+def test_team_state_lookup_unknown() -> None:
+    result = runner.invoke(
+        app,
+        [
+            "team-state",
+            "lookup",
+            "--bootstrap",
+            "tests/fixtures/bootstrap_static_reduced.json",
+            "NotAPlayer",
+        ],
+    )
+    assert result.exit_code != 0
+    assert "NONE" in result.stdout
+
+
+def test_team_state_names(tmp_path) -> None:
+    import json
+    from datetime import UTC, datetime
+
+    dest = tmp_path / "current.json"
+    dest.write_text(
+        json.dumps(
+            {
+                "schema_version": "1.0.0",
+                "season": "2026-27",
+                "applies_before_gameweek": 1,
+                "as_of": datetime.now(UTC).isoformat(),
+                "player_ids": list(range(1, 16)),
+                "bank_tenths": 0,
+                "free_transfers": 1,
+                "purchase_prices_tenths": {str(i): 50 for i in range(1, 16)},
+                "chip_instances": [],
+                "captain_id": 1,
+                "vice_id": 4,
+            }
+        )
+    )
+    result = runner.invoke(
+        app,
+        [
+            "team-state",
+            "names",
+            "--path",
+            str(dest),
+            "--bootstrap",
+            "tests/fixtures/bootstrap_static_reduced.json",
+        ],
+    )
+    assert result.exit_code == 0, result.stdout + result.stderr
+    assert "Raya" in result.stdout
+    assert "Gabriel" in result.stdout
+    assert "Captain: Raya" in result.stdout
+
+
 def test_materialize_from_env_missing(monkeypatch, tmp_path) -> None:
     monkeypatch.delenv("FPL_PRIVATE_STATE_B64", raising=False)
     dest = tmp_path / "current.json"

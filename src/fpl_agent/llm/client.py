@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import time
+from collections import deque
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -16,10 +17,11 @@ from fpl_agent.config import load_dotenv_files
 from fpl_agent.errors import AgentError, AgentErrorCode, ExitCode
 from fpl_agent.observability import redact_value
 
-PROMPT_VERSION = "daily-v1"
-SCHEMA_VERSION = "daily-advice-1.0.0"
+PROMPT_VERSION = "predeadline-v2"
+SCHEMA_VERSION = "daily-advice-1.1.0"
 
 # Preferred domains for FPL-relevant search (omit scheme; includes subdomains).
+# google.com is omitted on purpose — the web_search tool already is the search.
 DEFAULT_ALLOWED_DOMAINS = [
     "premierleague.com",
     "fantasy.premierleague.com",
@@ -32,6 +34,7 @@ DEFAULT_ALLOWED_DOMAINS = [
     "reddit.com",
     "goal.com",
     "standard.co.uk",
+    "fantasyfootballscout.co.uk",
 ]
 
 
@@ -74,6 +77,8 @@ class DailyAdvice(BaseModel):
     uncertainty: list[str] = Field(default_factory=list, max_length=8)
     warnings: list[str] = Field(default_factory=list, max_length=12)
     cited_source_ids: list[str] = Field(default_factory=list, max_length=20)
+    tldr: list[str] = Field(default_factory=list, max_length=8)
+    detail: str = Field(default="", max_length=2500)
     do_not_transfer_just_because_ran: bool = True
 
 
@@ -100,6 +105,7 @@ class CallMetadata:
     prompt_version: str = PROMPT_VERSION
     schema_version: str = SCHEMA_VERSION
     sources: list[dict[str, str]] = field(default_factory=list)
+    search_queries: list[str] = field(default_factory=list)
     fallback: bool = False
 
 
@@ -162,6 +168,8 @@ class FakeOpenAIClient:
                 uncertainty=["Live OpenAI synthesis was not used."],
                 warnings=[],
                 cited_source_ids=[s["claim_id"] for s in payload.get("sources") or [] if "claim_id" in s][:10],
+                tldr=["No live model; hold unless an attention trigger is material."],
+                detail="Deterministic fallback. No web pages were searched.",
             ),
             CallMetadata(fallback=True, model="fake"),
         )
@@ -251,6 +259,76 @@ def validate_daily_advice(
     )
 
 
+def _as_mapping(item: Any) -> dict[str, Any]:
+    if isinstance(item, dict):
+        return item
+    dump = getattr(item, "model_dump", None)
+    if callable(dump):
+        dumped = dump()
+        if isinstance(dumped, dict):
+            return dumped
+    return {}
+
+
+def extract_web_search_trace(output_items: list[Any]) -> tuple[int, list[dict[str, str]], list[str]]:
+    """Collect every web_search call, query, and page URL the Responses API returned."""
+    web_calls = 0
+    sources: list[dict[str, str]] = []
+    queries: list[str] = []
+    seen_urls: set[str] = set()
+    seen_queries: set[str] = set()
+
+    def add_source(url: Any, title: Any = None) -> None:
+        if not url:
+            return
+        url_s = str(url).strip()
+        if not (url_s.startswith("http://") or url_s.startswith("https://")):
+            return
+        if url_s in seen_urls:
+            return
+        seen_urls.add(url_s)
+        row = {"url": url_s}
+        if title:
+            row["title"] = str(title).strip()[:200]
+        sources.append(row)
+
+    def add_query(query: Any) -> None:
+        q = str(query or "").strip()
+        if not q or q in seen_queries:
+            return
+        seen_queries.add(q)
+        queries.append(q)
+
+    queue: deque[Any] = deque(output_items)
+    while queue:
+        node = queue.popleft()
+        if node is None:
+            continue
+        if isinstance(node, list):
+            queue.extend(node)
+            continue
+        mapping = _as_mapping(node)
+        ntype = mapping.get("type") or getattr(node, "type", None)
+        if ntype == "web_search_call":
+            web_calls += 1
+            action = mapping.get("action")
+            if not isinstance(action, dict):
+                action = _as_mapping(action)
+            add_query(action.get("query"))
+            for src in action.get("sources") or []:
+                src_map = src if isinstance(src, dict) else _as_mapping(src)
+                add_source(src_map.get("url"), src_map.get("title"))
+        for key in ("content", "annotations", "output"):
+            child = mapping.get(key)
+            if isinstance(child, list):
+                queue.extend(child)
+        for ann in mapping.get("annotations") or []:
+            ann_map = ann if isinstance(ann, dict) else _as_mapping(ann)
+            if str(ann_map.get("type") or "") in {"url_citation", "url_citation_annotation"}:
+                add_source(ann_map.get("url"), ann_map.get("title"))
+    return web_calls, sources, queries
+
+
 def _load_instructions() -> str:
     path = Path("prompts/predeadline.md")
     if not path.exists():
@@ -276,8 +354,8 @@ class ResponsesOpenAIClient:
 
     api_key: str | None = None
     model: str = "gpt-5-mini"
-    max_output_tokens: int = 4000
-    web_search_budget: int = 3
+    max_output_tokens: int = 5000
+    web_search_budget: int = 8
     allowed_domains: list[str] = field(default_factory=lambda: list(DEFAULT_ALLOWED_DOMAINS))
     timeout_s: float = 90.0
 
@@ -321,16 +399,28 @@ class ResponsesOpenAIClient:
             )
 
         instructions = _load_instructions()
+        hubs = payload.get("suggested_source_hubs") or []
+        hub_urls: list[str] = []
+        for hub in hubs:
+            if isinstance(hub, dict) and hub.get("url"):
+                hub_urls.append(str(hub["url"]))
+            elif isinstance(hub, str):
+                hub_urls.append(hub)
+        hub_lines = ", ".join(hub_urls)
         user_input = (
             "Produce structured FPL pre-deadline advice from this JSON only. "
-            "Search the web only for named squad players/clubs when needed for injury, "
-            "suspension, press-conference, or fixture news. Prefer official/club sources; "
-            "treat Reddit as lower-confidence community signal. "
+            "Use web_search. Start with the suggested_source_hubs (Premier League fantasy news, "
+            "Fantasy Football Scout, r/FantasyPL, BBC Sport fantasy football, Sky Sports), "
+            "then search named squad players/clubs for injury, suspension, press-conference, "
+            "or fixture news. Prefer official/club/FFS sources; treat Reddit as lower-confidence. "
+            "Fill tldr (3–6 one-line bullets) and detail (short why, not a dump). "
             "Use supplied price_actions if present. Do not invent price likelihoods. "
             "Do not upgrade ignore/watch price actions into transfers. "
-            "Do not invent player IDs. Do not recommend a transfer merely because this run happened.\n\n"
-            + _compact_payload(payload)
+            "Do not invent player IDs. Do not recommend a transfer merely because this run happened."
         )
+        if hub_lines:
+            user_input += f" Suggested hubs: {hub_lines}."
+        user_input += "\n\n" + _compact_payload(payload)
 
         started = time.perf_counter()
         try:
@@ -368,17 +458,7 @@ class ResponsesOpenAIClient:
         if raw_usage is not None:
             usage = raw_usage.model_dump() if hasattr(raw_usage, "model_dump") else {}
 
-        web_calls = 0
-        sources: list[dict[str, str]] = []
-        for item in getattr(response, "output", None) or []:
-            item_type = getattr(item, "type", None)
-            if item_type == "web_search_call":
-                web_calls += 1
-                action = getattr(item, "action", None)
-                for src in getattr(action, "sources", None) or []:
-                    url = getattr(src, "url", None) or (src.get("url") if isinstance(src, dict) else None)
-                    if url:
-                        sources.append({"url": str(url)})
+        web_calls, sources, queries = extract_web_search_trace(getattr(response, "output", None) or [])
 
         meta = CallMetadata(
             response_id=getattr(response, "id", None),
@@ -387,6 +467,7 @@ class ResponsesOpenAIClient:
             usage=usage,
             web_search_calls=web_calls,
             sources=sources,
+            search_queries=queries,
             fallback=False,
         )
         return parsed, meta

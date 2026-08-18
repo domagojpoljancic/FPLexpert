@@ -166,8 +166,18 @@ def _headline_from_md(text: str) -> str:
         "other warnings",
         "uncertainty",
         "sources",
+        "sources checked",
+        "tldr",
+        "do this",
+        "why",
+        "notes",
+        "suggested hubs",
+        "pages openai returned",
+        "search queries",
+        "official fpl status fields",
+        "squad file",
     }
-    for line in text.splitlines()[:24]:
+    for line in text.splitlines()[:40]:
         stripped = line.strip()
         if stripped.lower().startswith("headline:"):
             return stripped.split(":", 1)[1].strip()

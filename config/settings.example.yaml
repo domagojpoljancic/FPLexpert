@@ -30,8 +30,8 @@ models:
   deadline_model: gpt-5
   review_model: gpt-5-mini
   reasoning_effort: medium
-  web_search_budget: 3
-  max_output_tokens: 4000
+  web_search_budget: 8
+  max_output_tokens: 5000
 
 cost:
   per_run_soft_limit_usd: 1.50
