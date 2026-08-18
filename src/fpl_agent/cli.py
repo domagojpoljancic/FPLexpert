@@ -24,6 +24,12 @@ def _exit(code: ExitCode) -> None:
     raise typer.Exit(int(code))
 
 
+def _refresh_readme() -> None:
+    from fpl_agent.reporting.readme_index import refresh_readme_recent_runs
+
+    refresh_readme_recent_runs()
+
+
 load_dotenv_files()
 
 
@@ -158,17 +164,44 @@ def team_state_validate(path: Path) -> None:
 def team_state_status(
     path: Path = typer.Option(Path("data/private-state/current.json"), "--path"),
 ) -> None:
+    from datetime import UTC, datetime
+
+    from fpl_agent.config import load_settings
     from fpl_agent.team_state.private import load_and_validate_private_state
 
     if not path.exists():
-        typer.echo("no private state file")
+        typer.echo(f"No squad file at {path}")
+        typer.echo("Create it from the FPL app (15 players, bank, free transfers). See data/private-state/README.md")
         _exit(ExitCode.INSUFFICIENT_OR_STALE_TEAM_STATE)
     try:
         state = load_and_validate_private_state(path)
     except AgentError as exc:
         typer.echo(f"INVALID: {exc}", err=True)
         _exit(exc.exit_code)
-    typer.echo(f"as_of={state.as_of.isoformat()} gw={state.applies_before_gameweek}")
+    settings = load_settings()
+    now = datetime.now(UTC)
+    as_of = state.as_of if state.as_of.tzinfo else state.as_of.replace(tzinfo=UTC)
+    age_hours = (now - as_of.astimezone(UTC)).total_seconds() / 3600
+    max_age = settings.freshness.private_squad_max_age_hours
+    stale = age_hours > max_age
+    try:
+        from zoneinfo import ZoneInfo
+
+        local = as_of.astimezone(ZoneInfo(settings.manager.timezone)).strftime("%d %b %Y %H:%M %Z")
+    except Exception:  # noqa: BLE001
+        local = as_of.astimezone(UTC).strftime("%d %b %Y %H:%M UTC")
+    typer.echo(f"File: {path}")
+    typer.echo(f"Last saved: {local}  ({age_hours:.0f} hours ago)")
+    typer.echo(f"Trust window: {max_age:.0f} hours  →  {'STALE' if stale else 'fresh'}")
+    typer.echo(f"For gameweek: {state.applies_before_gameweek}")
+    typer.echo(f"Bank: £{state.bank_tenths / 10:.1f}m   Free transfers: {state.free_transfers}")
+    typer.echo(f"Players: {len(state.player_ids)}")
+    if stale:
+        typer.echo("")
+        typer.echo(
+            "Reports will say INSUFFICIENT (cannot treat transfers as executable). "
+            "Update this file from the FPL app. Field meanings: data/private-state/README.md"
+        )
     _exit(ExitCode.SUCCESS)
 
 
@@ -265,6 +298,7 @@ def daily(
     if save:
         path = write_prices_artifact(report)
         typer.echo(f"\nSaved {path}")
+        _refresh_readme()
     _exit(ExitCode.SUCCESS)
 
 
@@ -304,6 +338,7 @@ def predeadline(
     if save and not report.skipped:
         path = write_daily_artifact(report)
         typer.echo(f"\nSaved {path}")
+        _refresh_readme()
     _exit(ExitCode.SUCCESS)
 
 

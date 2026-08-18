@@ -4,6 +4,7 @@
 !.env.example
 data/private-state/**
 !data/private-state/.gitkeep
+!data/private-state/README.md
 **/team-state*.json
 **/*private*state*.json
 **/*_B64*
@@ -23,6 +24,8 @@ data/evaluation/**
 !data/evaluation/.gitkeep
 reports/**
 !reports/.gitkeep
+!reports/prices-gw*.md
+!reports/predeadline-gw*.md
 *.log
 
 # Python

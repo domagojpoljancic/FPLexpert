@@ -4,6 +4,17 @@ from __future__ import annotations
 
 from fpl_agent.prices.types import ActionClass, PriceAction, PricePrediction, ReportStatus
 
+_STATUS_HEADLINE = {
+    ReportStatus.NO_ACTION: "No price action tonight.",
+    ReportStatus.WATCH: "Watch list only — do not churn for £0.1m.",
+    ReportStatus.ACT_TONIGHT_CONDITIONAL: "Price timing may matter if a listed condition still holds.",
+    ReportStatus.ACT_TONIGHT: "Act in FPL yourself tonight if you still want the planned move.",
+}
+
+
+def status_headline(status: ReportStatus) -> str:
+    return _STATUS_HEADLINE[status]
+
 
 def escape_md(text: str) -> str:
     return text.replace("\\", "\\\\").replace("|", "\\|").replace("<", "&lt;").replace("`", "'")
@@ -40,9 +51,10 @@ def render_prices_markdown(
     lines = [
         f"# Price watch — GW{gameweek}",
         f"Status: **{status.value}** | Executability: {executability}",
+        f"Headline: {escape_md(status_headline(status))}",
         f"Clock: {escape_md(timezone_label)} (storage UTC)",
         "",
-        "## Act tonight" if act_now else "## Act tonight",
+        "## Act tonight",
     ]
     if act_now:
         for action in act_now[:6]:

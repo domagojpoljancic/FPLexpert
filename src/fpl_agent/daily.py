@@ -46,6 +46,9 @@ class DailyReport:
     skip_reason: str | None = None
     price_status: str | None = None
     price_actions: list[dict[str, Any]] | None = None
+    squad_as_of: datetime | None = None
+    squad_max_age_hours: float = 24.0
+    timezone: str = "Europe/Zagreb"
 
 
 def _squad_rows(
@@ -268,7 +271,7 @@ def run_predeadline(
     }
 
     client = build_client(
-        model=settings.models.daily_model,
+        model=settings.models.deadline_model,
         max_output_tokens=settings.models.max_output_tokens,
         web_search_budget=settings.models.web_search_budget,
         require_live=require_live_ai,
@@ -322,9 +325,9 @@ def run_predeadline(
         for c in all_claims
     ]
 
-    extra_warnings = list(team.warnings)
+    extra_warnings = _unique_texts(list(team.warnings))
     if price_report is not None:
-        extra_warnings.extend(price_report.warnings)
+        extra_warnings = _unique_texts(extra_warnings + list(price_report.warnings))
 
     return DailyReport(
         gameweek=gw,
@@ -352,37 +355,116 @@ def run_predeadline(
         skip_reason=None,
         price_status=price_report.status.value if price_report is not None else None,
         price_actions=price_block.get("price_actions") if isinstance(price_block.get("price_actions"), list) else None,
+        squad_as_of=private.as_of,
+        squad_max_age_hours=float(settings.freshness.private_squad_max_age_hours),
+        timezone=settings.manager.timezone,
     )
 
 
+def _unique_texts(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for item in items:
+        if item in seen:
+            continue
+        seen.add(item)
+        out.append(item)
+    return out
+
+
+def _format_squad_age(report: DailyReport, *, now: datetime | None = None) -> tuple[str, float] | None:
+    if report.squad_as_of is None:
+        return None
+    now = now or datetime.now(UTC)
+    as_of = report.squad_as_of
+    if as_of.tzinfo is None:
+        as_of = as_of.replace(tzinfo=UTC)
+    age_hours = (now - as_of.astimezone(UTC)).total_seconds() / 3600
+    try:
+        from zoneinfo import ZoneInfo
+
+        local = as_of.astimezone(ZoneInfo(report.timezone)).strftime("%d %b %Y %H:%M %Z")
+    except Exception:  # noqa: BLE001
+        local = as_of.astimezone(UTC).strftime("%d %b %Y %H:%M UTC")
+    return local, age_hours
+
+
+def _can_act_lines(report: DailyReport) -> list[str]:
+    lines = ["## Can you act on transfer advice?", ""]
+    if report.executability == "EXECUTABLE":
+        lines.append(
+            "**Yes.** The squad file is fresh enough (15 players, bank, free transfers)."
+        )
+        return lines
+    if report.executability == "CONDITIONAL_ONLY":
+        lines.append(
+            "**Only with caveats.** Some bank, free-transfer, or chip data is missing or old."
+        )
+        return lines
+    lines.append(
+        "**No — not as executable transfers.** "
+        "We do not have a fresh enough picture of your team to say “do this transfer now.”"
+    )
+    aged = _format_squad_age(report)
+    if aged:
+        local, age_hours = aged
+        lines.append(
+            f"Your squad file was last saved **{local}** ({age_hours:.0f} hours ago). "
+            f"We only trust it for **{report.squad_max_age_hours:.0f} hours**."
+        )
+    lines.append(
+        "News and lineup notes below can still be useful. "
+        "Update `data/private-state/current.json` from the FPL app, then run again. "
+        "For the GitHub evening price job, also run "
+        "`uv run fpl-agent team-state encode-for-github data/private-state/current.json`."
+    )
+    return lines
+
+
+def _ai_line(report: DailyReport) -> str:
+    if not report.used_live_ai:
+        return "AI: not used (deterministic fallback; no API key or skipped)."
+    model = str(report.model_meta.get("model") or "OpenAI")
+    searches = report.model_meta.get("web_search_calls")
+    extra = f" Web searches actually made: {searches}." if searches is not None else ""
+    return f"AI: **{model}** (live OpenAI).{extra}"
+
+
 def render_daily_text(report: DailyReport) -> str:
-    lines = [
-        f"# Pre-deadline FPL review — GW{report.gameweek}",
-        f"Status: **{report.plan_action.upper()}** | Executability: {report.executability}",
-        f"AI: {'live OpenAI + web search' if report.used_live_ai else 'deterministic fallback (no API key)'}",
-        "",
-        f"## {report.headline}",
-        "",
-        "## What changed",
-    ]
     if report.skipped:
         lines = [
-            f"# Pre-deadline FPL review — GW{report.gameweek}",
-            f"Status: **SKIPPED** ({report.skip_reason})",
+            f"# Pre-deadline FPL review — Gameweek {report.gameweek}",
             "",
-            f"## {report.headline}",
+            f"**Skipped** ({report.skip_reason or 'outside the usual window'}).",
+            "",
+            report.headline,
             "",
         ]
-        lines.extend(f"- {w}" for w in report.warnings)
-        lines += ["", "_Recommend only — you make all FPL changes._"]
+        lines.extend(f"- {w}" for w in _unique_texts(report.warnings))
+        lines += [
+            "",
+            "Use `fpl-agent daily` for the price watch, or `--force` to run this review anyway.",
+            "",
+            "_Recommend only — you make all FPL changes._",
+        ]
         return "\n".join(lines)
+
+    hide = {"private squad stale"}
+    warnings = [w for w in _unique_texts(report.warnings) if w not in hide]
+    lines = [
+        f"# Pre-deadline FPL review — Gameweek {report.gameweek}",
+        "",
+        f"Plan: **{report.plan_action.upper()}**",
+        _ai_line(report),
+    ]
     if report.price_status:
-        lines.insert(3, f"Price watch: **{report.price_status}**")
+        lines.append(f"Price watch: **{report.price_status}** (overnight rises/falls — not news).")
+    lines += ["", *_can_act_lines(report), "", f"## {report.headline}", "", "## What changed"]
     if report.what_changed:
         lines.extend(f"- {x}" for x in report.what_changed)
     else:
         lines.append("- Nothing material from FPL status fields.")
-    lines += ["", "## Attention triggers"]
+    lines += ["", "## Attention"]
     if report.attention_triggers:
         lines.extend(f"- {x}" for x in report.attention_triggers)
     else:
@@ -398,9 +480,9 @@ def render_daily_text(report: DailyReport) -> str:
     if report.uncertainty:
         lines += ["", "## Uncertainty"]
         lines.extend(f"- {x}" for x in report.uncertainty)
-    if report.warnings:
-        lines += ["", "## Warnings"]
-        lines.extend(f"- {x}" for x in report.warnings)
+    if warnings:
+        lines += ["", "## Other warnings"]
+        lines.extend(f"- {x}" for x in warnings)
     if report.sources:
         lines += ["", "## Sources"]
         for src in report.sources[:12]:

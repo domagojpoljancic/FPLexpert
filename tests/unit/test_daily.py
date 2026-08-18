@@ -72,3 +72,36 @@ def test_fake_daily_does_not_churn_without_triggers() -> None:
     advice, meta = client.synthesize_daily({"attention_triggers": [], "what_changed": [], "sources": []})
     assert advice.plan_action == PlanAction.KEEP
     assert meta.fallback is True
+
+
+def test_predeadline_report_explains_insufficient() -> None:
+    from datetime import timedelta
+
+    from fpl_agent.daily import DailyReport, render_daily_text
+
+    report = DailyReport(
+        gameweek=1,
+        plan_action="watch",
+        headline="Watch a defender",
+        what_changed=[],
+        attention_triggers=["low start chance"],
+        suggested_moves=[],
+        uncertainty=[],
+        warnings=["private squad stale", "private squad stale", "keep FT"],
+        sources=[],
+        model_meta={"model": "gpt-5-2025-08-07", "web_search_calls": 0},
+        executability="INSUFFICIENT",
+        used_live_ai=True,
+        squad_as_of=datetime(2026, 8, 15, 20, 39, tzinfo=UTC),
+        squad_max_age_hours=24,
+        timezone="Europe/Zagreb",
+    )
+    text = render_daily_text(report)
+    assert "Can you act on transfer advice?" in text
+    assert "No — not as executable transfers" in text
+    assert "24 hours" in text
+    assert "gpt-5-2025-08-07" in text
+    assert "Web searches actually made: 0" in text
+    assert text.count("private squad stale") == 0
+    assert "keep FT" in text
+    assert datetime.now(UTC) - report.squad_as_of > timedelta(hours=24)

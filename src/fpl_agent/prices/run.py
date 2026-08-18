@@ -23,7 +23,7 @@ from fpl_agent.prices.alerts import (
 )
 from fpl_agent.prices.model import score_player
 from fpl_agent.prices.outcomes import append_outcomes, outcomes_from_snapshots
-from fpl_agent.prices.report import render_prices_markdown, report_status
+from fpl_agent.prices.report import render_prices_markdown, report_status, status_headline
 from fpl_agent.prices.snapshot import (
     DEFAULT_ROOT,
     append_snapshot,
@@ -397,12 +397,7 @@ def run_prices(
         if dry and fresh:
             warnings.append("notify_dry_run")
 
-    headline = {
-        ReportStatus.NO_ACTION: "No price action tonight.",
-        ReportStatus.WATCH: "Watch list only — do not churn for £0.1m.",
-        ReportStatus.ACT_TONIGHT_CONDITIONAL: "Price timing may matter if a listed condition still holds.",
-        ReportStatus.ACT_TONIGHT: "Act in FPL yourself tonight if you still want the planned move.",
-    }[status]
+    headline = status_headline(status)
 
     report = PricesReport(
         gameweek=gw,

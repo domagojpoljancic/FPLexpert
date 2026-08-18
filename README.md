@@ -1,73 +1,54 @@
-# FPL Decision-Support Agent
+# FPL Expert
 
-WIP read-only Fantasy Premier League decision-support system. It recommends transfers, hits, lineups, captains, bench order, and chips — **you** always make the FPL changes. It never logs into FPL or mutates a team.
+WIP. Recommends transfers, hits, lineup, captain, bench, and chips. **You** make every FPL change. It never logs into FPL.
 
-## Status
+<!-- recent-runs:start -->
+## Latest results
 
-| Area | Status |
-| --- | --- |
-| Project foundation / config / CLI | Working |
-| 2026/27 rules engine | Working (verified 2026-08-15) |
-| FPL adapters + team-state resolver | Working (offline fixtures + opt-in live smoke) |
-| Projections v1 baseline | Working (unvalidated empirically) |
-| Preseason projections + initial squad optimiser | Working (`suggest-squad`, exact XI knapsack) |
-| Strategy / scenarios | Working (bounded beam; catalog-backed transfers still thin) |
-| Rivals / news / monitor | Working (contracts + classifiers) |
-| Decision ledger / replay | Working |
-| OpenAI synthesis | Live Responses client on **pre-deadline** review (`predeadline`); needs `OPENAI_API_KEY` for web/Reddit search |
-| Daily price watch | Working (uncalibrated) — GitHub `fpl-prices.yml` + local `daily` / `prices`; Issue email on act-now; no Hub scrape |
-| Reports / publishing state machine | Working (GitHub mutations dry-run by default) |
-| GitHub Actions | **Prices** scheduled (`fpl-prices.yml`); emails via a standing GitHub Issue. Pre-deadline is **manual** (phone Cloud Agent). Independent watchdog ping still TBD |
-| Evaluation gates | Partial — see `docs/evaluation-plan.md` |
+**Price watch** (GitHub, ~21:00 Zagreb)
+- [18 Aug 15:20 UTC](run-log.md) · GW1 · **NO ACTION** — No price action tonight.
 
-## Quick start
+**Squad news** (pre-deadline)
+- [18 Aug 15:29 UTC](reports/predeadline-gw1-20260818T152951Z.md) · GW1 · **WATCH** — Watch O'Nien's low start probability (no immediate transfers recommended)
+<!-- recent-runs:end -->
+
+## From your phone (Cursor)
+
+**Prices** run overnight on GitHub. Watch the repo (or issue **FPL price alerts**) for email only when you should act. Reports land in the list above.
+
+**Squad news** — about a day before the GW deadline:
+
+1. Cursor mobile → **Cloud Agent** on this repo (not a local session on a sleeping laptop).
+2. Cloud secrets: `OPENAI_API_KEY` and `FPL_PRIVATE_STATE_B64`. Python 3.12 + `uv`.
+3. Prompt: `Run the pre-deadline review.`
+4. The agent lists the saved squad and waits. Reply **unchanged**, or send an FPL screenshot if the team changed.
+5. Leave Cursor’s model on **Auto**. OpenAI is used inside the CLI, not as the picker.
+6. Read the report (chat + link above). You still transfer in the FPL app.
+
+The agent saves `reports/predeadline-*.md`, refreshes the list above, and commits those two.
+
+## After you change your squad
+
+Re-encode private state and update GitHub secret `FPL_PRIVATE_STATE_B64` (and the Cloud Agent secret):
 
 ```bash
-# requires Python 3.12+
-export PATH="$HOME/.local/bin:$PATH"
-uv sync
-uv run fpl-agent validate-config
-uv run fpl-agent doctor
-uv run pytest
-uv run fpl-agent analyze --mode dry_run --offline
-
-# Suggest a legal 15-player squad for the next gameweek
-uv run fpl-agent suggest-squad
-
-# Daily price watch (no OpenAI)
-uv run fpl-agent daily --offline
-
-# Full news/squad review ~1 day before the GW deadline
-uv run fpl-agent predeadline --offline
-# (use --force to run the full review outside that window)
+uv run fpl-agent team-state encode-for-github PATH
 ```
 
-Copy `config/settings.example.yaml` and set your real `manager.team_id`. Sync private squad finance via `fpl-agent team-state validate PATH` (no FPL login).
+## Laptop
 
-## Overnight prices (GitHub)
+```bash
+uv sync
+uv run fpl-agent prices                 # overnight-style price watch (no OpenAI)
+uv run fpl-agent predeadline --live-ai  # squad news; add --force outside the ~24h window
+uv run pytest
+```
 
-1. Repo secret `FPL_PRIVATE_STATE_B64` (encode with `uv run fpl-agent team-state encode-for-github PATH`). Re-set it after you change your squad.
-2. **Watch** the GitHub repo (or the standing issue **FPL price alerts**) with email notifications on. You get mail only when the job thinks you should act tonight — not every quiet snapshot.
-3. Workflow `.github/workflows/fpl-prices.yml` runs once at **21:00 Europe/Zagreb** in summer (19:00 UTC). GitHub can skip or run late; this is not a promise it will beat FPL’s overnight job.
-4. After each real run, open **Actions → fpl-prices → that run** — the Summary tab shows the report. A line is also appended to [`run-log.md`](run-log.md) on `main`.
+Reports: `reports/prices-gw*.md` and `reports/predeadline-gw*.md`. JSON next to them stays local.
 
-## Pre-deadline from your phone
+## What is here
 
-About a day before the official GW deadline:
-
-1. In the Cursor mobile app, start a **Cloud Agent** on this repo (not a local session on a sleeping laptop).
-2. Cloud Agent secrets/env: `OPENAI_API_KEY` and `FPL_PRIVATE_STATE_B64`. Environment should have Python 3.12 and `uv`.
-3. Prompt: `Run the pre-deadline review.` The agent lists the saved squad, asks if anything changed, and only then wants an FPL screenshot (or **unchanged**). Then it runs `predeadline --live-ai`.
-4. Leave Cursor’s model on Auto. OpenAI is used inside that CLI command, not as the Cursor picker.
-5. You still make the transfers in the FPL app.
-
-Fallback: GitHub → Actions → **fpl-prices** → Run workflow is prices only. Pre-deadline stays a Cloud Agent (or a local `uv run fpl-agent predeadline --live-ai`).
-
-## Non-negotiables
-
-- Deterministic code owns rules, finance, projections, scenarios, and outcome replay.
-- A language model may only rank/explain supplied validated candidates.
-- Executable advice requires fresh reconciled team state.
-- External web content is untrusted data.
-
-See `docs/` and `outputs/cursor-prompts/` for the full build sequence.
+- CLI `fpl-agent` — rules, projections, price watch, pre-deadline news
+- GitHub Action `fpl-prices.yml` — 21:00 Europe/Zagreb (GitHub cron can skip or run late)
+- Cursor rule `.cursor/rules/predeadline.mdc` — phone Cloud Agent flow
+- Never mutates your FPL team

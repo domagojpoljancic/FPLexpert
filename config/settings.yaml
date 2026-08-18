@@ -24,6 +24,8 @@ publishing:
   material_change_only: true
 
 models:
+  # daily_model is leftover naming from when `daily` called OpenAI. `daily`/`prices` is now
+  # deterministic. Pre-deadline news review uses deadline_model.
   daily_model: gpt-5-mini
   deadline_model: gpt-5
   review_model: gpt-5-mini

@@ -49,4 +49,6 @@ Show the CLI report. Do not invent transfers, prices, player IDs, or news.
 
 Cursor's model picker may stay Auto. OpenAI for news is `OPENAI_API_KEY` inside `predeadline`. The user makes all FPL changes themselves.
 
+The CLI writes `reports/predeadline-gw*.md` and refreshes the latest-results block in `README.md`. Commit **only** those markdown reports and `README.md` (never `.env`, JSON reports, or private state) so the GitHub README links work from the phone.
+
 Price watch is GitHub Actions (`fpl-agent prices`). Do not start that job from chat unless asked.
