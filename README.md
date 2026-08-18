@@ -22,7 +22,7 @@ WIP. Recommends transfers, hits, lineup, captain, bench, and chips. **You** make
 1. Cursor mobile → **Cloud Agent** on this repo (not a local session on a sleeping laptop).
 2. Cloud secrets: `OPENAI_API_KEY` and `FPL_PRIVATE_STATE_B64`. Python 3.12 + `uv`.
 3. Prompt: `Run the pre-deadline review.`
-4. The agent lists the saved squad and waits. Reply **unchanged**, or send an FPL screenshot if the team changed. A pitch or transfers screenshot is enough — it maps the printed card names with `fpl-agent team-state lookup` (not last-season clubs).
+4. The agent lists the saved squad and waits. Reply **unchanged**, or send an FPL screenshot if the team changed. A pitch or transfers screenshot is enough — it maps **printed name + opponent line under the name** (`Raya|COV|H|6.0`), not kits or last-season clubs.
 5. Leave Cursor’s model on **Auto**. OpenAI is used inside the CLI, not as the picker.
 6. Read the report (chat + GitHub link above): **TLDR** first, then why, then every page OpenAI actually returned. You still transfer in the FPL app.
 

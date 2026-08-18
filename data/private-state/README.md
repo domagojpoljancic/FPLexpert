@@ -23,9 +23,9 @@ After you update `current.json`, local `predeadline` uses it immediately. The Gi
 
 Check the file with: `uv run fpl-agent team-state status`
 
-From a screenshot, map printed card names (including initials like `B.Fernandes`) to official ids:
+From a screenshot, map each card as **printed name | opponent | H/A | price** (the fixture line under the name is the club; ignore kits):
 
 ```bash
-uv run fpl-agent team-state lookup -- Raya Senesi Virgil "B.Fernandes"
+uv run fpl-agent team-state lookup -- "Raya|COV|H|6.0|GKP" "Senesi|BRE|A|6.0|DEF" "B.Fernandes|HUL|A|12.0|MID"
 uv run fpl-agent team-state names
 ```
