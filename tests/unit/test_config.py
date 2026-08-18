@@ -18,6 +18,7 @@ def test_example_config_loads() -> None:
     assert len(settings.planning.weights) == 6
     assert settings.prices.model_version == "prices-v1.0.0"
     assert settings.cadence.predeadline_hours_before == 24
+    assert settings.models.deadline_model == "gpt-5.6"
 
 
 def test_rejects_non_positive_team_id(tmp_path: Path) -> None:

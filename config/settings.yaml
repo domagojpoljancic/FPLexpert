@@ -26,9 +26,11 @@ publishing:
 models:
   # daily_model is leftover naming from when `daily` called OpenAI. `daily`/`prices` is now
   # deterministic. Pre-deadline news review uses deadline_model.
-  daily_model: gpt-5-mini
-  deadline_model: gpt-5
-  review_model: gpt-5-mini
+  # Use family aliases, not dated snapshots (e.g. gpt-5-2025-08-07).
+  # gpt-5.6 currently routes to GPT-5.6 Sol. See https://developers.openai.com/api/docs/guides/latest-model
+  daily_model: gpt-5.6
+  deadline_model: gpt-5.6
+  review_model: gpt-5.6
   reasoning_effort: medium
   web_search_budget: 8
   max_output_tokens: 5000
