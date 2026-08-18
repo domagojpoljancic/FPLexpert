@@ -353,7 +353,7 @@ class ResponsesOpenAIClient:
     """Live OpenAI Responses API client. Requires OPENAI_API_KEY."""
 
     api_key: str | None = None
-    model: str = "gpt-5-mini"
+    model: str = "gpt-5.6"
     max_output_tokens: int = 5000
     web_search_budget: int = 8
     allowed_domains: list[str] = field(default_factory=lambda: list(DEFAULT_ALLOWED_DOMAINS))

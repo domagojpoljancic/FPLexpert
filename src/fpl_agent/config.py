@@ -74,9 +74,9 @@ class PublishingSettings(BaseModel):
 
 
 class ModelsSettings(BaseModel):
-    daily_model: str = "gpt-5-mini"
-    deadline_model: str = "gpt-5"
-    review_model: str = "gpt-5-mini"
+    daily_model: str = "gpt-5.6"
+    deadline_model: str = "gpt-5.6"
+    review_model: str = "gpt-5.6"
     reasoning_effort: str = "medium"
     web_search_budget: int = Field(default=8, ge=0)
     max_output_tokens: int = Field(default=5000, gt=0)
