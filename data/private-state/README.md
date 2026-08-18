@@ -2,7 +2,7 @@
 
 This folder holds a **manual snapshot** of your FPL team. The app never logs into FPL, so it only knows what you put here.
 
-`current.json` is gitignored. On your phone, send an FPL screenshot when you start the pre-deadline review; the agent will update this file from the photo.
+`current.json` is gitignored. On your phone, the pre-deadline agent lists this squad and asks for a screenshot only if something changed.
 
 | Field | Meaning |
 | --- | --- |

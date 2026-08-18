@@ -7,29 +7,34 @@ alwaysApply: true
 
 When the user asks to run the pre-deadline / GW / news review (including from the Cursor phone app):
 
-## 1. Squad photo first (mandatory)
+## 1. Show the saved squad, then confirm
 
-**Stop and ask for a photo before any analysis.** Do not run `predeadline`, do not reuse a stale `current.json`, and do not treat `FPL_PRIVATE_STATE_B64` as up to date.
+Do **not** run `predeadline` yet.
 
-Ask them to send screenshots from the FPL app, in this conversation:
+Load the last snapshot: use `data/private-state/current.json` if present, otherwise `uv run fpl-agent team-state materialize-from-env` (never print the secret or raw JSON).
 
-1. **Picks / pitch** — the 15, captain (C), vice (V), bank, free transfers if shown.
-2. If bank, free transfers, or chips are not on that screen, ask for a **second photo** (transfers or team page).
+List it in **names**, not ID dumps: 15 players, captain, vice, bank in £m, free transfers, and when it was last saved. Map IDs via public FPL `web_name`.
 
-If they **already attached** squad photo(s) on the same message, use those and do not ask again.
+Then ask, and **wait**:
 
-If a name is unreadable or ambiguous, ask a follow-up. Do not guess player IDs.
+> Is this still your team? If anything changed (transfers, captain, bank, FT), send an FPL app screenshot of the picks/pitch. If nothing changed, say **unchanged**.
 
-## 2. Update the squad file from the photo
+- Photo already attached on this message → skip the question; go to step 2.
+- They say **unchanged** → set `as_of` to now (UTC) so the file is fresh, validate, then step 3. No photo required.
+- They say something changed, or the list is missing/unreadable → **wait for a photo**. Do not guess.
+- No saved squad at all → ask for a photo immediately.
+
+If bank, FT, or chips are not on the first screenshot, ask for a second (transfers / team page). If a name is ambiguous, ask. Never invent player IDs.
+
+## 2. Update the squad file from the photo (only if they sent one)
 
 Write `data/private-state/current.json` (gitignored):
 
-- Set `as_of` to now (UTC).
-- Set `applies_before_gameweek` to the next GW.
-- Map visible names to official FPL `id` values (live bootstrap `web_name` / full name). Never invent IDs.
-- Keep previous `purchase_prices_tenths` for players still in the 15. For new players, use the listed `now_cost` as purchase if the buy price is not on the photo, and say so.
+- Set `as_of` to now (UTC) and `applies_before_gameweek` to the next GW.
+- Map visible names to official FPL `id` values (bootstrap `web_name` / full name).
+- Keep previous `purchase_prices_tenths` for players still in the 15. For new players, use listed `now_cost` if the buy price is not on the photo, and say so.
 - Update bank (`bank_tenths`: £1.5m → `15`), `free_transfers`, `captain_id`, `vice_id`, starters/bench if visible.
-- Never print the full JSON or secret payloads in chat. Confirm in words: 15 names, bank, FT, captain.
+- Confirm in words: 15 names, bank, FT, captain. Do not paste the full JSON.
 
 Then: `uv run fpl-agent team-state validate data/private-state/current.json`
 
