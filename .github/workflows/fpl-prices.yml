@@ -1,6 +1,11 @@
 name: fpl-prices
 on:
   workflow_dispatch:
+    inputs:
+      test_email:
+        description: "Post a test comment as github-actions[bot] (email check)"
+        type: boolean
+        default: false
   schedule:
     # Snapshot history (needed for likelihood bands). GitHub may delay/drop.
     - cron: "41 */2 * * *"
@@ -14,7 +19,25 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  test_email:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.test_email }}
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Comment as Actions bot
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue comment 1 --repo "${GITHUB_REPOSITORY}" --body "$(cat <<'EOF'
+          **Email test from github-actions[bot]**
+
+          If this reaches your inbox, overnight price alerts will use the same path (comments on issue #1).
+          EOF
+          )"
+
   prices:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.test_email == false }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
