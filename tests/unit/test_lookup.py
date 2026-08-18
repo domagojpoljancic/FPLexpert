@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from fpl_agent.team_state.lookup import (
     CatalogPlayer,
+    NextFixture,
+    match_cards,
     match_name,
     match_names,
     normalize_name,
+    parse_card_token,
     players_from_bootstrap,
 )
 
@@ -17,6 +20,7 @@ def _p(
     *,
     first: str = "",
     second: str = "",
+    team_id: int = 1,
     team: str = "ARS",
     pos: str = "MID",
     cost: int = 50,
@@ -26,6 +30,7 @@ def _p(
         web_name=web,
         first_name=first,
         second_name=second,
+        team_id=team_id,
         team_short=team,
         position=pos,
         now_cost_tenths=cost,
@@ -117,3 +122,73 @@ def test_players_from_bootstrap_reduced_fixture() -> None:
     assert hit.player is not None
     assert hit.player.player_id == 1
     assert hit.player.position == "GKP"
+
+
+def test_parse_card_token_name_and_fixture() -> None:
+    card = parse_card_token("O'Nien|IPS|A|4.0|DEF")
+    assert card.name == "O'Nien"
+    assert card.opponent == "IPS"
+    assert card.ha == "A"
+    assert card.cost_tenths == 40
+    assert card.position == "DEF"
+    blank = parse_card_token("?|CHE|H|4.5|FWD")
+    assert blank.name == ""
+    assert blank.cost_tenths == 45
+
+
+def test_fixture_line_blocks_wrong_club_gomez() -> None:
+    catalog = [
+        _p(99, "Gomez", first="Joe", second="Gomez", team_id=10, team="LIV", pos="DEF", cost=50),
+        _p(498, "Senesi", first="Marcos", second="Senesi", team_id=19, team="TOT", pos="DEF", cost=60),
+    ]
+    fixtures = {
+        10: NextFixture(opponent="NEW", ha="A"),
+        19: NextFixture(opponent="BRE", ha="A"),
+    }
+    matches = match_cards(
+        [parse_card_token("Gomez|BRE|A|6.0|DEF")],
+        catalog,
+        fixtures_by_team=fixtures,
+    )
+    assert matches[0].status == "NONE"
+    assert matches[0].player is None
+
+
+def test_saved_squad_recovers_hallucinated_screenshot_names() -> None:
+    catalog = [
+        _p(1, "Raya", team_id=1, team="ARS", pos="GKP", cost=60),
+        _p(498, "Senesi", team_id=19, team="TOT", pos="DEF", cost=60),
+        _p(388, "Guéhi", team_id=3, team="MCI", pos="DEF", cost=60),
+        _p(397, "Semenyo", team_id=3, team="MCI", pos="MID", cost=85),
+        _p(539, "O'Nien", team_id=20, team="SUN", pos="DEF", cost=40),
+        _p(272, "Kusi-Asare", team_id=8, team="FUL", pos="FWD", cost=45),
+        _p(99, "Gomez", team_id=10, team="LIV", pos="DEF", cost=50),
+    ]
+    fixtures = {
+        1: NextFixture(opponent="COV", ha="H"),
+        19: NextFixture(opponent="BRE", ha="A"),
+        3: NextFixture(opponent="BOU", ha="H"),
+        20: NextFixture(opponent="IPS", ha="A"),
+        8: NextFixture(opponent="CHE", ha="H"),
+        10: NextFixture(opponent="NEW", ha="A"),
+    }
+    queries = [
+        parse_card_token("Raya|COV|H|6.0|GKP"),
+        parse_card_token("Gomez|BRE|A|6.0|DEF"),
+        parse_card_token("Akanji|BOU|H|6.0|DEF"),
+        parse_card_token("Bernardo|BOU|H|8.5|MID"),
+        parse_card_token("D'Shea|IPS|A|4.0|DEF"),
+        parse_card_token("Kud-Roza|CHE|H|4.5|FWD"),
+    ]
+    matches = match_cards(
+        queries,
+        catalog,
+        fixtures_by_team=fixtures,
+        saved_ids=[1, 498, 388, 397, 539, 272],
+    )
+    assert [m.status for m in matches] == ["OK"] * 6
+    assert [m.player.player_id for m in matches if m.player] == [1, 498, 388, 397, 539, 272]
+    assert matches[0].note == "name"
+    assert matches[1].note == "saved+fixture"
+    assert matches[2].player is not None and matches[2].player.web_name == "Guéhi"
+    assert matches[3].player is not None and matches[3].player.web_name == "Semenyo"

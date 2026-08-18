@@ -146,41 +146,113 @@ def rules_diff(
     _exit(ExitCode.SUCCESS)
 
 
-def _load_bootstrap_payload(*, bootstrap: Path | None, offline: bool) -> dict[str, Any]:
+def _load_public_payload(
+    *,
+    bootstrap: Path | None,
+    fixtures: Path | None,
+    offline: bool,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     if bootstrap is not None:
-        return json.loads(bootstrap.read_text(encoding="utf-8"))
+        payload = json.loads(bootstrap.read_text(encoding="utf-8"))
+        rows: list[dict[str, Any]] = []
+        if fixtures is not None and fixtures.exists():
+            raw = json.loads(fixtures.read_text(encoding="utf-8"))
+            if isinstance(raw, list):
+                rows = raw
+            elif isinstance(raw, dict):
+                items = raw.get("items", [])
+                rows = items if isinstance(items, list) else []
+        return payload, rows
     from fpl_agent.suggest import load_public_data
 
-    payload, _fixtures = load_public_data(offline=offline)
+    return load_public_data(offline=offline)
+
+
+def _load_bootstrap_payload(*, bootstrap: Path | None, offline: bool) -> dict[str, Any]:
+    payload, _fixtures = _load_public_payload(bootstrap=bootstrap, fixtures=None, offline=offline)
     return payload
 
 
 @team_state_app.command("lookup")
 def team_state_lookup(
-    names: list[str] = typer.Argument(..., help="Names as printed on FPL cards (include initials)"),
+    names: list[str] = typer.Argument(
+        ...,
+        help="Card tokens: Name or Name|OPP|H|6.0|DEF. Use ? if the printed name is unreadable.",
+    ),
     bootstrap: Path | None = typer.Option(None, "--bootstrap", help="Bootstrap JSON; default live/cache"),
+    fixtures: Path | None = typer.Option(None, "--fixtures", help="Fixtures JSON; default live/cache"),
+    saved: Path | None = typer.Option(
+        Path("data/private-state/current.json"),
+        "--saved",
+        help="Saved squad used only to fill unreadables when fixture+price uniquely match",
+    ),
+    no_saved: bool = typer.Option(False, "--no-saved", help="Do not use the saved squad for recovery"),
     offline: bool = typer.Option(False, "--offline", help="Use cached/fixture bootstrap only"),
+    event: int | None = typer.Option(None, "--event", help="Gameweek for next-fixture matching"),
 ) -> None:
-    """Map screenshot / card names to official FPL ids. Does not guess."""
+    """Map screenshot cards to official FPL ids using printed name then opponent fixture."""
     from fpl_agent.errors import AgentError
-    from fpl_agent.team_state.lookup import format_matches, match_names, players_from_bootstrap
+    from fpl_agent.suggest import next_gameweek
+    from fpl_agent.team_state.lookup import (
+        format_matches,
+        match_cards,
+        next_fixtures_by_team,
+        parse_card_token,
+        players_from_bootstrap,
+    )
+    from fpl_agent.team_state.private import load_and_validate_private_state
 
     try:
-        payload = _load_bootstrap_payload(bootstrap=bootstrap, offline=offline)
+        payload, fixture_rows = _load_public_payload(
+            bootstrap=bootstrap, fixtures=fixtures, offline=offline
+        )
     except AgentError as exc:
         typer.echo(f"FAILED: {exc}", err=True)
         _exit(exc.exit_code)
     catalog = players_from_bootstrap(payload)
-    matches = match_names(names, catalog)
-    typer.echo(format_matches(matches))
+    event_id = event or next_gameweek(payload)
+    fixtures_by_team = next_fixtures_by_team(
+        bootstrap=payload, fixtures=fixture_rows, event_id=event_id
+    )
+    saved_ids: list[int] | None = None
+    saved_path = None if no_saved else saved
+    if saved_path is not None and saved_path.exists():
+        try:
+            saved_ids = list(load_and_validate_private_state(saved_path).player_ids)
+        except AgentError as exc:
+            typer.echo(f"FAILED saved squad: {exc}", err=True)
+            _exit(exc.exit_code)
+    queries = [parse_card_token(token) for token in names]
+    if fixtures_by_team and not any(q.opponent and q.ha for q in queries):
+        typer.echo(
+            "Pass each card as Name|OPP|H|price (fixture line under the name). "
+            "Names alone are easy for vision to invent.",
+            err=True,
+        )
+    matches = match_cards(
+        queries,
+        catalog,
+        fixtures_by_team=fixtures_by_team,
+        saved_ids=saved_ids,
+    )
+    typer.echo(format_matches(matches, fixtures_by_team=fixtures_by_team or None))
     if any(item.status != "OK" for item in matches):
         typer.echo(
-            "Unresolved names: ask the user. Do not invent ids. Copy the printed card name including initials.",
+            "Unresolved cards: ask the user. Do not invent names (Akanji, Gomez, Bernardo, …). "
+            "Copy the printed name and the opponent line under it, or use ?|OPP|H|price.",
             err=True,
         )
         _exit(ExitCode.INSUFFICIENT_OR_STALE_TEAM_STATE)
     ids = [item.player.player_id for item in matches if item.player is not None]
     typer.echo("ids " + " ".join(str(pid) for pid in ids))
+    recovered = [item for item in matches if item.note == "saved+fixture"]
+    if recovered:
+        typer.echo(
+            "Recovered from saved squad + fixture/price (printed name did not match): "
+            + ", ".join(
+                f"{item.query}→{item.player.web_name}" for item in recovered if item.player is not None
+            )
+        )
     _exit(ExitCode.SUCCESS)
 
 
@@ -195,9 +267,11 @@ def team_state_names(
 
     from fpl_agent.config import load_settings
     from fpl_agent.errors import AgentError
+    from fpl_agent.suggest import next_gameweek
     from fpl_agent.team_state.lookup import (
         catalog_by_id,
         format_saved_squad,
+        next_fixtures_by_team,
         players_from_bootstrap,
     )
     from fpl_agent.team_state.private import load_and_validate_private_state
@@ -208,11 +282,18 @@ def team_state_names(
         _exit(ExitCode.INSUFFICIENT_OR_STALE_TEAM_STATE)
     try:
         state = load_and_validate_private_state(path)
-        payload = _load_bootstrap_payload(bootstrap=bootstrap, offline=offline)
+        payload, fixture_rows = _load_public_payload(
+            bootstrap=bootstrap, fixtures=None, offline=offline
+        )
     except AgentError as exc:
         typer.echo(f"FAILED: {exc}", err=True)
         _exit(exc.exit_code)
     catalog = catalog_by_id(players_from_bootstrap(payload))
+    fixtures_by_team = next_fixtures_by_team(
+        bootstrap=payload,
+        fixtures=fixture_rows,
+        event_id=next_gameweek(payload),
+    )
     settings = load_settings()
     as_of = state.as_of if state.as_of.tzinfo else state.as_of.replace(tzinfo=UTC)
     try:
@@ -233,6 +314,7 @@ def team_state_names(
             bench_order=list(state.bench_order) if state.bench_order else None,
             as_of_label=local,
             gameweek=state.applies_before_gameweek,
+            fixtures_by_team=fixtures_by_team or None,
         )
     )
     _exit(ExitCode.SUCCESS)

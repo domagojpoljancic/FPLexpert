@@ -30,11 +30,17 @@ If bank, FT, or chips are not on the first screenshot, ask for a second (transfe
 
 A screenshot dump is enough. Do **not** refuse because shirts look like the “wrong” club or because a name exists twice in last season’s memory. 2026/27 clubs and `web_name` values come from live FPL, not training data.
 
-1. Read the **printed card names** (FPL `web_name`), including initials (`B.Fernandes`, not `Fernandes`). Ignore kit colours.
-2. Run:
-   `uv run fpl-agent team-state lookup -- Name1 Name2 ...`
-   (15 names; quote names with spaces or apostrophes). Use live bootstrap unless FPL is unreachable, then `--offline`.
-3. The CLI prints official `id=` values. **OK** = mapped. **AMBIGUOUS** / **NONE** = ask only for those names. Never invent IDs. Never abandon the whole 15 because one name failed.
+0. Compare the **opponent lines** on the photo with `uv run fpl-agent team-state names`. If those 15 fixtures (and prices) match the saved squad, **keep the saved 15 IDs**. Only update bank / FT / captain / vice / bench from the photo. Do not re-type names from vision.
+1. Otherwise read **each card as printed fields**, not a remembered FPL name:
+   - the **name** on the card (`web_name`, including initials like `B.Fernandes`)
+   - the **opponent + H/A** on the line **under** the name (`COV (H)`, `BRE (A)`). That line is the club. Ignore kit colours and last-season clubs.
+   - the **price** if visible (`£6.0m`)
+   - optional position from the row (GKP / DEF / MID / FWD)
+   If a name is blurry, use `?` — never substitute a famous name (Akanji, Gomez, Bernardo, Kudus, …).
+2. Run one token per card (quote if needed):
+   `uv run fpl-agent team-state lookup -- "Raya|COV|H|6.0|GKP" "Senesi|BRE|A|6.0|DEF" "O'Nien|IPS|A|4.0|DEF"`
+   The CLI uses the saved squad only when the printed name fails and **fixture + price** uniquely match a remaining saved player.
+3. **OK** = mapped. **AMBIGUOUS** / **NONE** = ask only for those cards. Never invent IDs. Never abandon the other cards.
 4. Write `data/private-state/current.json` (gitignored):
    - `as_of` now (UTC), `applies_before_gameweek` = next GW.
    - Keep previous `purchase_prices_tenths` for players still in the 15. For new players, use the price on the transfers screenshot, else listed `now_cost`, and say so.
