@@ -82,4 +82,5 @@ def test_prices_workflow_wired() -> None:
     assert "cron:" in text
     assert "0 19 * * *" in text
     assert "*/2" not in text
+    assert "run-log.md" in text
     assert "OPENAI_API_KEY" not in text

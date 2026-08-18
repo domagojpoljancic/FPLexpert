@@ -49,7 +49,7 @@ Copy `config/settings.example.yaml` and set your real `manager.team_id`. Sync pr
 1. Repo secret `FPL_PRIVATE_STATE_B64` (encode with `uv run fpl-agent team-state encode-for-github PATH`). Re-set it after you change your squad.
 2. **Watch** the GitHub repo (or the standing issue **FPL price alerts**) with email notifications on. You get mail only when the job thinks you should act tonight — not every quiet snapshot.
 3. Workflow `.github/workflows/fpl-prices.yml` runs once at **21:00 Europe/Zagreb** in summer (19:00 UTC). GitHub can skip or run late; this is not a promise it will beat FPL’s overnight job.
-4. After each real run, open **Actions → fpl-prices → that run** — the Summary tab shows the report. A line is also appended to `data/snapshots/prices/run-log.md` on `main`. Public snapshots are committed under `data/snapshots/prices/` (no OpenAI key on this job).
+4. After each real run, open **Actions → fpl-prices → that run** — the Summary tab shows the report. A line is also appended to [`run-log.md`](run-log.md) on `main`.
 
 ## Pre-deadline from your phone
 

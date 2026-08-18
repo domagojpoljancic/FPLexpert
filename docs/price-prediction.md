@@ -95,7 +95,7 @@ With sell-on fee 0.5, a +0.1 rise often **does not** increase selling price; a +
 
 Recommended local windows (manager tz), not guarantees:
 
-- GitHub Actions: 21:00 Europe/Zagreb in summer (`0 19 * * *` UTC). Persist snapshots in git. Email via GitHub Issue on act-now only. Run log: Actions Summary + `data/snapshots/prices/run-log.md`.
+- GitHub Actions: 21:00 Europe/Zagreb in summer (`0 19 * * *` UTC). Persist snapshots in git. Email via GitHub Issue on act-now only. Run log: Actions Summary + `run-log.md` at repo root.
 - Evening: after transfer activity, before the uncertain overnight window (e.g. 21:30–23:30 Europe/Zagreb)
 - Morning: confirm `now_cost` vs last night’s predictions
 - ~24h before deadline: full pre-deadline check (you start this from Cursor on your phone)
