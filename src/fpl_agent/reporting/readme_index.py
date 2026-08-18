@@ -6,6 +6,9 @@ import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
+
+DISPLAY_TZ = ZoneInfo("Europe/Zagreb")
 
 START = "<!-- recent-runs:start -->"
 END = "<!-- recent-runs:end -->"
@@ -109,7 +112,7 @@ def _bullets(rows: list[RunLink], *, empty: str) -> list[str]:
         return [f"- _{empty}_"]
     out: list[str] = []
     for row in rows:
-        when = row.utc.astimezone(UTC).strftime("%d %b %H:%M UTC")
+        when = row.utc.astimezone(DISPLAY_TZ).strftime("%d %b %H:%M %Z")
         gw = f"GW{row.gameweek}" if row.gameweek else "GW?"
         status = row.status or "unknown"
         extra = f" — {_clip(row.headline)}" if row.headline else ""

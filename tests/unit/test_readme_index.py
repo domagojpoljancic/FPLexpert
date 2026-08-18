@@ -133,6 +133,8 @@ def test_refresh_replaces_marked_readme_section(tmp_path: Path) -> None:
     assert text.startswith("# Title\n")
     assert text.endswith("## After\n")
     assert START in text and END in text
+    assert "17:29 CEST" in text
+    assert "UTC" not in text.split("Latest results", 1)[1].split("<!-- recent-runs:end -->", 1)[0]
 
 
 def test_refresh_skips_readme_without_markers(tmp_path: Path) -> None:
@@ -146,3 +148,30 @@ def test_render_empty_lists() -> None:
     block = render_recent_runs_block([], [])
     assert "No price reports yet." in block
     assert "No pre-deadline reports yet." in block
+
+
+def test_readme_times_use_cet_cest() -> None:
+    from datetime import UTC, datetime
+
+    from fpl_agent.reporting.readme_index import RunLink
+
+    summer = RunLink(
+        kind="prices",
+        utc=datetime(2026, 8, 18, 15, 20, tzinfo=UTC),
+        gameweek=1,
+        status="NO ACTION",
+        headline="quiet",
+        rel_path="run-log.md",
+    )
+    winter = RunLink(
+        kind="predeadline",
+        utc=datetime(2026, 1, 15, 15, 20, tzinfo=UTC),
+        gameweek=20,
+        status="WATCH",
+        headline="news",
+        rel_path="reports/predeadline-gw20-20260115T152000Z.md",
+    )
+    block = render_recent_runs_block([summer], [winter])
+    assert "18 Aug 17:20 CEST" in block
+    assert "15 Jan 16:20 CET" in block
+    assert " UTC]" not in block

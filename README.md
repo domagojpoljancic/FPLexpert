@@ -6,10 +6,10 @@ WIP. Recommends transfers, hits, lineup, captain, bench, and chips. **You** make
 ## Latest results
 
 **Price watch** (GitHub, ~21:00 Zagreb)
-- [18 Aug 15:20 UTC](run-log.md) · GW1 · **NO ACTION** — No price action tonight.
+- [18 Aug 17:20 CEST](run-log.md) · GW1 · **NO ACTION** — No price action tonight.
 
 **Squad news** (pre-deadline)
-- [18 Aug 15:29 UTC](reports/predeadline-gw1-20260818T152951Z.md) · GW1 · **WATCH** — Watch O'Nien's low start probability (no immediate transfers recommended)
+- [18 Aug 17:29 CEST](reports/predeadline-gw1-20260818T152951Z.md) · GW1 · **WATCH** — Watch O'Nien's low start probability (no immediate transfers recommended)
 <!-- recent-runs:end -->
 
 ## From your phone (Cursor)
