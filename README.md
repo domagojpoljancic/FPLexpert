@@ -26,7 +26,7 @@ WIP. Recommends transfers, hits, lineup, captain, bench, and chips. **You** make
 5. Leave Cursor’s model on **Auto**. OpenAI is used inside the CLI, not as the picker.
 6. Read the report (chat + link above). You still transfer in the FPL app.
 
-The agent saves `reports/predeadline-*.md`, refreshes the list above, then **commits and pushes those two files to `main`** so the links here work from your phone. Do not leave the report only on a feature branch.
+The agent saves `reports/predeadline-*.md`, refreshes the list above, commits, pushes, and **merges to `main`** in the same run so the links here work from your phone. An open PR is not enough.
 
 ## After you change your squad
 
