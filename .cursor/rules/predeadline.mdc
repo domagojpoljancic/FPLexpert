@@ -5,12 +5,43 @@ alwaysApply: true
 
 # Pre-deadline review
 
-If the user asks to run the pre-deadline / GW review:
+When the user asks to run the pre-deadline / GW / news review (including from the Cursor phone app):
 
-1. Materialize squad if needed: `uv run fpl-agent team-state materialize-from-env` (uses `FPL_PRIVATE_STATE_B64`; never print it).
-2. Run `uv run fpl-agent predeadline --live-ai` (add `--force` only if they ask, or if the gate says it is too early/late and they still want it).
-3. Show the CLI output. Do not invent transfers, prices, player IDs, or news.
-4. Cursor's model picker may stay Auto. OpenAI is the app's `OPENAI_API_KEY` inside `predeadline`, not the Cursor model.
-5. The user makes all FPL changes themselves.
+## 1. Squad photo first (mandatory)
+
+**Stop and ask for a photo before any analysis.** Do not run `predeadline`, do not reuse a stale `current.json`, and do not treat `FPL_PRIVATE_STATE_B64` as up to date.
+
+Ask them to send screenshots from the FPL app, in this conversation:
+
+1. **Picks / pitch** — the 15, captain (C), vice (V), bank, free transfers if shown.
+2. If bank, free transfers, or chips are not on that screen, ask for a **second photo** (transfers or team page).
+
+If they **already attached** squad photo(s) on the same message, use those and do not ask again.
+
+If a name is unreadable or ambiguous, ask a follow-up. Do not guess player IDs.
+
+## 2. Update the squad file from the photo
+
+Write `data/private-state/current.json` (gitignored):
+
+- Set `as_of` to now (UTC).
+- Set `applies_before_gameweek` to the next GW.
+- Map visible names to official FPL `id` values (live bootstrap `web_name` / full name). Never invent IDs.
+- Keep previous `purchase_prices_tenths` for players still in the 15. For new players, use the listed `now_cost` as purchase if the buy price is not on the photo, and say so.
+- Update bank (`bank_tenths`: £1.5m → `15`), `free_transfers`, `captain_id`, `vice_id`, starters/bench if visible.
+- Never print the full JSON or secret payloads in chat. Confirm in words: 15 names, bank, FT, captain.
+
+Then: `uv run fpl-agent team-state validate data/private-state/current.json`
+
+If `gh` is available, also `uv run fpl-agent team-state encode-for-github data/private-state/current.json` so the evening GitHub job matches.
+
+## 3. Run the review
+
+`uv run fpl-agent predeadline --live-ai`  
+Add `--force` only if they ask, or if the gate says it is too early/late and they still want it.
+
+Show the CLI report. Do not invent transfers, prices, player IDs, or news.
+
+Cursor's model picker may stay Auto. OpenAI for news is `OPENAI_API_KEY` inside `predeadline`. The user makes all FPL changes themselves.
 
 Price watch is GitHub Actions (`fpl-agent prices`). Do not start that job from chat unless asked.

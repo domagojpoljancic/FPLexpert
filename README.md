@@ -57,7 +57,7 @@ About a day before the official GW deadline:
 
 1. In the Cursor mobile app, start a **Cloud Agent** on this repo (not a local session on a sleeping laptop).
 2. Cloud Agent secrets/env: `OPENAI_API_KEY` and `FPL_PRIVATE_STATE_B64`. Environment should have Python 3.12 and `uv`.
-3. Prompt: `Run the pre-deadline review.` The project rule will run `team-state materialize-from-env` then `fpl-agent predeadline --live-ai`.
+3. Prompt: `Run the pre-deadline review.` The agent **must first ask you to send an FPL app screenshot** of your squad, update `current.json` from that photo, then run `predeadline --live-ai`.
 4. Leave Cursor’s model on Auto. OpenAI is used inside that CLI command, not as the Cursor picker.
 5. You still make the transfers in the FPL app.
 
