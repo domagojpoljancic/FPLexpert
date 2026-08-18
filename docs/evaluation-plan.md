@@ -13,8 +13,8 @@ Compare MAE/bias vs naive baselines on leakage-free holdout before claiming deci
 | Stage | Status |
 | --- | --- |
 | Private offline pilot | Provisional — core gates tested in unit/integration |
-| Scheduled dry-run | Blocked on GitHub secret/config + watchdog |
-| Full-season unattended | Blocked pending external liveness monitor |
+| Scheduled dry-run | Price snapshots scheduled; Issue email on act-now. Watchdog ping TBD |
+| Full-season unattended | Prices on GitHub cron (may skip). Pre-deadline is manual. External ping not configured yet |
 
 ## Ownership
 

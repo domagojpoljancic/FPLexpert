@@ -21,7 +21,7 @@ We use **uv** + **hatchling** with a `src/` layout and `uv.lock`.
 
 ## Runtime shape
 
-No always-on app server. Local CLI for development; scheduled GitHub Actions for unattended runs after configuration. Laptop availability is required only for Cursor implementation work.
+No always-on app server. **Price watch** is scheduled GitHub Actions (`fpl-prices.yml`). **Pre-deadline** is a manual Cloud Agent / local CLI run. Laptop is required only for Cursor implementation work.
 
 ## Modules
 
@@ -31,6 +31,7 @@ No always-on app server. Local CLI for development; scheduled GitHub Actions for
 - `rules` — versioned `SeasonRules`
 - `projections` — baseline xP
 - `strategy` — multi-GW scenarios
+- `prices` — snapshot history, uncalibrated rise/fall bands, smart-to-act (daily cadence)
 - `evidence` / `rivals` / `monitoring` — context layers
 - `evaluation` — ledger + replay
 - `llm` — bounded synthesis

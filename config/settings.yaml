@@ -46,3 +46,26 @@ alerts:
   safety_floor_minutes: 20
   material_change_xp_delta: 1.5
   material_change_price_tenths: 1
+
+prices:
+  enabled: true
+  snapshot_max_per_gw: 48
+  watch_progress: 0.55
+  likely_progress: 0.85
+  min_snapshots_for_likely: 2
+  hysteresis: 0.05
+  rise_base_net: 40000
+  fall_base_net: 50000
+  ownership_scale_k: 3.0
+  allow_hit_for_price: false
+  allow_last_ft_for_price: false
+  max_hours_ahead_to_spend_ft: 36
+  bank_floor_tenths_after: 0
+  webhook_url: ""
+  external_predictor_url: ""
+  model_version: prices-v1.0.0
+
+cadence:
+  predeadline_hours_before: 24
+  predeadline_early_hours: 36
+  predeadline_late_hours: 6

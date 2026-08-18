@@ -9,7 +9,7 @@ from pathlib import Path
 import typer
 
 from fpl_agent import __version__
-from fpl_agent.config import default_settings_path, load_settings
+from fpl_agent.config import default_settings_path, load_dotenv_files, load_settings
 from fpl_agent.errors import AgentError, ExitCode
 from fpl_agent.observability import configure_logging, redact_value
 
@@ -22,6 +22,9 @@ app.add_typer(rules_app, name="rules")
 
 def _exit(code: ExitCode) -> None:
     raise typer.Exit(int(code))
+
+
+load_dotenv_files()
 
 
 @app.command("validate-config")
@@ -89,6 +92,8 @@ def doctor(
         "dry_run": [],
         "manual": [],
         "daily": [],
+        "prices": ["FPL_PRIVATE_STATE_B64"],
+        "predeadline": [],
         "deadline": ["OPENAI_API_KEY"],
         "weekly_review": ["OPENAI_API_KEY"],
     }
@@ -96,6 +101,11 @@ def doctor(
     for name in required:
         present = bool(__import__("os").environ.get(name))
         typer.echo(f"env {name}: {'present' if present else 'missing'}")
+    if mode in {"prices", "daily", "predeadline"}:
+        squad_present = bool(__import__("os").environ.get("FPL_PRIVATE_STATE_B64")) or Path(
+            "data/private-state/current.json"
+        ).exists()
+        typer.echo(f"private_squad: {'present' if squad_present else 'missing'}")
 
     # Never print secret values even if present
     fake = __import__("os").environ.get("OPENAI_API_KEY")
@@ -199,8 +209,79 @@ def team_state_encode(path: Path) -> None:
     _exit(ExitCode.SUCCESS)
 
 
+@team_state_app.command("materialize-from-env")
+def team_state_materialize(
+    dest: Path = typer.Option(Path("data/private-state/current.json"), "--dest"),
+) -> None:
+    """Decode FPL_PRIVATE_STATE_B64 to dest. Never prints the payload."""
+    import base64
+    import os
+
+    load_dotenv_files()
+    raw = os.environ.get("FPL_PRIVATE_STATE_B64", "").strip()
+    if not raw:
+        typer.echo("FPL_PRIVATE_STATE_B64 missing", err=True)
+        _exit(ExitCode.INSUFFICIENT_OR_STALE_TEAM_STATE)
+    try:
+        payload = base64.b64decode(raw, validate=False)
+    except Exception:  # noqa: BLE001
+        typer.echo("FPL_PRIVATE_STATE_B64 is not valid base64", err=True)
+        _exit(ExitCode.INVALID_CONFIG)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(payload)
+    from fpl_agent.team_state.private import load_and_validate_private_state
+
+    try:
+        state = load_and_validate_private_state(dest)
+    except AgentError as exc:
+        dest.unlink(missing_ok=True)
+        typer.echo(f"INVALID: {exc}", err=True)
+        _exit(exc.exit_code)
+    typer.echo(f"OK dest={dest} gw={state.applies_before_gameweek} players={len(state.player_ids)}")
+    _exit(ExitCode.SUCCESS)
+
+
 @app.command("daily")
 def daily(
+    offline: bool = typer.Option(False, "--offline", help="Use cached FPL snapshots only"),
+    save: bool = typer.Option(True, "--save/--no-save", help="Write report under reports/"),
+    notify: bool = typer.Option(False, "--notify/--no-notify", help="Attempt notify channels (still dry-run unless publishing enabled)"),
+    universe: str = typer.Option("all-relevant", "--universe", help="squad|plan|watchlist|all-relevant"),
+    private: Path = typer.Option(Path("data/private-state/current.json"), "--private"),
+) -> None:
+    """Daily price watch: who might rise/fall and whether it is smart to act tonight. No OpenAI."""
+    from fpl_agent.prices.run import Universe, run_prices, write_prices_artifact
+
+    if universe not in {"squad", "plan", "watchlist", "all-relevant", "catalog"}:
+        typer.echo("invalid --universe", err=True)
+        _exit(ExitCode.INVALID_CONFIG)
+    kind: Universe = universe  # type: ignore[assignment]
+    try:
+        report = run_prices(offline=offline, universe=kind, notify=notify, save=False, private_path=private)
+    except AgentError as exc:
+        typer.echo(f"FAILED: {exc}", err=True)
+        _exit(exc.exit_code)
+    typer.echo(report.markdown)
+    if save:
+        path = write_prices_artifact(report)
+        typer.echo(f"\nSaved {path}")
+    _exit(ExitCode.SUCCESS)
+
+
+@app.command("prices")
+def prices(
+    offline: bool = typer.Option(False, "--offline", help="Use cached FPL snapshots only"),
+    save: bool = typer.Option(True, "--save/--no-save", help="Write report under reports/"),
+    notify: bool = typer.Option(False, "--notify/--no-notify"),
+    universe: str = typer.Option("all-relevant", "--universe"),
+    private: Path = typer.Option(Path("data/private-state/current.json"), "--private"),
+) -> None:
+    """Alias for daily price watch."""
+    daily(offline=offline, save=save, notify=notify, universe=universe, private=private)
+
+
+@app.command("predeadline")
+def predeadline(
     offline: bool = typer.Option(False, "--offline", help="Use cached FPL snapshots only"),
     live_ai: bool = typer.Option(
         False,
@@ -208,18 +289,19 @@ def daily(
         help="Require live OpenAI (fail if OPENAI_API_KEY missing)",
     ),
     save: bool = typer.Option(True, "--save/--no-save", help="Write report under reports/"),
+    force: bool = typer.Option(False, "--force", help="Run even if more than ~1 day before the deadline"),
 ) -> None:
-    """Daily squad assistant: news/status check + keep/watch/revise suggestions."""
-    from fpl_agent.daily import render_daily_text, run_daily, write_daily_artifact
+    """Full news/squad review, intended ~1 day before the GW deadline."""
+    from fpl_agent.daily import render_daily_text, run_predeadline, write_daily_artifact
 
     try:
-        report = run_daily(offline=offline, require_live_ai=live_ai)
+        report = run_predeadline(offline=offline, require_live_ai=live_ai, force=force)
     except AgentError as exc:
         typer.echo(f"FAILED: {exc}", err=True)
         _exit(exc.exit_code)
     text = render_daily_text(report)
     typer.echo(text)
-    if save:
+    if save and not report.skipped:
         path = write_daily_artifact(report)
         typer.echo(f"\nSaved {path}")
     _exit(ExitCode.SUCCESS)

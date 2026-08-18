@@ -5,7 +5,7 @@
 This project is a **read-only** FPL decision-support agent. Supported deployments:
 
 - local CLI analysis with user-provided private team state files;
-- GitHub Actions scheduled/manual workflows that never authenticate to Fantasy Premier League.
+- GitHub Actions scheduled **price** workflow (no OpenAI) and manual/test workflows. Never authenticate to Fantasy Premier League.
 
 ## Prohibited
 

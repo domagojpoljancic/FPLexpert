@@ -1,0 +1,122 @@
+name: fpl-prices
+on:
+  workflow_dispatch:
+  schedule:
+    # Snapshot history (needed for likelihood bands). GitHub may delay/drop.
+    - cron: "41 */2 * * *"
+    # Evening window ~21:47 Europe/Zagreb in summer (19:47 UTC). Not punctual.
+    - cron: "47 19 * * *"
+
+permissions: {}
+
+concurrency:
+  group: fpl-prices
+  cancel-in-progress: false
+
+jobs:
+  prices:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: astral-sh/setup-uv@d0b4409defa78023132408eefae4a196edc17865 # v6.1.0
+        with:
+          enable-cache: true
+      - name: Sync
+        run: uv sync
+      - name: Materialize private squad
+        env:
+          FPL_PRIVATE_STATE_B64: ${{ secrets.FPL_PRIVATE_STATE_B64 }}
+        run: uv run fpl-agent team-state materialize-from-env
+      - name: Price watch (no OpenAI)
+        run: uv run fpl-agent prices --notify
+      - name: Record last success
+        run: |
+          uv run python - <<'PY'
+          import json
+          from datetime import UTC, datetime
+          from pathlib import Path
+          reports = sorted(Path("reports").glob("prices-gw*.json"))
+          status = "unknown"
+          gameweek = None
+          if reports:
+              payload = json.loads(reports[-1].read_text(encoding="utf-8"))
+              status = payload.get("status") or status
+              gameweek = payload.get("gameweek")
+          path = Path("data/snapshots/prices/last-success.json")
+          path.parent.mkdir(parents=True, exist_ok=True)
+          path.write_text(
+              json.dumps(
+                  {
+                      "utc": datetime.now(UTC).strftime("%Y-%m-%dT%H:%MZ"),
+                      "gameweek": gameweek,
+                      "status": status,
+                  },
+                  indent=2,
+              )
+              + "\n",
+              encoding="utf-8",
+          )
+          print(path)
+          PY
+      - name: Email via GitHub Issue (act-now only)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          uv run python - <<'PY'
+          import json, subprocess, sys
+          from pathlib import Path
+          from fpl_agent.prices.alerts import should_comment_issue
+          from fpl_agent.prices.types import ReportStatus
+
+          reports = sorted(Path("reports").glob("prices-gw*.json"), key=lambda p: p.stat().st_mtime)
+          if not reports:
+              print("no price report; skip issue")
+              sys.exit(0)
+          payload = json.loads(reports[-1].read_text(encoding="utf-8"))
+          try:
+              status = ReportStatus(payload["status"])
+          except ValueError:
+              print("unknown status; skip issue")
+              sys.exit(0)
+          if not should_comment_issue(status=status, notified=payload.get("notified") or []):
+              print("quiet night; no issue comment")
+              sys.exit(0)
+          md = reports[-1].with_suffix(".md")
+          body = md.read_text(encoding="utf-8")[:60000] if md.exists() else payload.get("headline", "price alert")
+          title = "FPL price alerts"
+          listed = subprocess.check_output(
+              ["gh", "issue", "list", "--state", "open", "--search", f"{title} in:title", "--json", "number,title"],
+              text=True,
+          )
+          import json as json_mod
+          matches = [i for i in json.loads(listed) if i.get("title") == title]
+          if matches:
+              number = str(matches[0]["number"])
+          else:
+              created = subprocess.check_output(
+                  [
+                      "gh", "issue", "create",
+                      "--title", title,
+                      "--body", "Standing thread for overnight price alerts. Watch this issue to get GitHub emails.",
+                  ],
+                  text=True,
+              )
+              # URL ends with /issues/N
+              number = created.strip().rsplit("/", 1)[-1]
+          subprocess.check_call(["gh", "issue", "comment", number, "--body", body])
+          print(f"commented on issue {number}")
+          PY
+      - name: Persist public snapshots
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/snapshots/prices
+          if git diff --staged --quiet; then
+            echo "no snapshot changes"
+            exit 0
+          fi
+          git commit -m "chore: price snapshots [skip ci]"
+          git push

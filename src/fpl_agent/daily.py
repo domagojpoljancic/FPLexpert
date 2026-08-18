@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from fpl_agent.cadence import hours_until, next_deadline, predeadline_gate
 from fpl_agent.config import Settings, load_settings
 from fpl_agent.domain.models import SeasonId
 from fpl_agent.errors import AgentError, AgentErrorCode, ExitCode
@@ -22,7 +23,7 @@ from fpl_agent.llm.client import (
     validate_daily_advice,
 )
 from fpl_agent.projections.preseason import project_all
-from fpl_agent.suggest import load_public_data, next_gameweek
+from fpl_agent.suggest import load_public_data
 from fpl_agent.team_state.private import load_and_validate_private_state
 from fpl_agent.team_state.resolve import resolve_team_state
 
@@ -41,6 +42,10 @@ class DailyReport:
     model_meta: dict[str, Any]
     executability: str
     used_live_ai: bool
+    skipped: bool = False
+    skip_reason: str | None = None
+    price_status: str | None = None
+    price_actions: list[dict[str, Any]] | None = None
 
 
 def _squad_rows(
@@ -105,10 +110,62 @@ def run_daily(
     *,
     settings: Settings | None = None,
     offline: bool = False,
-    require_live_ai: bool = False,
     private_path: Path = Path("data/private-state/current.json"),
+    snapshot_root: Path | None = None,
+    reports_dir: Path = Path("reports"),
+    save: bool = False,
+):
+    """Daily cadence: price watch + smart-to-act. No OpenAI."""
+    from fpl_agent.prices.run import DEFAULT_ROOT, run_prices
+
+    return run_prices(
+        settings=settings,
+        offline=offline,
+        private_path=private_path,
+        snapshot_root=snapshot_root or DEFAULT_ROOT,
+        reports_dir=reports_dir,
+        save=save,
+        notify=False,
+    )
+
+
+def run_predeadline(
+    *,
+    settings: Settings | None = None,
+    offline: bool = False,
+    require_live_ai: bool = False,
+    force: bool = False,
+    private_path: Path = Path("data/private-state/current.json"),
+    snapshot_root: Path | None = None,
+    reports_dir: Path = Path("reports"),
 ) -> DailyReport:
     settings = settings or load_settings()
+
+    bootstrap, fixtures = load_public_data(offline=offline)
+    gw, deadline = next_deadline(bootstrap)
+    hours = hours_until(deadline)
+    allowed, gate = predeadline_gate(hours, settings.cadence, force=force)
+    if not allowed:
+        return DailyReport(
+            gameweek=gw,
+            plan_action="keep",
+            headline="Pre-deadline full check skipped — more than a day before the deadline.",
+            what_changed=[],
+            attention_triggers=[],
+            suggested_moves=[],
+            uncertainty=[],
+            warnings=[
+                f"predeadline_gate={gate.value}; run `fpl-agent daily` for the price watch, "
+                "or pass --force to run the full news/squad review now."
+            ],
+            sources=[],
+            model_meta={"fallback": True, "gate": gate.value},
+            executability="CONDITIONAL_ONLY",
+            used_live_ai=False,
+            skipped=True,
+            skip_reason=gate.value,
+        )
+
     if not private_path.exists():
         raise AgentError(
             f"private squad missing: {private_path}. Save your squad first.",
@@ -116,14 +173,12 @@ def run_daily(
             exit_code=ExitCode.INSUFFICIENT_OR_STALE_TEAM_STATE,
         )
 
-    bootstrap, fixtures = load_public_data(offline=offline)
     catalog = {int(e["id"]): e for e in bootstrap.get("elements") or []}
     teams = {int(t["id"]): str(t["short_name"]) for t in bootstrap.get("teams") or []}
     private = load_and_validate_private_state(
         private_path,
         catalog_player_ids=set(catalog) or None,
     )
-    gw = next_gameweek(bootstrap)
     if private.applies_before_gameweek != gw:
         # still allow; warn in report
         pass
@@ -165,10 +220,31 @@ def run_daily(
         budget=settings.models.web_search_budget,
     )
 
+    price_report = None
+    price_block: dict[str, Any] = {}
+    try:
+        from fpl_agent.prices.run import DEFAULT_ROOT, prices_payload_for_llm, run_prices
+
+        price_report = run_prices(
+            settings=settings,
+            offline=offline,
+            private_path=private_path,
+            snapshot_root=snapshot_root or DEFAULT_ROOT,
+            reports_dir=reports_dir,
+            save=False,
+            notify=False,
+            bootstrap=bootstrap,
+        )
+        price_block = prices_payload_for_llm(price_report)
+    except AgentError as exc:
+        price_block = {"price_error": str(exc)}
+
     payload = {
-        "mode": "daily",
+        "mode": "predeadline",
         "manager_team_id": settings.manager.team_id,
         "gameweek": gw,
+        "hours_to_deadline": hours,
+        "predeadline_gate": gate.value,
         "executability": team.executability.value,
         "bank_tenths": private.bank_tenths,
         "free_transfers": private.free_transfers,
@@ -185,7 +261,10 @@ def run_daily(
             "do_not_transfer_just_because_ran": True,
             "recommend_only": True,
             "reddit_is_community_tier": True,
+            "do_not_invent_price_likelihood": True,
+            "do_not_upgrade_ignore_or_watch_price_actions": True,
         },
+        **price_block,
     }
 
     client = build_client(
@@ -209,10 +288,15 @@ def run_daily(
             if isinstance(src, dict) and "claim_id" in src:
                 allowed_sources.add(str(src["claim_id"]))
 
+    extra_ids: set[int] = set()
+    for action in price_block.get("price_actions") or []:
+        if isinstance(action, dict):
+            extra_ids.update(int(x) for x in (action.get("player_ids") or []) if x)
     advice = validate_daily_advice(
         advice if isinstance(advice, DailyAdvice) else DailyAdvice.model_validate(advice),
-        allowed_player_ids=set(private.player_ids),
+        allowed_player_ids=set(private.player_ids) | extra_ids,
         allowed_source_ids=allowed_sources or {c.claim_id for c in fpl_claims},
+        price_actions=price_block.get("price_actions") if isinstance(price_block.get("price_actions"), list) else None,
     )
 
     if private.applies_before_gameweek != gw:
@@ -221,6 +305,10 @@ def run_daily(
         )
     if not used_live:
         advice.warnings.append("OPENAI_API_KEY not set — used deterministic fallback (no live news search)")
+    if gate.value == "closer_than_intended":
+        advice.warnings.append("inside the late pre-deadline window; prefer the deadline command if the deadline is imminent")
+    if gate.value == "deadline_unknown":
+        advice.warnings.append("official deadline_time missing; ran full check anyway")
 
     sources_out = [
         {
@@ -234,6 +322,10 @@ def run_daily(
         for c in all_claims
     ]
 
+    extra_warnings = list(team.warnings)
+    if price_report is not None:
+        extra_warnings.extend(price_report.warnings)
+
     return DailyReport(
         gameweek=gw,
         plan_action=advice.plan_action.value,
@@ -242,7 +334,7 @@ def run_daily(
         attention_triggers=advice.attention_triggers or triggers,
         suggested_moves=[m.model_dump(mode="json") for m in advice.suggested_moves],
         uncertainty=advice.uncertainty,
-        warnings=advice.warnings + team.warnings,
+        warnings=advice.warnings + extra_warnings,
         sources=sources_out,
         model_meta={
             "response_id": meta.response_id,
@@ -252,15 +344,20 @@ def run_daily(
             "web_search_calls": meta.web_search_calls,
             "fallback": meta.fallback,
             "prompt_version": meta.prompt_version,
+            "gate": gate.value,
         },
         executability=team.executability.value,
         used_live_ai=used_live and not meta.fallback,
+        skipped=False,
+        skip_reason=None,
+        price_status=price_report.status.value if price_report is not None else None,
+        price_actions=price_block.get("price_actions") if isinstance(price_block.get("price_actions"), list) else None,
     )
 
 
 def render_daily_text(report: DailyReport) -> str:
     lines = [
-        f"# Daily FPL assistant — GW{report.gameweek}",
+        f"# Pre-deadline FPL review — GW{report.gameweek}",
         f"Status: **{report.plan_action.upper()}** | Executability: {report.executability}",
         f"AI: {'live OpenAI + web search' if report.used_live_ai else 'deterministic fallback (no API key)'}",
         "",
@@ -268,6 +365,19 @@ def render_daily_text(report: DailyReport) -> str:
         "",
         "## What changed",
     ]
+    if report.skipped:
+        lines = [
+            f"# Pre-deadline FPL review — GW{report.gameweek}",
+            f"Status: **SKIPPED** ({report.skip_reason})",
+            "",
+            f"## {report.headline}",
+            "",
+        ]
+        lines.extend(f"- {w}" for w in report.warnings)
+        lines += ["", "_Recommend only — you make all FPL changes._"]
+        return "\n".join(lines)
+    if report.price_status:
+        lines.insert(3, f"Price watch: **{report.price_status}**")
     if report.what_changed:
         lines.extend(f"- {x}" for x in report.what_changed)
     else:
@@ -302,7 +412,7 @@ def render_daily_text(report: DailyReport) -> str:
 def write_daily_artifact(report: DailyReport, root: Path = Path("reports")) -> Path:
     root.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    path = root / f"daily-gw{report.gameweek}-{stamp}.md"
+    path = root / f"predeadline-gw{report.gameweek}-{stamp}.md"
     path.write_text(render_daily_text(report), encoding="utf-8")
     json_path = path.with_suffix(".json")
     json_path.write_text(json.dumps(asdict(report), indent=2, default=str), encoding="utf-8")

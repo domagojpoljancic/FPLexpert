@@ -16,6 +16,8 @@ def test_example_config_loads() -> None:
     assert settings.manager.team_id == 1
     assert settings.planning.horizon == 6
     assert len(settings.planning.weights) == 6
+    assert settings.prices.model_version == "prices-v1.0.0"
+    assert settings.cadence.predeadline_hours_before == 24
 
 
 def test_rejects_non_positive_team_id(tmp_path: Path) -> None:
@@ -50,6 +52,16 @@ def test_rejects_safety_floor_not_inside_window(tmp_path: Path) -> None:
 def test_rejects_invalid_timezone(tmp_path: Path) -> None:
     raw = yaml.safe_load(Path("config/settings.example.yaml").read_text())
     raw["manager"]["timezone"] = "Not/AZone"
+    path = tmp_path / "bad.yaml"
+    path.write_text(yaml.dump(raw))
+    with pytest.raises(AgentError):
+        load_settings(path)
+
+
+def test_rejects_watch_progress_not_below_likely(tmp_path: Path) -> None:
+    raw = yaml.safe_load(Path("config/settings.example.yaml").read_text())
+    raw["prices"]["watch_progress"] = 0.9
+    raw["prices"]["likely_progress"] = 0.8
     path = tmp_path / "bad.yaml"
     path.write_text(yaml.dump(raw))
     with pytest.raises(AgentError):

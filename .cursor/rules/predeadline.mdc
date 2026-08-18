@@ -1,0 +1,16 @@
+---
+description: When running the pre-deadline FPL review (especially from phone / Cloud Agent)
+alwaysApply: true
+---
+
+# Pre-deadline review
+
+If the user asks to run the pre-deadline / GW review:
+
+1. Materialize squad if needed: `uv run fpl-agent team-state materialize-from-env` (uses `FPL_PRIVATE_STATE_B64`; never print it).
+2. Run `uv run fpl-agent predeadline --live-ai` (add `--force` only if they ask, or if the gate says it is too early/late and they still want it).
+3. Show the CLI output. Do not invent transfers, prices, player IDs, or news.
+4. Cursor's model picker may stay Auto. OpenAI is the app's `OPENAI_API_KEY` inside `predeadline`, not the Cursor model.
+5. The user makes all FPL changes themselves.
+
+Price watch is GitHub Actions (`fpl-agent prices`). Do not start that job from chat unless asked.

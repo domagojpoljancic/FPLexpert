@@ -41,6 +41,14 @@ class PrivateTeamState(BaseModel):
     vice_id: PositiveInt | None = None
     starters: list[PositiveInt] | None = None
     bench_order: list[PositiveInt] | None = None
+    watchlist_player_ids: list[PositiveInt] = Field(default_factory=list)
+
+    @field_validator("watchlist_player_ids")
+    @classmethod
+    def _watchlist_unique(cls, v: list[int]) -> list[int]:
+        if len(v) != len(set(v)):
+            raise ValueError("watchlist_player_ids must be unique")
+        return v
 
     @field_validator("player_ids")
     @classmethod
@@ -92,6 +100,13 @@ def load_and_validate_private_state(
         if unknown:
             raise AgentError(
                 f"player ids not in catalog: {unknown}",
+                code=AgentErrorCode.INSUFFICIENT_TEAM_STATE,
+                exit_code=ExitCode.INSUFFICIENT_OR_STALE_TEAM_STATE,
+            )
+        unknown_watch = [p for p in state.watchlist_player_ids if p not in catalog_player_ids]
+        if unknown_watch:
+            raise AgentError(
+                f"watchlist player ids not in catalog: {unknown_watch}",
                 code=AgentErrorCode.INSUFFICIENT_TEAM_STATE,
                 exit_code=ExitCode.INSUFFICIENT_OR_STALE_TEAM_STATE,
             )

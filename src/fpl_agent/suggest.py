@@ -12,19 +12,26 @@ from fpl_agent.projections.preseason import PlayerProjection, project_all
 CACHE_DIR = Path("data/cache")
 BOOTSTRAP_CACHE = CACHE_DIR / "bootstrap-static.json"
 FIXTURES_CACHE = CACHE_DIR / "fixtures.json"
+FIXTURE_BOOTSTRAP = Path("tests/fixtures/bootstrap_static_reduced.json")
 
 
 def load_public_data(*, offline: bool = False) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """Load bootstrap and fixtures, refreshing the local cache when online."""
     if offline:
-        if not BOOTSTRAP_CACHE.exists() or not FIXTURES_CACHE.exists():
+        boot_path = BOOTSTRAP_CACHE if BOOTSTRAP_CACHE.exists() else FIXTURE_BOOTSTRAP
+        if not boot_path.exists():
             raise AgentError(
                 "offline requested but no cached FPL snapshots found",
                 code=AgentErrorCode.FPL_UNAVAILABLE,
                 exit_code=ExitCode.UPSTREAM_DATA_FAILURE,
             )
-        bootstrap = json.loads(BOOTSTRAP_CACHE.read_text(encoding="utf-8"))
-        fixtures = json.loads(FIXTURES_CACHE.read_text(encoding="utf-8"))
+        bootstrap = json.loads(boot_path.read_text(encoding="utf-8"))
+        if FIXTURES_CACHE.exists():
+            fixtures = json.loads(FIXTURES_CACHE.read_text(encoding="utf-8"))
+        else:
+            fixtures = []
+        if not isinstance(fixtures, list):
+            fixtures = fixtures.get("items", []) if isinstance(fixtures, dict) else []
         return bootstrap, fixtures
 
     from fpl_agent.ingestion.client import BootstrapAdapter, FixturesAdapter, FplClient
@@ -44,6 +51,18 @@ def load_public_data(*, offline: bool = False) -> tuple[dict[str, Any], list[dic
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     BOOTSTRAP_CACHE.write_text(json.dumps(bootstrap), encoding="utf-8")
     FIXTURES_CACHE.write_text(json.dumps(fixtures), encoding="utf-8")
+    try:
+        from fpl_agent.domain.models import SeasonId
+        from fpl_agent.prices.snapshot import DEFAULT_ROOT, append_snapshot, snapshot_from_bootstrap
+
+        snap = snapshot_from_bootstrap(
+            bootstrap,
+            event_id=next_gameweek(bootstrap),
+            season=SeasonId.S2026_27.value,
+        )
+        append_snapshot(snap, root=DEFAULT_ROOT)
+    except Exception:  # noqa: BLE001 — snapshot side-effect must not fail the fetch
+        pass
     return bootstrap, fixtures
 
 

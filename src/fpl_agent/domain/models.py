@@ -62,6 +62,8 @@ class FieldSourceType(StrEnum):
 
 class RunMode(StrEnum):
     DAILY = "daily"
+    PRICES = "prices"
+    PREDEADLINE = "predeadline"
     DEADLINE = "deadline"
     WEEKLY_REVIEW = "weekly_review"
     MANUAL = "manual"

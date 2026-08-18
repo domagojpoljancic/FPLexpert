@@ -12,6 +12,7 @@ from typing import Any, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from fpl_agent.config import load_dotenv_files
 from fpl_agent.errors import AgentError, AgentErrorCode, ExitCode
 from fpl_agent.observability import redact_value
 
@@ -199,16 +200,38 @@ def validate_daily_advice(
     *,
     allowed_player_ids: set[int],
     allowed_source_ids: set[str],
+    price_actions: list[dict[str, Any]] | None = None,
 ) -> DailyAdvice:
     warnings = list(advice.warnings)
+    ignore_watch: set[int] = set()
+    act_now: set[int] = set()
+    for raw in price_actions or []:
+        if not isinstance(raw, dict):
+            continue
+        cls = str(raw.get("action_class") or "")
+        ids = [int(x) for x in (raw.get("player_ids") or []) if x]
+        if cls in {"ignore", "watch"}:
+            ignore_watch.update(ids)
+        if cls in {"act_now_recommended", "act_now_conditional"}:
+            act_now.update(ids)
     cleaned_moves: list[DailyMove] = []
     for move in advice.suggested_moves:
         bad = [pid for pid in move.player_ids if pid not in allowed_player_ids]
         if bad:
             warnings.append(f"dropped_unknown_player_ids:{bad}")
+        ids = [pid for pid in move.player_ids if pid in allowed_player_ids]
+        if (
+            move.move_type == MoveType.TRANSFER
+            and ids
+            and ignore_watch
+            and not (set(ids) & act_now)
+            and (set(ids) & ignore_watch)
+        ):
+            warnings.append("dropped_price_ignore_or_watch_upgrade")
+            move = move.model_copy(update={"move_type": MoveType.HOLD, "urgency": "low"})
         cleaned = move.model_copy(
             update={
-                "player_ids": [pid for pid in move.player_ids if pid in allowed_player_ids],
+                "player_ids": ids,
                 "cited_source_ids": [s for s in move.cited_source_ids if s in allowed_source_ids],
             }
         )
@@ -229,7 +252,9 @@ def validate_daily_advice(
 
 
 def _load_instructions() -> str:
-    path = Path("prompts/daily.md")
+    path = Path("prompts/predeadline.md")
+    if not path.exists():
+        path = Path("prompts/daily.md")
     if path.exists():
         return path.read_text(encoding="utf-8")
     return (
@@ -257,6 +282,7 @@ class ResponsesOpenAIClient:
     timeout_s: float = 90.0
 
     def __post_init__(self) -> None:
+        load_dotenv_files()
         self.api_key = self.api_key or os.environ.get("OPENAI_API_KEY")
         if not self.api_key:
             raise AgentError(
@@ -296,10 +322,12 @@ class ResponsesOpenAIClient:
 
         instructions = _load_instructions()
         user_input = (
-            "Produce structured FPL daily advice from this JSON only. "
+            "Produce structured FPL pre-deadline advice from this JSON only. "
             "Search the web only for named squad players/clubs when needed for injury, "
             "suspension, press-conference, or fixture news. Prefer official/club sources; "
             "treat Reddit as lower-confidence community signal. "
+            "Use supplied price_actions if present. Do not invent price likelihoods. "
+            "Do not upgrade ignore/watch price actions into transfers. "
             "Do not invent player IDs. Do not recommend a transfer merely because this run happened.\n\n"
             + _compact_payload(payload)
         )
@@ -371,6 +399,7 @@ def build_client(
     web_search_budget: int,
     require_live: bool = False,
 ) -> OpenAIClient:
+    load_dotenv_files()
     key = os.environ.get("OPENAI_API_KEY")
     if key:
         return ResponsesOpenAIClient(

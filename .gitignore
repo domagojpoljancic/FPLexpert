@@ -13,6 +13,8 @@ data/cache/**
 !data/cache/.gitkeep
 data/snapshots/**
 !data/snapshots/.gitkeep
+!data/snapshots/prices/
+!data/snapshots/prices/**
 data/decision-ledger/**
 !data/decision-ledger/.gitkeep
 data/outcomes/**

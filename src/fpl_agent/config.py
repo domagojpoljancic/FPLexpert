@@ -8,6 +8,7 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
+from dotenv import load_dotenv
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -107,6 +108,57 @@ class AlertsSettings(BaseModel):
         return self
 
 
+class PricesSettings(BaseModel):
+    """Uncalibrated price-change heuristic. Changing numeric fields is a model-version bump."""
+
+    enabled: bool = True
+    snapshot_max_per_gw: int = Field(default=48, ge=2, le=168)
+    watch_progress: float = Field(default=0.55, ge=0.0, le=1.0)
+    likely_progress: float = Field(default=0.85, ge=0.0, le=1.0)
+    min_snapshots_for_likely: int = Field(default=2, ge=2, le=10)
+    hysteresis: float = Field(default=0.05, ge=0.0, le=0.2)
+    rise_base_net: int = Field(default=40_000, gt=0)
+    fall_base_net: int = Field(default=50_000, gt=0)
+    ownership_scale_k: float = Field(default=3.0, ge=0.0)
+    allow_hit_for_price: bool = False
+    allow_last_ft_for_price: bool = False
+    max_hours_ahead_to_spend_ft: float = Field(default=36.0, gt=0)
+    bank_floor_tenths_after: int = Field(default=0, ge=0)
+    webhook_url: str = ""
+    external_predictor_url: str = ""
+    model_version: str = "prices-v1.0.0"
+
+    @model_validator(mode="after")
+    def _progress_order(self) -> PricesSettings:
+        if self.watch_progress >= self.likely_progress:
+            raise ValueError("watch_progress must be < likely_progress")
+        for name, url in (
+            ("webhook_url", self.webhook_url),
+            ("external_predictor_url", self.external_predictor_url),
+        ):
+            if url and not url.startswith("https://"):
+                raise ValueError(f"{name} must be empty or HTTPS")
+        return self
+
+
+class CadenceSettings(BaseModel):
+    """When to run price-only daily vs full pre-deadline review."""
+
+    predeadline_hours_before: float = Field(default=24.0, gt=0, le=72)
+    predeadline_early_hours: float = Field(default=36.0, gt=0, le=96)
+    predeadline_late_hours: float = Field(default=6.0, gt=0, le=48)
+
+    @model_validator(mode="after")
+    def _window_order(self) -> CadenceSettings:
+        if not (
+            0 < self.predeadline_late_hours < self.predeadline_hours_before <= self.predeadline_early_hours
+        ):
+            raise ValueError(
+                "require 0 < predeadline_late_hours < predeadline_hours_before <= predeadline_early_hours"
+            )
+        return self
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="FPL_",
@@ -122,6 +174,8 @@ class Settings(BaseSettings):
     cost: CostSettings = Field(default_factory=CostSettings)
     review: ReviewSettings = Field(default_factory=ReviewSettings)
     alerts: AlertsSettings = Field(default_factory=AlertsSettings)
+    prices: PricesSettings = Field(default_factory=PricesSettings)
+    cadence: CadenceSettings = Field(default_factory=CadenceSettings)
 
 
 def _deep_merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
@@ -151,7 +205,13 @@ def load_yaml_settings(path: Path) -> dict[str, Any]:
     return data
 
 
+def load_dotenv_files() -> None:
+    """Load project-root .env if present. Does not override already-set env vars."""
+    load_dotenv(Path(".env"), override=False)
+
+
 def default_settings_path() -> Path:
+    load_dotenv_files()
     env = os.environ.get("FPL_SETTINGS_PATH")
     if env:
         return Path(env)

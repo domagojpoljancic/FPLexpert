@@ -18,6 +18,7 @@ Use these prompts in order, one at a time. Give Cursor the entire contents of on
 10. `10_automation_security_and_operations.md`
 11. `11_evaluation_and_release_gates.md`
 12. `12_final_integration_audit.md`
+13. `13_price_change_prediction_and_alerts.md`
 
 ## How to use the sequence
 

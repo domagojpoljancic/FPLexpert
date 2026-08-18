@@ -14,9 +14,10 @@ WIP read-only Fantasy Premier League decision-support system. It recommends tran
 | Strategy / scenarios | Working (bounded beam; catalog-backed transfers still thin) |
 | Rivals / news / monitor | Working (contracts + classifiers) |
 | Decision ledger / replay | Working |
-| OpenAI synthesis | Live Responses client + daily assistant (`daily`); needs `OPENAI_API_KEY` for web/Reddit search |
+| OpenAI synthesis | Live Responses client on **pre-deadline** review (`predeadline`); needs `OPENAI_API_KEY` for web/Reddit search |
+| Daily price watch | Working (uncalibrated) — GitHub `fpl-prices.yml` + local `daily` / `prices`; Issue email on act-now; no Hub scrape |
 | Reports / publishing state machine | Working (GitHub mutations dry-run by default) |
-| GitHub Actions | Scaffolded; full-season unattended blocked pending external watchdog |
+| GitHub Actions | **Prices** scheduled (`fpl-prices.yml`); emails via a standing GitHub Issue. Pre-deadline is **manual** (phone Cloud Agent). Independent watchdog ping still TBD |
 | Evaluation gates | Partial — see `docs/evaluation-plan.md` |
 
 ## Quick start
@@ -33,11 +34,34 @@ uv run fpl-agent analyze --mode dry_run --offline
 # Suggest a legal 15-player squad for the next gameweek
 uv run fpl-agent suggest-squad
 
-# Daily assistant for your locked squad (uses OpenAI+web search if OPENAI_API_KEY is set)
-uv run fpl-agent daily
+# Daily price watch (no OpenAI)
+uv run fpl-agent daily --offline
+
+# Full news/squad review ~1 day before the GW deadline
+uv run fpl-agent predeadline --offline
+# (use --force to run the full review outside that window)
 ```
 
 Copy `config/settings.example.yaml` and set your real `manager.team_id`. Sync private squad finance via `fpl-agent team-state validate PATH` (no FPL login).
+
+## Overnight prices (GitHub)
+
+1. Repo secret `FPL_PRIVATE_STATE_B64` (encode with `uv run fpl-agent team-state encode-for-github PATH`). Re-set it after you change your squad.
+2. **Watch** the GitHub repo (or the standing issue **FPL price alerts**) with email notifications on. You get mail only when the job thinks you should act tonight — not every quiet snapshot.
+3. Workflow `.github/workflows/fpl-prices.yml` runs about every two hours plus an evening slot. GitHub can skip or run late; this is not a promise it will beat FPL’s overnight job.
+4. Public snapshot history is committed under `data/snapshots/prices/` (no OpenAI key on this job). `last-success.json` is for a later external ping/watchdog.
+
+## Pre-deadline from your phone
+
+About a day before the official GW deadline:
+
+1. In the Cursor mobile app, start a **Cloud Agent** on this repo (not a local session on a sleeping laptop).
+2. Cloud Agent secrets/env: `OPENAI_API_KEY` and `FPL_PRIVATE_STATE_B64`. Environment should have Python 3.12 and `uv`.
+3. Prompt: `Run the pre-deadline review.` The project rule will run `team-state materialize-from-env` then `fpl-agent predeadline --live-ai`.
+4. Leave Cursor’s model on Auto. OpenAI is used inside that CLI command, not as the Cursor picker.
+5. You still make the transfers in the FPL app.
+
+Fallback: GitHub → Actions → **fpl-prices** → Run workflow is prices only. Pre-deadline stays a Cloud Agent (or a local `uv run fpl-agent predeadline --live-ai`).
 
 ## Non-negotiables
 

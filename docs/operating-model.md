@@ -5,6 +5,8 @@
 - **Deterministic code** owns rules, numeric projections, scenario construction, and outcome replay.
 - A **language model** may later rank and explain only supplied validated candidates; it must not invent IDs, prices, or points.
 - External web content is **untrusted data**.
-- Local Cursor implementation requires the laptop; the finished scheduled product runs remotely in GitHub Actions after configuration.
+- Local Cursor implementation requires the laptop; **price watch** runs on GitHub Actions after `FPL_PRIVATE_STATE_B64` is set. **Pre-deadline** is a manual Cloud Agent run from your phone.
 - Local cost limits are soft guards, not billing guarantees.
-- Full-season unattended operation stays blocked until an independent liveness monitor is configured (GitHub schedules alone are insufficient).
+- Full-season unattended **price** jobs are on GitHub cron (can skip/run late). An independent liveness ping is still TBD (`data/snapshots/prices/last-success.json`).
+- **Daily** runs are the overnight price watch (`fpl-agent daily` / `prices`): who might rise or fall, and whether it is smart to transfer *tonight*. No language model.
+- **Pre-deadline** (`fpl-agent predeadline`) is the full news/injury/lineup review, intended about one day before the official GW deadline. It may use OpenAI if a key is set. It consumes price actions and must not invent them.

@@ -3,15 +3,14 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "dry_run | daily | deadline | weekly_review"
+        description: "dry_run | daily | prices | predeadline | deadline | weekly_review"
         default: dry_run
       publish:
         description: "Set true to allow publish path"
         default: "false"
   schedule:
-    # Staggered; not top-of-hour. GitHub may delay/drop schedules.
+    # Cheap tests only. Price snapshots live in fpl-prices.yml.
     - cron: "17 6 * * *"
-    - cron: "41 */2 * * *"
 
 permissions: {}
 
