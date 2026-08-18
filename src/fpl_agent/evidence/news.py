@@ -22,6 +22,36 @@ ESTABLISHED_HOST_FRAGMENTS = (
     "goal.com",
     "standard.co.uk",
     "telegraph.co.uk",
+    "fantasyfootballscout.co.uk",
+)
+
+# Hubs the pre-deadline search should try. Google is listed for the human; OpenAI search
+# already replaces a SERP crawl, and google.com is not in the tool allowlist.
+SUGGESTED_SOURCE_HUBS: tuple[dict[str, str], ...] = (
+    {
+        "name": "Premier League Fantasy News",
+        "url": "https://www.premierleague.com/en/fantasy-news",
+    },
+    {
+        "name": "Fantasy Football Scout",
+        "url": "https://www.fantasyfootballscout.co.uk/",
+    },
+    {
+        "name": "r/FantasyPL",
+        "url": "https://www.reddit.com/r/FantasyPL/",
+    },
+    {
+        "name": "BBC Sport Fantasy Football",
+        "url": "https://www.bbc.com/sport/football/fantasy-football",
+    },
+    {
+        "name": "Sky Sports Football",
+        "url": "https://www.skysports.com/football",
+    },
+    {
+        "name": "Google: FPL news (human skim)",
+        "url": "https://www.google.com/search?q=fpl+news",
+    },
 )
 
 
@@ -102,11 +132,13 @@ def claims_from_search_sources(
         if not (url.startswith("http://") or url.startswith("https://")):
             continue
         claim_id = "web-" + stable_json_hash(url)[:14]
+        title = (src.get("title") or "").strip()
+        text = title or f"Web source consulted during daily search: {url[:300]}"
         claims.append(
             EvidenceClaim(
                 claim_id=claim_id,
                 category=ClaimCategory.OTHER,
-                text=f"Web source consulted during daily search: {url[:300]}",
+                text=text[:2000],
                 source_url=url,
                 source_tier=source_tier_for_url(url),
                 player_ids=list(player_ids),

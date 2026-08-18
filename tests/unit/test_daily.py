@@ -18,6 +18,7 @@ from fpl_agent.llm.client import (
 def test_reddit_is_community_tier() -> None:
     assert source_tier_for_url("https://www.reddit.com/r/FantasyPL/comments/x") == "community"
     assert source_tier_for_url("https://www.premierleague.com/news/1") == "official"
+    assert source_tier_for_url("https://www.fantasyfootballscout.co.uk/team-news") == "established"
 
 
 def test_bootstrap_news_claim_for_injured_squad_player() -> None:
@@ -97,11 +98,98 @@ def test_predeadline_report_explains_insufficient() -> None:
         timezone="Europe/Zagreb",
     )
     text = render_daily_text(report)
-    assert "Can you act on transfer advice?" in text
-    assert "No — not as executable transfers" in text
+    assert "not executable" in text.lower()
     assert "24 hours" in text
     assert "gpt-5-2025-08-07" in text
     assert "Web searches actually made: 0" in text
     assert text.count("private squad stale") == 0
     assert "keep FT" in text
+    assert "## TLDR" in text
     assert datetime.now(UTC) - report.squad_as_of > timedelta(hours=24)
+
+
+def test_report_lists_openai_pages_and_hubs() -> None:
+    from fpl_agent.daily import DailyReport, render_daily_text
+
+    report = DailyReport(
+        gameweek=1,
+        plan_action="keep",
+        headline="Hold FT",
+        what_changed=[],
+        attention_triggers=[],
+        suggested_moves=[{"urgency": "low", "move_type": "hold", "summary": "Roll the FT"}],
+        uncertainty=["Pressers still to come"],
+        warnings=[],
+        sources=[
+            {
+                "claim_id": "web-abc",
+                "tier": "established",
+                "url": "https://www.fantasyfootballscout.co.uk/injuries",
+                "title": "Injuries and bans",
+            }
+        ],
+        model_meta={"model": "gpt-5", "web_search_calls": 4},
+        executability="EXECUTABLE",
+        used_live_ai=True,
+        tldr=["Hold the FT", "Keep Bruno captain"],
+        detail="No material injury news on the XI.",
+        search_queries=["FPL GW1 team news", "O'Nien Sunderland"],
+        suggested_hubs=[
+            {"name": "Fantasy Football Scout", "url": "https://www.fantasyfootballscout.co.uk/"},
+            {"name": "r/FantasyPL", "url": "https://www.reddit.com/r/FantasyPL/"},
+        ],
+    )
+    text = render_daily_text(report)
+    assert text.index("## TLDR") < text.index("## Why")
+    assert text.index("## Why") < text.index("## Sources checked")
+    assert "Injuries and bans" in text
+    assert "fantasyfootballscout.co.uk/injuries" in text
+    assert "returned this run" in text
+    assert "not returned this run" in text
+    assert "FPL GW1 team news" in text
+    assert "No material injury news" in text
+    assert "you can act" in text
+
+
+def test_extract_web_search_trace_collects_queries_and_pages() -> None:
+    from fpl_agent.llm.client import extract_web_search_trace
+
+    output = [
+        {
+            "type": "web_search_call",
+            "action": {
+                "query": "FPL GW1 injury news",
+                "sources": [
+                    {
+                        "url": "https://www.premierleague.com/en/fantasy-news",
+                        "title": "Fantasy News",
+                    },
+                    {"url": "https://www.premierleague.com/en/fantasy-news"},
+                ],
+            },
+        },
+        {
+            "type": "message",
+            "content": [
+                {
+                    "type": "output_text",
+                    "annotations": [
+                        {
+                            "type": "url_citation",
+                            "url": "https://www.bbc.com/sport/football/fantasy-football",
+                            "title": "BBC FPL",
+                        }
+                    ],
+                }
+            ],
+        },
+    ]
+    calls, sources, queries = extract_web_search_trace(output)
+    assert calls == 1
+    assert queries == ["FPL GW1 injury news"]
+    urls = [s["url"] for s in sources]
+    assert urls == [
+        "https://www.premierleague.com/en/fantasy-news",
+        "https://www.bbc.com/sport/football/fantasy-football",
+    ]
+    assert sources[0]["title"] == "Fantasy News"

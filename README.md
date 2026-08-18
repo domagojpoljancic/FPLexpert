@@ -22,9 +22,9 @@ WIP. Recommends transfers, hits, lineup, captain, bench, and chips. **You** make
 1. Cursor mobile → **Cloud Agent** on this repo (not a local session on a sleeping laptop).
 2. Cloud secrets: `OPENAI_API_KEY` and `FPL_PRIVATE_STATE_B64`. Python 3.12 + `uv`.
 3. Prompt: `Run the pre-deadline review.`
-4. The agent lists the saved squad and waits. Reply **unchanged**, or send an FPL screenshot if the team changed.
+4. The agent lists the saved squad and waits. Reply **unchanged**, or send an FPL screenshot if the team changed. A pitch or transfers screenshot is enough — it maps the printed card names with `fpl-agent team-state lookup` (not last-season clubs).
 5. Leave Cursor’s model on **Auto**. OpenAI is used inside the CLI, not as the picker.
-6. Read the report (chat + link above). You still transfer in the FPL app.
+6. Read the report (chat + GitHub link above): **TLDR** first, then why, then every page OpenAI actually returned. You still transfer in the FPL app.
 
 The agent saves `reports/predeadline-*.md`, refreshes the list above, commits, pushes, and **merges to `main`** in the same run so the links here work from your phone. An open PR is not enough.
 
@@ -49,7 +49,7 @@ Reports: `reports/prices-gw*.md` and `reports/predeadline-gw*.md`. JSON next to 
 
 ## What is here
 
-- CLI `fpl-agent` — rules, projections, price watch, pre-deadline news
+- CLI `fpl-agent` — rules, projections, price watch, pre-deadline news, `team-state lookup` for screenshot names
 - GitHub Action `fpl-prices.yml` — 21:00 Europe/Zagreb (GitHub cron can skip or run late)
 - Cursor rule `.cursor/rules/predeadline.mdc` — phone Cloud Agent flow
 - Never mutates your FPL team

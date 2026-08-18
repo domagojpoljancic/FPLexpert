@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 import typer
 
@@ -142,6 +143,98 @@ def rules_diff(
         typer.echo(f"- {note}")
     if severity == DriftSeverity.MATERIAL:
         _exit(ExitCode.UNSUPPORTED_SEASON_RULES)
+    _exit(ExitCode.SUCCESS)
+
+
+def _load_bootstrap_payload(*, bootstrap: Path | None, offline: bool) -> dict[str, Any]:
+    if bootstrap is not None:
+        return json.loads(bootstrap.read_text(encoding="utf-8"))
+    from fpl_agent.suggest import load_public_data
+
+    payload, _fixtures = load_public_data(offline=offline)
+    return payload
+
+
+@team_state_app.command("lookup")
+def team_state_lookup(
+    names: list[str] = typer.Argument(..., help="Names as printed on FPL cards (include initials)"),
+    bootstrap: Path | None = typer.Option(None, "--bootstrap", help="Bootstrap JSON; default live/cache"),
+    offline: bool = typer.Option(False, "--offline", help="Use cached/fixture bootstrap only"),
+) -> None:
+    """Map screenshot / card names to official FPL ids. Does not guess."""
+    from fpl_agent.errors import AgentError
+    from fpl_agent.team_state.lookup import format_matches, match_names, players_from_bootstrap
+
+    try:
+        payload = _load_bootstrap_payload(bootstrap=bootstrap, offline=offline)
+    except AgentError as exc:
+        typer.echo(f"FAILED: {exc}", err=True)
+        _exit(exc.exit_code)
+    catalog = players_from_bootstrap(payload)
+    matches = match_names(names, catalog)
+    typer.echo(format_matches(matches))
+    if any(item.status != "OK" for item in matches):
+        typer.echo(
+            "Unresolved names: ask the user. Do not invent ids. Copy the printed card name including initials.",
+            err=True,
+        )
+        _exit(ExitCode.INSUFFICIENT_OR_STALE_TEAM_STATE)
+    ids = [item.player.player_id for item in matches if item.player is not None]
+    typer.echo("ids " + " ".join(str(pid) for pid in ids))
+    _exit(ExitCode.SUCCESS)
+
+
+@team_state_app.command("names")
+def team_state_names(
+    path: Path = typer.Option(Path("data/private-state/current.json"), "--path"),
+    bootstrap: Path | None = typer.Option(None, "--bootstrap"),
+    offline: bool = typer.Option(False, "--offline"),
+) -> None:
+    """Print the saved squad as FPL web_name values (not raw ids)."""
+    from datetime import UTC
+
+    from fpl_agent.config import load_settings
+    from fpl_agent.errors import AgentError
+    from fpl_agent.team_state.lookup import (
+        catalog_by_id,
+        format_saved_squad,
+        players_from_bootstrap,
+    )
+    from fpl_agent.team_state.private import load_and_validate_private_state
+
+    if not path.exists():
+        typer.echo(f"No squad file at {path}")
+        typer.echo("Create it from the FPL app (15 players, bank, free transfers). See data/private-state/README.md")
+        _exit(ExitCode.INSUFFICIENT_OR_STALE_TEAM_STATE)
+    try:
+        state = load_and_validate_private_state(path)
+        payload = _load_bootstrap_payload(bootstrap=bootstrap, offline=offline)
+    except AgentError as exc:
+        typer.echo(f"FAILED: {exc}", err=True)
+        _exit(exc.exit_code)
+    catalog = catalog_by_id(players_from_bootstrap(payload))
+    settings = load_settings()
+    as_of = state.as_of if state.as_of.tzinfo else state.as_of.replace(tzinfo=UTC)
+    try:
+        from zoneinfo import ZoneInfo
+
+        local = as_of.astimezone(ZoneInfo(settings.manager.timezone)).strftime("%d %b %Y %H:%M %Z")
+    except Exception:  # noqa: BLE001
+        local = as_of.astimezone(UTC).strftime("%d %b %Y %H:%M UTC")
+    typer.echo(
+        format_saved_squad(
+            player_ids=list(state.player_ids),
+            catalog=catalog,
+            bank_tenths=state.bank_tenths,
+            free_transfers=state.free_transfers,
+            captain_id=state.captain_id,
+            vice_id=state.vice_id,
+            starters=list(state.starters) if state.starters else None,
+            bench_order=list(state.bench_order) if state.bench_order else None,
+            as_of_label=local,
+            gameweek=state.applies_before_gameweek,
+        )
+    )
     _exit(ExitCode.SUCCESS)
 
 

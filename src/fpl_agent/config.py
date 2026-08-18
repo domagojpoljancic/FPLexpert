@@ -78,8 +78,8 @@ class ModelsSettings(BaseModel):
     deadline_model: str = "gpt-5"
     review_model: str = "gpt-5-mini"
     reasoning_effort: str = "medium"
-    web_search_budget: int = Field(default=3, ge=0)
-    max_output_tokens: int = Field(default=4000, gt=0)
+    web_search_budget: int = Field(default=8, ge=0)
+    max_output_tokens: int = Field(default=5000, gt=0)
 
 
 class CostSettings(BaseModel):

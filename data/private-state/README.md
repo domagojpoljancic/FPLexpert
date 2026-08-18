@@ -22,3 +22,10 @@ This folder holds a **manual snapshot** of your FPL team. The app never logs int
 After you update `current.json`, local `predeadline` uses it immediately. The GitHub evening price job needs `uv run fpl-agent team-state encode-for-github data/private-state/current.json` as well.
 
 Check the file with: `uv run fpl-agent team-state status`
+
+From a screenshot, map printed card names (including initials like `B.Fernandes`) to official ids:
+
+```bash
+uv run fpl-agent team-state lookup -- Raya Senesi Virgil "B.Fernandes"
+uv run fpl-agent team-state names
+```

@@ -13,7 +13,7 @@ Do **not** run `predeadline` yet.
 
 Load the last snapshot: use `data/private-state/current.json` if present, otherwise `uv run fpl-agent team-state materialize-from-env` (never print the secret or raw JSON).
 
-List it in **names**, not ID dumps: 15 players, captain, vice, bank in £m, free transfers, and when it was last saved. Map IDs via public FPL `web_name`.
+Print names with `uv run fpl-agent team-state names` (add `--offline` only if live FPL is down). Do not dump raw IDs.
 
 Then ask, and **wait**:
 
@@ -24,17 +24,24 @@ Then ask, and **wait**:
 - They say something changed, or the list is missing/unreadable → **wait for a photo**. Do not guess.
 - No saved squad at all → ask for a photo immediately.
 
-If bank, FT, or chips are not on the first screenshot, ask for a second (transfers / team page). If a name is ambiguous, ask. Never invent player IDs.
+If bank, FT, or chips are not on the first screenshot, ask for a second (transfers / team page).
 
 ## 2. Update the squad file from the photo (only if they sent one)
 
-Write `data/private-state/current.json` (gitignored):
+A screenshot dump is enough. Do **not** refuse because shirts look like the “wrong” club or because a name exists twice in last season’s memory. 2026/27 clubs and `web_name` values come from live FPL, not training data.
 
-- Set `as_of` to now (UTC) and `applies_before_gameweek` to the next GW.
-- Map visible names to official FPL `id` values (bootstrap `web_name` / full name).
-- Keep previous `purchase_prices_tenths` for players still in the 15. For new players, use listed `now_cost` if the buy price is not on the photo, and say so.
-- Update bank (`bank_tenths`: £1.5m → `15`), `free_transfers`, `captain_id`, `vice_id`, starters/bench if visible.
-- Confirm in words: 15 names, bank, FT, captain. Do not paste the full JSON.
+1. Read the **printed card names** (FPL `web_name`), including initials (`B.Fernandes`, not `Fernandes`). Ignore kit colours.
+2. Run:
+   `uv run fpl-agent team-state lookup -- Name1 Name2 ...`
+   (15 names; quote names with spaces or apostrophes). Use live bootstrap unless FPL is unreachable, then `--offline`.
+3. The CLI prints official `id=` values. **OK** = mapped. **AMBIGUOUS** / **NONE** = ask only for those names. Never invent IDs. Never abandon the whole 15 because one name failed.
+4. Write `data/private-state/current.json` (gitignored):
+   - `as_of` now (UTC), `applies_before_gameweek` = next GW.
+   - Keep previous `purchase_prices_tenths` for players still in the 15. For new players, use the price on the transfers screenshot, else listed `now_cost`, and say so.
+   - Bank: £1.5m → `bank_tenths: 15`. £0.0m → `0`.
+   - GW1 **Unlimited** free transfers → store `free_transfers: 1` (schema max is 5; the GW1 editor is unlimited, not a banked FT count).
+   - Captain / vice / starters / bench when visible.
+5. Confirm in words: 15 names, bank, FT, captain. Do not paste the full JSON.
 
 Then: `uv run fpl-agent team-state validate data/private-state/current.json`
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -13,9 +13,11 @@ from fpl_agent.config import Settings, load_settings
 from fpl_agent.domain.models import SeasonId
 from fpl_agent.errors import AgentError, AgentErrorCode, ExitCode
 from fpl_agent.evidence.news import (
+    SUGGESTED_SOURCE_HUBS,
     build_squad_search_request,
     claims_from_bootstrap_news,
     claims_from_search_sources,
+    source_tier_for_url,
 )
 from fpl_agent.llm.client import (
     DailyAdvice,
@@ -49,6 +51,10 @@ class DailyReport:
     squad_as_of: datetime | None = None
     squad_max_age_hours: float = 24.0
     timezone: str = "Europe/Zagreb"
+    tldr: list[str] = field(default_factory=list)
+    detail: str = ""
+    search_queries: list[str] = field(default_factory=list)
+    suggested_hubs: list[dict[str, str]] = field(default_factory=list)
 
 
 def _squad_rows(
@@ -260,6 +266,7 @@ def run_predeadline(
         "attention_triggers": triggers,
         "search_request": search_req.model_dump(mode="json"),
         "sources": [c.model_dump(mode="json") for c in fpl_claims],
+        "suggested_source_hubs": [dict(h) for h in SUGGESTED_SOURCE_HUBS],
         "policy": {
             "do_not_transfer_just_because_ran": True,
             "recommend_only": True,
@@ -319,6 +326,7 @@ def run_predeadline(
             "tier": c.source_tier,
             "category": c.category.value,
             "url": c.source_url,
+            "title": c.text[:200],
             "text": c.text[:200],
             "player_ids": c.player_ids,
         }
@@ -328,6 +336,10 @@ def run_predeadline(
     extra_warnings = _unique_texts(list(team.warnings))
     if price_report is not None:
         extra_warnings = _unique_texts(extra_warnings + list(price_report.warnings))
+
+    tldr = [item.strip() for item in advice.tldr if item.strip()]
+    if not tldr and advice.headline:
+        tldr = [advice.headline]
 
     return DailyReport(
         gameweek=gw,
@@ -358,6 +370,10 @@ def run_predeadline(
         squad_as_of=private.as_of,
         squad_max_age_hours=float(settings.freshness.private_squad_max_age_hours),
         timezone=settings.manager.timezone,
+        tldr=tldr,
+        detail=advice.detail.strip(),
+        search_queries=list(meta.search_queries),
+        suggested_hubs=[dict(h) for h in SUGGESTED_SOURCE_HUBS],
     )
 
 
@@ -389,20 +405,24 @@ def _format_squad_age(report: DailyReport, *, now: datetime | None = None) -> tu
     return local, age_hours
 
 
-def _can_act_lines(report: DailyReport) -> list[str]:
-    lines = ["## Can you act on transfer advice?", ""]
+def _act_tldr_bullet(report: DailyReport) -> str:
     if report.executability == "EXECUTABLE":
-        lines.append(
-            "**Yes.** The squad file is fresh enough (15 players, bank, free transfers)."
-        )
-        return lines
+        return "Transfers: **you can act** (squad file is fresh)."
+    if report.executability == "CONDITIONAL_ONLY":
+        return "Transfers: **caveats** — bank, FT, or chips may be incomplete."
+    return "Transfers: **not executable** — squad file missing or stale; news notes still useful."
+
+
+def _can_act_lines(report: DailyReport) -> list[str]:
+    if report.executability == "EXECUTABLE":
+        return []
+    lines = ["### Squad file", ""]
     if report.executability == "CONDITIONAL_ONLY":
         lines.append(
-            "**Only with caveats.** Some bank, free-transfer, or chip data is missing or old."
+            "Some bank, free-transfer, or chip data is missing or old. Treat transfer ideas as conditional."
         )
         return lines
     lines.append(
-        "**No — not as executable transfers.** "
         "We do not have a fresh enough picture of your team to say “do this transfer now.”"
     )
     aged = _format_squad_age(report)
@@ -413,7 +433,6 @@ def _can_act_lines(report: DailyReport) -> list[str]:
             f"We only trust it for **{report.squad_max_age_hours:.0f} hours**."
         )
     lines.append(
-        "News and lineup notes below can still be useful. "
         "Update `data/private-state/current.json` from the FPL app, then run again. "
         "For the GitHub evening price job, also run "
         "`uv run fpl-agent team-state encode-for-github data/private-state/current.json`."
@@ -428,6 +447,79 @@ def _ai_line(report: DailyReport) -> str:
     searches = report.model_meta.get("web_search_calls")
     extra = f" Web searches actually made: {searches}." if searches is not None else ""
     return f"AI: **{model}** (live OpenAI).{extra}"
+
+
+def _page_urls(report: DailyReport) -> list[str]:
+    urls: list[str] = []
+    seen: set[str] = set()
+    for src in report.sources:
+        url = str(src.get("url") or "")
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        urls.append(url)
+    return urls
+
+
+def _hub_hit(hub_url: str, page_urls: list[str]) -> bool:
+    from urllib.parse import urlparse
+
+    hub_host = urlparse(hub_url).netloc.lower().removeprefix("www.")
+    if not hub_host or "google." in hub_host:
+        return False
+    for page in page_urls:
+        host = urlparse(page).netloc.lower().removeprefix("www.")
+        if hub_host and hub_host in host:
+            return True
+    return False
+
+
+def _source_label(src: dict[str, Any]) -> str:
+    title = str(src.get("title") or src.get("text") or "").strip()
+    url = str(src.get("url") or "")
+    if title.startswith("Web source consulted"):
+        title = ""
+    if title and url:
+        return f"[{title}]({url})"
+    if url:
+        return url
+    return title or "(no url)"
+
+
+def _sources_section(report: DailyReport) -> list[str]:
+    lines = ["## Sources checked", ""]
+    searches = report.model_meta.get("web_search_calls")
+    if report.used_live_ai:
+        lines.append(f"OpenAI web searches this run: **{searches if searches is not None else 0}**.")
+    else:
+        lines.append("No live OpenAI search this run.")
+    if report.search_queries:
+        lines += ["", "Queries:"]
+        lines.extend(f"- {q}" for q in report.search_queries)
+
+    fpl_pages = [s for s in report.sources if str(s.get("claim_id") or "").startswith("fpl-")]
+    web_pages = [s for s in report.sources if not str(s.get("claim_id") or "").startswith("fpl-")]
+    if web_pages:
+        lines += ["", "Pages OpenAI returned:"]
+        for src in web_pages[:40]:
+            tier = src.get("tier") or source_tier_for_url(str(src.get("url") or ""))
+            lines.append(f"- {_source_label(src)} — {tier}")
+    elif report.used_live_ai:
+        lines += ["", "Pages OpenAI returned: none parsed from the tool trace."]
+    if fpl_pages:
+        lines += ["", "Official FPL status fields:"]
+        for src in fpl_pages[:20]:
+            lines.append(f"- {src.get('title') or src.get('text')}")
+
+    hubs = report.suggested_hubs or [dict(h) for h in SUGGESTED_SOURCE_HUBS]
+    pages = _page_urls(report)
+    lines += ["", "Suggested hubs (always listed; check these yourself too):"]
+    for hub in hubs:
+        name = hub.get("name") or "source"
+        url = hub.get("url") or ""
+        mark = "returned this run" if _hub_hit(url, pages) else "not returned this run"
+        lines.append(f"- [{name}]({url}) — {mark}")
+    return lines
 
 
 def render_daily_text(report: DailyReport) -> str:
@@ -451,25 +543,21 @@ def render_daily_text(report: DailyReport) -> str:
 
     hide = {"private squad stale"}
     warnings = [w for w in _unique_texts(report.warnings) if w not in hide]
+    tldr = [item for item in report.tldr if item] or ([report.headline] if report.headline else [])
     lines = [
         f"# Pre-deadline FPL review — Gameweek {report.gameweek}",
         "",
         f"Plan: **{report.plan_action.upper()}**",
+        f"Headline: {report.headline}",
         _ai_line(report),
     ]
     if report.price_status:
         lines.append(f"Price watch: **{report.price_status}** (overnight rises/falls — not news).")
-    lines += ["", *_can_act_lines(report), "", f"## {report.headline}", "", "## What changed"]
-    if report.what_changed:
-        lines.extend(f"- {x}" for x in report.what_changed)
-    else:
-        lines.append("- Nothing material from FPL status fields.")
-    lines += ["", "## Attention"]
-    if report.attention_triggers:
-        lines.extend(f"- {x}" for x in report.attention_triggers)
-    else:
-        lines.append("- None.")
-    lines += ["", "## Suggested moves"]
+    lines += ["", "## TLDR", ""]
+    lines.append(f"- Plan: **{report.plan_action.upper()}**")
+    lines.extend(f"- {item}" for item in tldr)
+    lines.append(f"- {_act_tldr_bullet(report)}")
+    lines += ["", "## Do this", ""]
     if report.suggested_moves:
         for move in report.suggested_moves:
             lines.append(
@@ -477,17 +565,29 @@ def render_daily_text(report: DailyReport) -> str:
             )
     else:
         lines.append("- Hold.")
+    detail = report.detail.strip() or report.headline
+    lines += ["", "## Why", "", detail, "", "## Notes", ""]
+    notes = _can_act_lines(report)
+    if notes:
+        lines.extend(notes)
+        lines.append("")
+    lines += ["### What changed"]
+    if report.what_changed:
+        lines.extend(f"- {x}" for x in report.what_changed)
+    else:
+        lines.append("- Nothing material from FPL status fields.")
+    lines += ["", "### Attention"]
+    if report.attention_triggers:
+        lines.extend(f"- {x}" for x in report.attention_triggers)
+    else:
+        lines.append("- None.")
     if report.uncertainty:
-        lines += ["", "## Uncertainty"]
+        lines += ["", "### Uncertainty"]
         lines.extend(f"- {x}" for x in report.uncertainty)
     if warnings:
-        lines += ["", "## Other warnings"]
+        lines += ["", "### Other warnings"]
         lines.extend(f"- {x}" for x in warnings)
-    if report.sources:
-        lines += ["", "## Sources"]
-        for src in report.sources[:12]:
-            lines.append(f"- `{src['claim_id']}` ({src['tier']}) {src['url']}")
-    lines += ["", "_Recommend only — you make all FPL changes._"]
+    lines += ["", *_sources_section(report), "", "_Recommend only — you make all FPL changes._"]
     return "\n".join(lines)
 
 
