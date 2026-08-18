@@ -95,7 +95,7 @@ With sell-on fee 0.5, a +0.1 rise often **does not** increase selling price; a +
 
 Recommended local windows (manager tz), not guarantees:
 
-- GitHub Actions: about every 2h + an evening slot (`fpl-prices.yml`). Persist snapshots in git. Email via GitHub Issue on act-now only.
+- GitHub Actions: one evening slot (`fpl-prices.yml`). Persist snapshots in git. Email via GitHub Issue on act-now only.
 - Evening: after transfer activity, before the uncertain overnight window (e.g. 21:30–23:30 Europe/Zagreb)
 - Morning: confirm `now_cost` vs last night’s predictions
 - ~24h before deadline: full pre-deadline check (you start this from Cursor on your phone)

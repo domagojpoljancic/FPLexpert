@@ -7,9 +7,7 @@ on:
         type: boolean
         default: false
   schedule:
-    # Snapshot history (needed for likelihood bands). GitHub may delay/drop.
-    - cron: "41 */2 * * *"
-    # Evening window ~21:47 Europe/Zagreb in summer (19:47 UTC). Not punctual.
+    # Evening window ~21:47 Europe/Zagreb in summer (19:47 UTC). GitHub may delay/drop.
     - cron: "47 19 * * *"
 
 permissions: {}
