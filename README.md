@@ -9,6 +9,7 @@ WIP. Recommends transfers, hits, lineup, captain, bench, and chips. **You** make
 - [18 Aug 17:20 CEST](run-log.md) · GW1 · **NO ACTION** — No price action tonight.
 
 **Squad news** (pre-deadline)
+- [18 Aug 18:28 CEST](reports/predeadline-gw1-20260818T162844Z.md) · GW1 · **KEEP** — Hold FT; team looks fine. Small bench-order tweak to de-risk O'Nien’s low start. Keep Bru…
 - [18 Aug 17:29 CEST](reports/predeadline-gw1-20260818T152951Z.md) · GW1 · **WATCH** — Watch O'Nien's low start probability (no immediate transfers recommended)
 <!-- recent-runs:end -->
 
