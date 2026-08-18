@@ -7,8 +7,9 @@ on:
         type: boolean
         default: false
   schedule:
-    # Evening window ~21:47 Europe/Zagreb in summer (19:47 UTC). GitHub may delay/drop.
-    - cron: "47 19 * * *"
+    # 21:00 Europe/Zagreb in summer (CEST = 19:00 UTC). Winter this is 20:00 Zagreb.
+    # GitHub cron is UTC and may delay/drop.
+    - cron: "0 19 * * *"
 
 permissions: {}
 
@@ -33,6 +34,14 @@ jobs:
           If this reaches your inbox, overnight price alerts will use the same path (comments on issue #1).
           EOF
           )"
+      - name: Summary
+        run: |
+          {
+            echo "## Email test only"
+            echo
+            echo "The **prices** job was skipped. This run only posted a test comment."
+            echo "Uncheck **test_email** (or wait for the 21:00 schedule) to run the real price watch."
+          } >> "$GITHUB_STEP_SUMMARY"
 
   prices:
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.test_email == false }}
@@ -57,30 +66,78 @@ jobs:
         run: |
           uv run python - <<'PY'
           import json
+          import os
           from datetime import UTC, datetime
           from pathlib import Path
-          reports = sorted(Path("reports").glob("prices-gw*.json"))
+          from zoneinfo import ZoneInfo
+
+          reports = sorted(
+              Path("reports").glob("prices-gw*.json"),
+              key=lambda p: p.stat().st_mtime,
+          )
           status = "unknown"
           gameweek = None
+          headline = ""
+          md_text = ""
           if reports:
               payload = json.loads(reports[-1].read_text(encoding="utf-8"))
               status = payload.get("status") or status
               gameweek = payload.get("gameweek")
-          path = Path("data/snapshots/prices/last-success.json")
-          path.parent.mkdir(parents=True, exist_ok=True)
-          path.write_text(
+              headline = payload.get("headline") or ""
+              md_path = reports[-1].with_suffix(".md")
+              if md_path.exists():
+                  md_text = md_path.read_text(encoding="utf-8")
+          now = datetime.now(UTC)
+          local = now.astimezone(ZoneInfo("Europe/Zagreb"))
+          stamp_utc = now.strftime("%Y-%m-%dT%H:%MZ")
+          stamp_local = local.strftime("%Y-%m-%d %H:%M %Z")
+          folder = Path("data/snapshots/prices")
+          folder.mkdir(parents=True, exist_ok=True)
+          (folder / "last-success.json").write_text(
               json.dumps(
                   {
-                      "utc": datetime.now(UTC).strftime("%Y-%m-%dT%H:%MZ"),
+                      "utc": stamp_utc,
+                      "local": stamp_local,
                       "gameweek": gameweek,
                       "status": status,
+                      "headline": headline,
                   },
                   indent=2,
               )
               + "\n",
               encoding="utf-8",
           )
-          print(path)
+          log = folder / "run-log.md"
+          if not log.exists():
+              log.write_text(
+                  "# Price watch run log\n\n"
+                  "| Local (Zagreb) | UTC | GW | Status | Headline |\n"
+                  "| --- | --- | --- | --- | --- |\n",
+                  encoding="utf-8",
+              )
+          safe_headline = headline.replace("|", "/").replace("\n", " ")
+          with log.open("a", encoding="utf-8") as fh:
+              fh.write(
+                  f"| {stamp_local} | {stamp_utc} | {gameweek or ''} | {status} | {safe_headline} |\n"
+              )
+          summary = os.environ.get("GITHUB_STEP_SUMMARY")
+          if summary:
+              body = [
+                  "## Price watch",
+                  "",
+                  f"- Local: **{stamp_local}**",
+                  f"- UTC: `{stamp_utc}`",
+                  f"- Gameweek: `{gameweek}`",
+                  f"- Status: **{status}**",
+                  f"- Headline: {headline or '(none)'}",
+                  "",
+                  "Email is sent only on act-now. This summary is the run log.",
+                  "",
+              ]
+              if md_text:
+                  body.extend(["### Report", "", md_text[:12000], ""])
+              Path(summary).write_text("\n".join(body), encoding="utf-8")
+          print(status, stamp_local)
           PY
       - name: Email via GitHub Issue (act-now only)
         env:

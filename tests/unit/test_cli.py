@@ -80,6 +80,6 @@ def test_prices_workflow_wired() -> None:
     assert "FPL_PRIVATE_STATE_B64" in text
     assert "materialize-from-env" in text
     assert "cron:" in text
-    assert "47 19 * * *" in text
+    assert "0 19 * * *" in text
     assert "*/2" not in text
     assert "OPENAI_API_KEY" not in text
