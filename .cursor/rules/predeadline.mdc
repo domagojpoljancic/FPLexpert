@@ -49,6 +49,19 @@ Show the CLI report. Do not invent transfers, prices, player IDs, or news.
 
 Cursor's model picker may stay Auto. OpenAI for news is `OPENAI_API_KEY` inside `predeadline`. The user makes all FPL changes themselves.
 
-The CLI writes `reports/predeadline-gw*.md` and refreshes the latest-results block in `README.md`. Commit **only** those markdown reports and `README.md` (never `.env`, JSON reports, or private state) so the GitHub README links work from the phone.
+The CLI writes `reports/predeadline-gw*.md` and refreshes the latest-results block in `README.md`.
 
 Price watch is GitHub Actions (`fpl-agent prices`). Do not start that job from chat unless asked.
+
+## 4. Push to GitHub (required after every successful review)
+
+The phone README links only work on the **default branch** (`main`). A local commit, a feature branch, or a draft PR is **not** done.
+
+After the CLI saves a new `reports/predeadline-gw*.md` and updates `README.md`, publish immediately — even if the user did not say commit or push:
+
+1. Stage **only** `README.md` and the new `reports/predeadline-gw*.md` file.
+2. Commit, for example: `Pre-deadline GW{N} review`.
+3. **Push to `origin/main`.** If you are not on `main`, still land these two files on `main` and push that branch (`git fetch origin main`, checkout `main`, add the two files, commit, `git push origin main`). Do not leave the report only on a Cloud Agent working branch.
+4. Do not finish the run until `git push origin main` succeeds. Retry on network errors.
+
+Never stage: `.env`, `data/private-state/**`, JSON reports, price snapshots, caches, or unrelated code. Private squad state stays gitignored.
