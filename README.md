@@ -12,9 +12,9 @@ WIP. Recommends transfers, hits, lineup, captain, bench, and chips. **You** make
 - [18 Aug 17:20 CEST](run-log.md) · GW1 · **NO ACTION** — No price action tonight.
 
 **Squad news** (pre-deadline)
+- [21 Aug 18:49 CEST](reports/predeadline-gw1-20260821T164916Z.md) · GW1 · **REVISE** — Keep the squad and Bruno captaincy, but make the projection-backed upgrade from Raya to G…
 - [21 Aug 11:39 CEST](reports/predeadline-gw1-20260821T093945Z.md) · GW1 · **WATCH** — Keep the current XI and Bruno Fernandes captaincy; O'Nien's low start probability is the…
 - [18 Aug 18:28 CEST](reports/predeadline-gw1-20260818T162844Z.md) · GW1 · **KEEP** — Hold FT; team looks fine. Small bench-order tweak to de-risk O'Nien’s low start. Keep Bru…
-- [18 Aug 17:29 CEST](reports/predeadline-gw1-20260818T152951Z.md) · GW1 · **WATCH** — Watch O'Nien's low start probability (no immediate transfers recommended)
 <!-- recent-runs:end -->
 
 ## From your phone (Cursor)
