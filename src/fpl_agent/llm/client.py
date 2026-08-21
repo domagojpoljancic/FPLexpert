@@ -59,6 +59,11 @@ class DailyMove(BaseModel):
 
     move_type: MoveType
     summary: str = Field(max_length=400)
+    why: str = Field(
+        default="",
+        max_length=600,
+        description="Plain-language reason for this move: numbers, constraints, or news that justify it.",
+    )
     player_ids: list[int] = Field(default_factory=list)
     urgency: str = Field(default="low", pattern="^(low|medium|high)$")
     cited_source_ids: list[str] = Field(default_factory=list)
@@ -169,6 +174,10 @@ class FakeOpenAIClient:
                         f"Transfer {top.get('out_name')} ({top.get('out_id')}) to "
                         f"{top.get('in_name')} ({top.get('in_id')}); affordable with current bank."
                     ),
+                    why=(
+                        f"Top affordable transfer_candidate by weighted xP "
+                        f"(+{top.get('delta_weighted_xp')} supplied)."
+                    ),
                     player_ids=[int(top["out_id"]), int(top["in_id"])],
                     urgency="high",
                 )
@@ -197,6 +206,10 @@ class FakeOpenAIClient:
                         f"{top.get('out_name')} ({top.get('out_id')}) -> "
                         f"{top.get('in_name')} ({top.get('in_id')}), shortfall £{shortfall/10:.1f}m."
                     ),
+                    why=(
+                        f"No legal improving 1-FT fits the bank; best stretch needs "
+                        f"£{shortfall/10:.1f}m more."
+                    ),
                     player_ids=[int(top["out_id"]), int(top["in_id"])],
                     urgency="medium",
                 )
@@ -216,6 +229,7 @@ class FakeOpenAIClient:
                 DailyMove(
                     move_type=MoveType.HOLD,
                     summary="No live model; hold unless an attention trigger is material.",
+                    why="Deterministic fallback with no transfer candidates or live model.",
                     urgency="medium" if triggers else "low",
                 )
             )
@@ -483,7 +497,8 @@ class ResponsesOpenAIClient:
             "Fantasy Football Scout, r/FantasyPL, BBC Sport fantasy football, Sky Sports), "
             "then search named squad players/clubs for injury, suspension, press-conference, "
             "or fixture news. Prefer official/club/FFS sources; treat Reddit as lower-confidence. "
-            "Fill tldr (3–6 one-line bullets) and detail (short why, not a dump). "
+            "Fill tldr (3–6 one-line bullets) and detail (decision rationale with numbers/constraints). "
+            "Every suggested_moves item must include a non-empty why explaining that move. "
             "Use supplied price_actions if present. Do not invent price likelihoods. "
             "Do not upgrade ignore/watch price actions into transfers for price reasons. "
             "Evaluate transfer_candidates and stretch_transfer_candidates; buy IDs must come from those lists only. "

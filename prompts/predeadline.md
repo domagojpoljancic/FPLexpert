@@ -31,8 +31,9 @@ Use web_search. Spend the budget: first the `suggested_source_hubs` (Premier Lea
 - `plan_action`: keep (no action), watch (monitor a risk), revise (user should consider a concrete change).
 - `tldr`: 3–6 one-line bullets. Most important first (hold/transfer, captain, vice, the one watch item).
 - `headline`: one sentence that can stand alone.
-- `detail`: short why (about 120–250 words). Not a dump. Cover the main recommendation, the main risk, and what would change your mind.
+- `detail`: the decision rationale (about 150–300 words). Not a dump. Must explain **why** the plan was chosen: cite supplied projection deltas / start probabilities / bank / FT / news when relevant; say what was considered and rejected (e.g. better stretch but unaffordable); and state what would change your mind.
 - `suggested_moves`: at most a few concrete, legal ideas referencing supplied player_ids only.
+- Every `suggested_moves` item **must** include a non-empty `why` that stands alone (e.g. "+1.0 GW1 xP and affordable at £0.0m bank", "highest supplied GW1 projection in the squad"). Do not leave `why` blank.
 - Focus on injuries, suspensions, rotation, pressers, fixture/news risk, the supplied transfer candidate lists, and the supplied price actions for this deadline.
 
 Return only the requested structured schema.

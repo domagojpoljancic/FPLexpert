@@ -58,7 +58,7 @@ If `gh` is available, also `uv run fpl-agent team-state encode-for-github data/p
 `uv run fpl-agent predeadline --live-ai`  
 Add `--force` only if they ask, or if the gate says it is too early/late and they still want it.
 
-Show the CLI report. Do not invent transfers, prices, player IDs, or news.
+Show the CLI report, including the **Why** section and per-move Why lines from the saved markdown. Do not invent transfers, prices, player IDs, or news.
 
 Cursor's model picker may stay Auto. OpenAI for news is `OPENAI_API_KEY` inside `predeadline`. The user makes all FPL changes themselves.
 

@@ -117,7 +117,7 @@ def test_report_lists_openai_pages_and_hubs() -> None:
         headline="Hold FT",
         what_changed=[],
         attention_triggers=[],
-        suggested_moves=[{"urgency": "low", "move_type": "hold", "summary": "Roll the FT"}],
+        suggested_moves=[{"urgency": "low", "move_type": "hold", "summary": "Roll the FT", "why": "No injury news and no affordable upgrade beat rolling."}],
         uncertainty=["Pressers still to come"],
         warnings=[],
         sources=[
@@ -148,6 +148,7 @@ def test_report_lists_openai_pages_and_hubs() -> None:
     assert "not returned this run" in text
     assert "FPL GW1 team news" in text
     assert "No material injury news" in text
+    assert "Why: No injury news and no affordable upgrade beat rolling." in text
     assert "you can act" in text
 
 

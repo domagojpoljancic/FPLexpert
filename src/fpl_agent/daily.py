@@ -590,10 +590,23 @@ def render_daily_text(report: DailyReport) -> str:
             lines.append(
                 f"- [{move.get('urgency', 'low')}] {move.get('move_type')}: {move.get('summary')}"
             )
+            why = str(move.get("why") or "").strip()
+            if why:
+                lines.append(f"  - Why: {why}")
     else:
         lines.append("- Hold.")
     detail = report.detail.strip() or report.headline
-    lines += ["", "## Why", "", detail, "", "## Notes", ""]
+    lines += [
+        "",
+        "## Why",
+        "",
+        detail,
+        "",
+        "_Each item under Do this also has its own Why line when the model supplied one._",
+        "",
+        "## Notes",
+        "",
+    ]
     notes = _can_act_lines(report)
     if notes:
         lines.extend(notes)
