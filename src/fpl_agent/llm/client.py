@@ -151,25 +151,88 @@ class FakeOpenAIClient:
         if self.daily:
             return self.daily, CallMetadata(fallback=False, model="fake")
         triggers = list(payload.get("attention_triggers") or [])
-        action = PlanAction.WATCH if triggers else PlanAction.KEEP
+        affordable = list(payload.get("transfer_candidates") or [])
+        stretch = list(payload.get("stretch_transfer_candidates") or [])
+        moves: list[DailyMove] = []
+        tldr: list[str] = []
+        if affordable:
+            top = affordable[0]
+            action = PlanAction.REVISE
+            headline = (
+                f"Projection-backed FT: {top.get('out_name')} -> {top.get('in_name')} "
+                f"(+{top.get('delta_weighted_xp')} weighted xP)."
+            )
+            moves.append(
+                DailyMove(
+                    move_type=MoveType.TRANSFER,
+                    summary=(
+                        f"Transfer {top.get('out_name')} ({top.get('out_id')}) to "
+                        f"{top.get('in_name')} ({top.get('in_id')}); affordable with current bank."
+                    ),
+                    player_ids=[int(top["out_id"]), int(top["in_id"])],
+                    urgency="high",
+                )
+            )
+            tldr = [
+                f"Transfer {top.get('out_name')} -> {top.get('in_name')}",
+                "Keep FT only if late news vetoes the buy target",
+            ]
+            detail = (
+                "Deterministic fallback chose the top affordable transfer_candidate by weighted xP. "
+                "Live OpenAI synthesis was not used."
+            )
+        elif stretch:
+            top = stretch[0]
+            shortfall = int(top.get("bank_shortfall_tenths") or 0)
+            action = PlanAction.WATCH if not triggers else PlanAction.WATCH
+            headline = (
+                f"No affordable FT upgrade with current bank; best stretch is "
+                f"{top.get('out_name')} -> {top.get('in_name')} (needs £{shortfall/10:.1f}m)."
+            )
+            moves.append(
+                DailyMove(
+                    move_type=MoveType.HOLD,
+                    summary=(
+                        f"Hold the FT for now. Stretch target when funded: "
+                        f"{top.get('out_name')} ({top.get('out_id')}) -> "
+                        f"{top.get('in_name')} ({top.get('in_id')}), shortfall £{shortfall/10:.1f}m."
+                    ),
+                    player_ids=[int(top["out_id"]), int(top["in_id"])],
+                    urgency="medium",
+                )
+            )
+            tldr = [
+                "No legal improving FT fits the bank",
+                f"Stretch: {top.get('out_name')} -> {top.get('in_name')} (needs £{shortfall/10:.1f}m)",
+            ]
+            detail = (
+                "Deterministic fallback: bank blocks every improving same-position 1-FT. "
+                "Named the top stretch_transfer_candidate so the manager has a concrete target."
+            )
+        else:
+            action = PlanAction.WATCH if triggers else PlanAction.KEEP
+            headline = "Deterministic daily summary (no live model)."
+            moves.append(
+                DailyMove(
+                    move_type=MoveType.HOLD,
+                    summary="No live model; hold unless an attention trigger is material.",
+                    urgency="medium" if triggers else "low",
+                )
+            )
+            tldr = ["No live model; hold unless an attention trigger is material."]
+            detail = "Deterministic fallback. No web pages were searched."
         return (
             DailyAdvice(
                 plan_action=action,
-                headline="Deterministic daily summary (no live model).",
+                headline=headline,
                 what_changed=list(payload.get("what_changed") or [])[:8],
                 attention_triggers=triggers[:8],
-                suggested_moves=[
-                    DailyMove(
-                        move_type=MoveType.HOLD,
-                        summary="No live model; hold unless an attention trigger is material.",
-                        urgency="medium" if triggers else "low",
-                    )
-                ],
+                suggested_moves=moves,
                 uncertainty=["Live OpenAI synthesis was not used."],
                 warnings=[],
                 cited_source_ids=[s["claim_id"] for s in payload.get("sources") or [] if "claim_id" in s][:10],
-                tldr=["No live model; hold unless an attention trigger is material."],
-                detail="Deterministic fallback. No web pages were searched.",
+                tldr=tldr,
+                detail=detail,
             ),
             CallMetadata(fallback=True, model="fake"),
         )
@@ -209,10 +272,12 @@ def validate_daily_advice(
     allowed_player_ids: set[int],
     allowed_source_ids: set[str],
     price_actions: list[dict[str, Any]] | None = None,
+    owned_player_ids: set[int] | None = None,
 ) -> DailyAdvice:
     warnings = list(advice.warnings)
     ignore_watch: set[int] = set()
     act_now: set[int] = set()
+    owned = set(owned_player_ids or ())
     for raw in price_actions or []:
         if not isinstance(raw, dict):
             continue
@@ -228,12 +293,17 @@ def validate_daily_advice(
         if bad:
             warnings.append(f"dropped_unknown_player_ids:{bad}")
         ids = [pid for pid in move.player_ids if pid in allowed_player_ids]
+        # Block price-motivated buys of ignore/watch targets. Do NOT block a football
+        # sell of an owned ignore-tagged player when a distinct buy id is present.
+        buy_ids = set(ids) - owned if owned else set(ids)
+        price_blocked_buys = buy_ids & ignore_watch
+        price_only = (not buy_ids) and bool(set(ids) & ignore_watch)
         if (
             move.move_type == MoveType.TRANSFER
             and ids
             and ignore_watch
             and not (set(ids) & act_now)
-            and (set(ids) & ignore_watch)
+            and (price_blocked_buys or price_only)
         ):
             warnings.append("dropped_price_ignore_or_watch_upgrade")
             move = move.model_copy(update={"move_type": MoveType.HOLD, "urgency": "low"})
@@ -415,7 +485,10 @@ class ResponsesOpenAIClient:
             "or fixture news. Prefer official/club/FFS sources; treat Reddit as lower-confidence. "
             "Fill tldr (3–6 one-line bullets) and detail (short why, not a dump). "
             "Use supplied price_actions if present. Do not invent price likelihoods. "
-            "Do not upgrade ignore/watch price actions into transfers. "
+            "Do not upgrade ignore/watch price actions into transfers for price reasons. "
+            "Evaluate transfer_candidates and stretch_transfer_candidates; buy IDs must come from those lists only. "
+            "If affordable candidates exist and news does not veto them, prefer revise with a concrete transfer. "
+            "If only stretch candidates exist, say the FT is blocked by bank and name the best stretch target. "
             "Do not invent player IDs. Do not recommend a transfer merely because this run happened."
         )
         if hub_lines:

@@ -248,6 +248,25 @@ def run_predeadline(
     except AgentError as exc:
         price_block = {"price_error": str(exc)}
 
+    from fpl_agent.strategy.transfers import rank_transfer_candidates
+
+    affordable_transfers, stretch_transfers = rank_transfer_candidates(
+        owned_ids=private.player_ids,
+        bank_tenths=private.bank_tenths,
+        purchase_prices_tenths=private.purchase_prices_tenths,
+        catalog=catalog,
+        projections=proj_by_id,
+    )
+    transfer_note = (
+        "No legal improving 1-FT upgrade fits the current bank; stretch targets need more funds."
+        if not affordable_transfers and stretch_transfers
+        else (
+            "Legal improving 1-FT upgrades are listed in transfer_candidates."
+            if affordable_transfers
+            else "No improving same-position 1-FT upgrades found in the projection set."
+        )
+    )
+
     payload = {
         "mode": "predeadline",
         "manager_team_id": settings.manager.team_id,
@@ -267,12 +286,16 @@ def run_predeadline(
         "search_request": search_req.model_dump(mode="json"),
         "sources": [c.model_dump(mode="json") for c in fpl_claims],
         "suggested_source_hubs": [dict(h) for h in SUGGESTED_SOURCE_HUBS],
+        "transfer_candidates": [c.as_payload() for c in affordable_transfers],
+        "stretch_transfer_candidates": [c.as_payload() for c in stretch_transfers],
+        "transfer_market_note": transfer_note,
         "policy": {
             "do_not_transfer_just_because_ran": True,
             "recommend_only": True,
             "reddit_is_community_tier": True,
             "do_not_invent_price_likelihood": True,
             "do_not_upgrade_ignore_or_watch_price_actions": True,
+            "only_recommend_transfers_from_supplied_candidates": True,
         },
         **price_block,
     }
@@ -302,11 +325,15 @@ def run_predeadline(
     for action in price_block.get("price_actions") or []:
         if isinstance(action, dict):
             extra_ids.update(int(x) for x in (action.get("player_ids") or []) if x)
+    for cand in affordable_transfers + stretch_transfers:
+        extra_ids.add(cand.out_id)
+        extra_ids.add(cand.in_id)
     advice = validate_daily_advice(
         advice if isinstance(advice, DailyAdvice) else DailyAdvice.model_validate(advice),
         allowed_player_ids=set(private.player_ids) | extra_ids,
         allowed_source_ids=allowed_sources or {c.claim_id for c in fpl_claims},
         price_actions=price_block.get("price_actions") if isinstance(price_block.get("price_actions"), list) else None,
+        owned_player_ids=set(private.player_ids),
     )
 
     if private.applies_before_gameweek != gw:
