@@ -64,7 +64,7 @@ class FplClient:
         self._client = httpx.Client(
             base_url=self.base_url,
             timeout=timeout,
-            headers={"User-Agent": "fpl-agent/0.1 (+read-only; no-auth)"},
+            headers={"User-Agent": "Mozilla/5.0 (compatible; fpl-agent/0.1; +read-only)"},
             transport=transport,
             follow_redirects=True,
         )
