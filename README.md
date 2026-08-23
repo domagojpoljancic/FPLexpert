@@ -6,6 +6,7 @@ WIP. Recommends transfers, hits, lineup, captain, bench, and chips. **You** make
 ## Latest results
 
 **Price watch** (GitHub, ~21:00 Zagreb)
+- [23 Aug 21:26 CEST](reports/prices-gw2-20260823T192632Z.md) · GW2 · **NO ACTION** — No price action tonight.
 - [22 Aug 21:27 CEST](reports/prices-gw2-20260822T192716Z.md) · GW2 · **NO ACTION** — No price action tonight.
 - [21 Aug 21:30 CEST](reports/prices-gw2-20260821T193023Z.md) · GW2 · **NO ACTION** — No price action tonight.
 - [20 Aug 21:36 CEST](reports/prices-gw1-20260820T193618Z.md) · GW1 · **NO ACTION** — No price action tonight.
