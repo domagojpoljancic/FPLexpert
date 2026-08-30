@@ -6,13 +6,13 @@ WIP. Recommends transfers, hits, lineup, captain, bench, and chips. **You** make
 ## Latest results
 
 **Price watch** (GitHub, ~21:00 Zagreb)
+- [30 Aug 23:52 CEST](reports/prices-gw3-20260830T215242Z.md) · GW3 · **NO ACTION** — No price action tonight.
 - [29 Aug 23:36 CEST](reports/prices-gw3-20260829T213616Z.md) · GW3 · **NO ACTION** — No price action tonight.
 - [29 Aug 04:02 CEST](reports/prices-gw3-20260829T020207Z.md) · GW3 · **NO ACTION** — No price action tonight.
 - [28 Aug 05:31 CEST](reports/prices-gw2-20260828T033149Z.md) · GW2 · **NO ACTION** — No price action tonight.
 - [26 Aug 23:44 CEST](reports/prices-gw2-20260826T214423Z.md) · GW2 · **NO ACTION** — No price action tonight.
 - [25 Aug 21:36 CEST](reports/prices-gw2-20260825T193659Z.md) · GW2 · **NO ACTION** — No price action tonight.
 - [24 Aug 21:34 CEST](reports/prices-gw2-20260824T193453Z.md) · GW2 · **NO ACTION** — No price action tonight.
-- [23 Aug 21:26 CEST](reports/prices-gw2-20260823T192632Z.md) · GW2 · **NO ACTION** — No price action tonight.
 
 **Squad news** (pre-deadline)
 - [28 Aug 06:55 CEST](reports/predeadline-gw2-20260828T045547Z.md) · GW2 · **REVISE** — Consider Gibbs-White to Cherki, then start João Pedro over Shaw and keep Bruno Fernandes…
