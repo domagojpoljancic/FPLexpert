@@ -355,7 +355,9 @@ def run_predeadline(
     hit_plans = [p for p in transfer_plans if p.hit_cost > 0]
     weekly_plan["best_hit"] = hit_plans[0].as_payload() if hit_plans else None
 
-    best_plan_obj = transfer_plans[0] if transfer_plans else None
+    free_hit_plans = [p for p in transfer_plans if p.hit_cost == 0]
+    best_plan_obj = free_hit_plans[0] if free_hit_plans else None
+    season_rules = load_season_rules_2026_27()
     hit_margin = hit_horizon_margin(
         risk_profile=settings.manager.risk_profile,
         gameweek=gw,
@@ -368,6 +370,7 @@ def run_predeadline(
         purchase_prices_tenths=private.purchase_prices_tenths,
         catalog=catalog,
         projections=proj_by_id,
+        rules=season_rules,
         best_single=best_plan_obj,
         risk_profile=settings.manager.risk_profile,
         gameweek=gw,
@@ -376,7 +379,7 @@ def run_predeadline(
         free_transfers=int(private.free_transfers),
         best_plan=best_plan_obj,
         margin=hit_margin,
-        rules=load_season_rules_2026_27(),
+        rules=season_rules,
         ft_bank_option_value=settings.planning.ft_bank_option_value,
         min_horizon_delta_to_spend_ft=settings.planning.min_horizon_delta_to_spend_ft,
         deferred_upside=deferred_upside,
@@ -391,6 +394,7 @@ def run_predeadline(
             owned_ids=private.player_ids,
             after_ids=after_ids,
             projections=proj_by_id,
+            rules=season_rules,
             gameweeks=gameweeks,
             weights=weights,
         )
