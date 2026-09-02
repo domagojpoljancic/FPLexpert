@@ -16,7 +16,7 @@ from typing import Any
 
 from fpl_agent.domain.models import RiskProfile
 from fpl_agent.projections.preseason import PlayerProjection
-from fpl_agent.rules.engine import budget_after_transfers, selling_price_tenths
+from fpl_agent.rules.engine import budget_after_transfers, free_transfer_rollover, selling_price_tenths
 from fpl_agent.rules.season import SeasonRules, load_season_rules_2026_27
 from fpl_agent.strategy.draft import BENCH_WEIGHT, select_best_xi
 
@@ -471,6 +471,244 @@ def roll_recommendation_reason(
             f"({free_transfers}/{MAX_BANKED_FTS} now)."
         )
     return "Top move clears bar."
+
+
+def _projected_xi_by_gw(
+    owned_ids: list[int],
+    projections: dict[int, PlayerProjection],
+    rules: SeasonRules,
+    horizon: int,
+) -> list[float]:
+    players = [projections[pid] for pid in owned_ids if pid in projections]
+    if len(players) != len(owned_ids):
+        return [0.0] * horizon
+    out: list[float] = []
+    for index in range(horizon):
+        xi, _, _ = select_best_xi(players, rules, gameweek_index=index)
+        total = 0.0
+        for player in xi:
+            if index < len(player.xp_by_gw):
+                total += float(player.xp_by_gw[index])
+        out.append(total)
+    return out
+
+
+def explain_horizon_impact(*, by_gw: list[dict[str, Any]], weighted_delta: float) -> str:
+    """Plain-language summary of how a transfer plays out across upcoming gameweeks."""
+    if not by_gw:
+        return "Horizon impact unavailable."
+    this_week = float(by_gw[0].get("delta_xp") or 0.0)
+    future = by_gw[1:]
+    future_gain = sum(float(row.get("delta_xp") or 0.0) for row in future)
+    if this_week > 0.15 and future_gain > 0.15:
+        tail = ", ".join(
+            f"GW{row['gw']} {float(row['delta_xp']):+.1f}" for row in future[:3]
+        )
+        return (
+            f"Adds {this_week:+.1f} pts to the XI this GW and keeps paying later "
+            f"({tail}; {weighted_delta:+.1f} weighted overall)."
+        )
+    if this_week > 0.15:
+        return (
+            f"Mainly a this-week fix ({this_week:+.1f} pts now; "
+            f"{weighted_delta:+.1f} weighted overall)."
+        )
+    if future_gain > 0.15:
+        tail = ", ".join(
+            f"GW{row['gw']} {float(row['delta_xp']):+.1f}" for row in future[:3]
+        )
+        return f"Week one is flat ({this_week:+.1f}); the upside is later ({tail})."
+    return f"Small horizon edge ({weighted_delta:+.1f} weighted overall)."
+
+
+def horizon_transfer_impact(
+    *,
+    owned_ids: list[int],
+    after_ids: list[int],
+    projections: dict[int, PlayerProjection],
+    rules: SeasonRules,
+    gameweeks: list[int],
+    weights: list[float],
+) -> dict[str, Any]:
+    """Per-GW XI xP delta between holding and making the transfer."""
+    horizon = min(len(weights), len(gameweeks))
+    hold = _projected_xi_by_gw(owned_ids, projections, rules, horizon)
+    after = _projected_xi_by_gw(after_ids, projections, rules, horizon)
+    by_gw: list[dict[str, Any]] = []
+    for index in range(horizon):
+        delta = after[index] - hold[index]
+        by_gw.append(
+            {
+                "gw": gameweeks[index],
+                "hold_xi_xp": round(hold[index], 2),
+                "after_xi_xp": round(after[index], 2),
+                "delta_xp": round(delta, 2),
+            }
+        )
+    weighted_delta = sum(
+        weight * (after_row - hold_row)
+        for weight, hold_row, after_row in zip(weights[:horizon], hold, after, strict=True)
+    )
+    return {
+        "by_gw": by_gw,
+        "weighted_delta": round(weighted_delta, 3),
+        "reason": explain_horizon_impact(by_gw=by_gw, weighted_delta=weighted_delta),
+    }
+
+
+def deferred_double_transfer_upside(
+    *,
+    owned_ids: list[int],
+    bank_tenths: int,
+    purchase_prices_tenths: dict[str, int],
+    catalog: dict[int, dict[str, Any]],
+    projections: dict[int, PlayerProjection],
+    rules: SeasonRules,
+    best_single: TransferPlan | None,
+    risk_profile: RiskProfile = RiskProfile.MODERATE,
+    gameweek: int = 1,
+) -> float | None:
+    """Extra horizon xP from a no-hit double move if the manager banks to 2 FT."""
+    if best_single is None or best_single.hit_cost > 0:
+        return None
+    dual_plans = [
+        plan
+        for plan in rank_transfer_plans(
+            owned_ids=owned_ids,
+            bank_tenths=bank_tenths,
+            free_transfers=2,
+            purchase_prices_tenths=purchase_prices_tenths,
+            catalog=catalog,
+            projections=projections,
+            rules=rules,
+            risk_profile=risk_profile,
+            gameweek=gameweek,
+        )
+        if len(plan.moves) == 2 and plan.hit_cost == 0
+    ]
+    if not dual_plans:
+        return None
+    best_dual = dual_plans[0]
+    upside = best_dual.delta_weighted_xp - best_single.delta_weighted_xp
+    return round(upside, 3) if upside > 0.25 else None
+
+
+@dataclass(frozen=True)
+class TransferDecision:
+    action: str
+    reason: str
+    free_transfers_now: int
+    free_transfers_if_roll: int
+    free_transfers_if_transfer: int
+    horizon_delta: float
+    ft_banking_penalty: float
+    net_value_after_ft_penalty: float
+    deferred_upside: float | None = None
+    min_horizon_to_spend: float = 0.0
+
+    def as_payload(self) -> dict[str, Any]:
+        return {
+            "action": self.action,
+            "reason": self.reason,
+            "free_transfers_now": self.free_transfers_now,
+            "free_transfers_if_roll": self.free_transfers_if_roll,
+            "free_transfers_if_transfer": self.free_transfers_if_transfer,
+            "horizon_delta": round(self.horizon_delta, 3),
+            "ft_banking_penalty": round(self.ft_banking_penalty, 3),
+            "net_value_after_ft_penalty": round(self.net_value_after_ft_penalty, 3),
+            "deferred_upside": self.deferred_upside,
+            "min_horizon_to_spend": round(self.min_horizon_to_spend, 3),
+        }
+
+
+def compare_roll_vs_transfer(
+    *,
+    free_transfers: int,
+    best_plan: TransferPlan | None,
+    margin: float,
+    rules: SeasonRules,
+    ft_bank_option_value: float = FT_BANK_OPTION_VALUE,
+    min_horizon_delta_to_spend_ft: float = 0.0,
+    deferred_upside: float | None = None,
+) -> TransferDecision:
+    """Weigh spending the FT now vs rolling to bank an extra transfer for next GW."""
+    ft_after_roll, _ = free_transfer_rollover(
+        previous_ft=free_transfers, transfers_made=0, rules=rules
+    )
+    moves = len(best_plan.moves) if best_plan else 0
+    ft_after_transfer, _ = free_transfer_rollover(
+        previous_ft=free_transfers, transfers_made=moves, rules=rules
+    )
+    extra_ft_from_rolling = max(0, ft_after_roll - ft_after_transfer)
+    ft_penalty = extra_ft_from_rolling * ft_bank_option_value
+    min_to_spend = margin * 0.5 + min_horizon_delta_to_spend_ft + ft_penalty
+    horizon_delta = best_plan.delta_weighted_xp if best_plan else 0.0
+    net_after_penalty = horizon_delta - ft_penalty
+
+    base = dict(
+        free_transfers_now=free_transfers,
+        free_transfers_if_roll=ft_after_roll,
+        free_transfers_if_transfer=ft_after_transfer,
+        horizon_delta=horizon_delta,
+        ft_banking_penalty=ft_penalty,
+        net_value_after_ft_penalty=net_after_penalty,
+        deferred_upside=deferred_upside,
+        min_horizon_to_spend=min_to_spend,
+    )
+
+    if best_plan is None:
+        return TransferDecision(
+            action="roll",
+            reason=roll_recommendation_reason(
+                free_transfers=free_transfers, best_plan=None, margin=margin
+            ),
+            **base,
+        )
+
+    if best_plan.hit_cost > 0:
+        if hit_clears_horizon_bar(best_plan, margin=margin):
+            reason = (
+                f"Take the {best_plan.hit_cost}-point hit: +{best_plan.delta_weighted_xp:.1f} "
+                f"horizon xP clears the risk bar (+{best_plan.net_gw_xp:.1f} net this GW)."
+            )
+            return TransferDecision(action="transfer", reason=reason, **base)
+        return TransferDecision(
+            action="roll",
+            reason=(
+                f"Hit does not clear the horizon bar (+{best_plan.delta_weighted_xp:.1f} "
+                f"horizon xP for a {best_plan.hit_cost}-point hit); bank the FT."
+            ),
+            **base,
+        )
+
+    if (
+        deferred_upside is not None
+        and deferred_upside > best_plan.delta_weighted_xp
+        and free_transfers < 2
+    ):
+        reason = (
+            f"Bank the FT ({free_transfers}→{ft_after_roll} next GW). "
+            f"A no-hit double move later scores +{deferred_upside:.1f} more horizon xP "
+            f"than today's best single swap (+{best_plan.delta_weighted_xp:.1f})."
+        )
+        return TransferDecision(action="roll", reason=reason, **base)
+
+    if best_plan.delta_weighted_xp < min_to_spend:
+        reason = (
+            f"Marginal +{best_plan.delta_weighted_xp:.1f} horizon xP; rolling banks "
+            f"{ft_after_roll} FT next GW (worth ~{ft_penalty:.1f} in optionality). "
+            f"Spend needs ~{min_to_spend:.1f} to clear the bar."
+        )
+        return TransferDecision(action="roll", reason=reason, **base)
+
+    reason = (
+        f"Spend the FT: +{best_plan.delta_weighted_xp:.1f} horizon xP clears the bar "
+        f"(+{best_plan.delta_gw_xp:.1f} this GW). "
+        f"Rolling would bank {ft_after_roll} FT next GW but forego this edge."
+    )
+    if extra_ft_from_rolling > 0:
+        reason += f" Net after FT-banking cost (~{ft_penalty:.1f}): {net_after_penalty:+.1f}."
+    return TransferDecision(action="transfer", reason=reason, **base)
 
 
 def rank_cross_position_plans(

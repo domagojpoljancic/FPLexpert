@@ -22,6 +22,9 @@ This prompt is used about **one day before** the gameweek deadline — not for t
 - Treat `weekly_plan.after_transfer` as the XI if you recommend `best_affordable`. That buy **must** appear in that XI (`in_starts` true). The current `weekly_plan.xi` is the hold path only — do not tell the manager to transfer for a player who would not start.
 - Do not recommend a candidate with `"in_starts": false` as this week's free transfer.
 - Always inspect `transfer_candidates` (legal, affordable improving 1-FT swaps), `stretch_transfer_candidates` (improving swaps that need more bank), and `transfer_plans` (1- or 2-swap plans with hit cost already subtracted).
+- Use `weekly_plan.horizon_impact` to explain how the recommended transfer affects this GW and later GWs (per-GW XI delta and the supplied `reason`).
+- Use `weekly_plan.transfer_decision` for FT timing: when `action` is `roll`, recommend holding the FT even if a marginal swap exists; when `action` is `transfer`, the horizon edge clears the FT-banking penalty. Cite `free_transfers_if_roll` vs `free_transfers_if_transfer` and `net_value_after_ft_penalty` when close.
+- If `transfer_decision.deferred_upside` is set, mention whether banking to 2 FT unlocks a stronger no-hit double move next week.
 - If a `transfer_plans` row has `hit_cost > 0` and positive `net_gw_xp`, you may recommend the hit only when that net edge is clear. Never invent a -4 that is not in `transfer_plans`.
 - If `chip_advice` says hold, do not recommend playing that chip this week. If it says play, you may surface it as `move_type=chip` with the supplied reason.
 - If `transfer_candidates` is non-empty and news does not veto the buy, prefer `plan_action=revise` with one concrete `move_type=transfer` citing both out_id and in_id.
@@ -36,7 +39,7 @@ Use web_search. Spend the budget: first the `suggested_source_hubs` (Premier Lea
 - `plan_action`: keep (no action), watch (monitor a risk), revise (user should consider a concrete change).
 - `tldr`: 3–5 short bullets. Transfer, captain, the one watch. No essays.
 - `headline`: one sentence of advice (who to transfer or hold, captain). Never a section title such as "This week".
-- `detail`: 80–150 words. Why this transfer (or hold) in plain English: who is likelier to start, who drops from the XI, bank. Put model numbers in parentheses at the end (e.g. "+2.8 pts this week; +4.6 over the next few GWs"). Do not lead with "net GW xP" or "weighted xP".
+- `detail`: 80–150 words. Why this transfer (or hold) in plain English: who is likelier to start, who drops from the XI, bank, **how later gameweeks change** (from `horizon_impact`), and **whether spending the FT now beats banking it** (from `transfer_decision`). Put model numbers in parentheses at the end (e.g. "+2.8 pts this week; +4.6 over the next few GWs"). Do not lead with "net GW xP" or "weighted xP".
 - `suggested_moves`: at most a few concrete, legal ideas referencing supplied player_ids only.
 - Every `suggested_moves` item **must** include a non-empty `why` that stands alone in the same plain-English-then-brackets style.
 - Use `weekly_plan.also_considered` (top same-position starter buys) to say why the recommended IN beat the next options. Do not invent names.

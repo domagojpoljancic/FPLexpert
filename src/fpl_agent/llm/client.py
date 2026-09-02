@@ -158,10 +158,14 @@ class FakeOpenAIClient:
         triggers = list(payload.get("attention_triggers") or [])
         affordable = list(payload.get("transfer_candidates") or [])
         stretch = list(payload.get("stretch_transfer_candidates") or [])
+        weekly_plan = payload.get("weekly_plan") or {}
+        transfer_decision = weekly_plan.get("transfer_decision") or {}
+        horizon_impact = weekly_plan.get("horizon_impact") or {}
         moves: list[DailyMove] = []
         tldr: list[str] = []
         starter_buys = [c for c in affordable if c.get("in_starts", True)]
-        if starter_buys:
+        should_roll = str(transfer_decision.get("action") or "").lower() == "roll"
+        if starter_buys and not should_roll:
             top = starter_buys[0]
             action = PlanAction.REVISE
             reason = str(top.get("reason") or "").strip()
@@ -193,6 +197,37 @@ class FakeOpenAIClient:
                 "Deterministic fallback chose the top affordable transfer that starts this GW. "
                 "Live OpenAI synthesis was not used."
             )
+            if horizon_impact.get("reason"):
+                detail += f" {horizon_impact['reason']}"
+            if transfer_decision.get("reason"):
+                detail += f" FT timing: {transfer_decision['reason']}"
+        elif starter_buys and should_roll:
+            top = starter_buys[0]
+            action = PlanAction.KEEP
+            decision_reason = str(transfer_decision.get("reason") or "").strip()
+            headline = "Hold the free transfer; banking beats the marginal swap this week."
+            moves.append(
+                DailyMove(
+                    move_type=MoveType.HOLD,
+                    summary=(
+                        f"Bank the FT instead of {top.get('out_name')} to {top.get('in_name')} "
+                        f"({float(top.get('delta_weighted_xp') or 0):+.1f} horizon xP is below the bar)."
+                    ),
+                    why=decision_reason or "Marginal horizon edge; rolling preserves FT optionality.",
+                    player_ids=[int(top["out_id"]), int(top["in_id"])],
+                    urgency="medium",
+                )
+            )
+            tldr = [
+                "Bank the FT",
+                f"Optional later: {top.get('out_name')} -> {top.get('in_name')}",
+            ]
+            detail = decision_reason or (
+                "Deterministic fallback: transfer_decision says roll — horizon edge does not "
+                "clear the FT-banking penalty."
+            )
+            if horizon_impact.get("reason"):
+                detail += f" {horizon_impact['reason']}"
         elif affordable:
             action = PlanAction.WATCH if triggers else PlanAction.KEEP
             headline = "Hold the FT: affordable upgrades do not start in the modelled XI this week."

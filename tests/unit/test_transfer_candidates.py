@@ -520,3 +520,129 @@ def test_early_season_bar_moderately_stricter() -> None:
     assert gw2 > gw10
     assert hit_clears_horizon_bar(plan, margin=gw10)
     assert not hit_clears_horizon_bar(plan, margin=gw2)
+
+
+def test_horizon_transfer_impact_reports_per_gw_delta() -> None:
+    from fpl_agent.rules.season import load_season_rules_2026_27
+    from fpl_agent.strategy.transfers import horizon_transfer_impact
+
+    rules = load_season_rules_2026_27()
+    owned = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+    after = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16]
+    projections = {
+        pid: _proj(
+            pid,
+            element_type=3 if pid <= 10 else 2,
+            team_id=pid,
+            price=60,
+            weighted=5.0 + pid * 0.1,
+            gw=3.0 + pid * 0.1,
+            name=f"P{pid}",
+        )
+        for pid in set(owned + after)
+    }
+    projections[15] = _proj(
+        15, element_type=2, team_id=15, price=40, weighted=2.0, gw=1.0, name="OutDef", p_start=0.3
+    )
+    projections[16] = _proj(
+        16, element_type=2, team_id=16, price=45, weighted=8.0, gw=4.0, name="InDef", p_start=0.9
+    )
+    impact = horizon_transfer_impact(
+        owned_ids=owned,
+        after_ids=after,
+        projections=projections,
+        rules=rules,
+        gameweeks=[3, 4, 5, 6],
+        weights=[1.0, 0.9, 0.78, 0.66],
+    )
+    assert impact["by_gw"]
+    assert impact["weighted_delta"] != 0.0
+    assert "GW" in impact["reason"]
+
+
+def test_compare_roll_vs_transfer_banks_marginal_move() -> None:
+    from fpl_agent.rules.season import load_season_rules_2026_27
+    from fpl_agent.strategy.transfers import TransferCandidate, TransferPlan, compare_roll_vs_transfer
+
+    rules = load_season_rules_2026_27()
+    move = TransferCandidate(
+        out_id=1,
+        in_id=2,
+        out_name="A",
+        in_name="B",
+        element_type=2,
+        sell_tenths=40,
+        buy_tenths=45,
+        bank_after_tenths=0,
+        bank_shortfall_tenths=0,
+        affordable=True,
+        delta_weighted_xp=0.4,
+        delta_gw_xp=0.3,
+        out_p_start=0.5,
+        in_p_start=0.8,
+        in_starts=True,
+    )
+    plan = TransferPlan(
+        moves=(move,),
+        free_transfers_used=1,
+        hit_cost=0,
+        delta_weighted_xp=0.4,
+        delta_gw_xp=0.3,
+        net_gw_xp=0.3,
+        bank_after_tenths=0,
+        affordable=True,
+    )
+    decision = compare_roll_vs_transfer(
+        free_transfers=1,
+        best_plan=plan,
+        margin=1.0,
+        rules=rules,
+        ft_bank_option_value=0.35,
+    )
+    assert decision.action == "roll"
+    assert decision.free_transfers_if_roll == 2
+    assert decision.free_transfers_if_transfer == 1
+    assert "bank" in decision.reason.lower() or "marginal" in decision.reason.lower()
+
+
+def test_compare_roll_vs_transfer_spends_clear_edge() -> None:
+    from fpl_agent.rules.season import load_season_rules_2026_27
+    from fpl_agent.strategy.transfers import TransferCandidate, TransferPlan, compare_roll_vs_transfer
+
+    rules = load_season_rules_2026_27()
+    move = TransferCandidate(
+        out_id=1,
+        in_id=2,
+        out_name="A",
+        in_name="B",
+        element_type=2,
+        sell_tenths=40,
+        buy_tenths=45,
+        bank_after_tenths=0,
+        bank_shortfall_tenths=0,
+        affordable=True,
+        delta_weighted_xp=3.5,
+        delta_gw_xp=2.0,
+        out_p_start=0.5,
+        in_p_start=0.8,
+        in_starts=True,
+    )
+    plan = TransferPlan(
+        moves=(move,),
+        free_transfers_used=1,
+        hit_cost=0,
+        delta_weighted_xp=3.5,
+        delta_gw_xp=2.0,
+        net_gw_xp=2.0,
+        bank_after_tenths=0,
+        affordable=True,
+    )
+    decision = compare_roll_vs_transfer(
+        free_transfers=1,
+        best_plan=plan,
+        margin=1.0,
+        rules=rules,
+        ft_bank_option_value=0.35,
+    )
+    assert decision.action == "transfer"
+    assert "spend" in decision.reason.lower()

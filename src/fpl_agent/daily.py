@@ -261,10 +261,15 @@ def run_predeadline(
     except AgentError as exc:
         price_block = {"price_error": str(exc)}
 
+    from fpl_agent.rules.season import load_season_rules_2026_27
     from fpl_agent.strategy.chips import recommend_chips
     from fpl_agent.strategy.plan import build_weekly_plan
     from fpl_agent.strategy.transfers import (
+        compare_roll_vs_transfer,
+        deferred_double_transfer_upside,
         explain_vs_pick,
+        hit_horizon_margin,
+        horizon_transfer_impact,
         rank_transfer_candidates,
         rank_transfer_plans,
         same_position_shortlist,
@@ -294,6 +299,10 @@ def run_predeadline(
         catalog=catalog,
         projections=proj_by_id,
         hits_enabled=True,
+        risk_profile=settings.manager.risk_profile,
+        gameweek=gw,
+        early_season_gws=settings.planning.early_season_gws,
+        early_season_hit_margin_boost=settings.planning.early_season_hit_margin_boost,
     )
     chip_advice = recommend_chips(
         gameweek=gw,
@@ -345,6 +354,46 @@ def run_predeadline(
     weekly_plan["best_plan"] = transfer_plans[0].as_payload() if transfer_plans else None
     hit_plans = [p for p in transfer_plans if p.hit_cost > 0]
     weekly_plan["best_hit"] = hit_plans[0].as_payload() if hit_plans else None
+
+    best_plan_obj = transfer_plans[0] if transfer_plans else None
+    hit_margin = hit_horizon_margin(
+        risk_profile=settings.manager.risk_profile,
+        gameweek=gw,
+        early_season_gws=settings.planning.early_season_gws,
+        early_season_boost=settings.planning.early_season_hit_margin_boost,
+    )
+    deferred_upside = deferred_double_transfer_upside(
+        owned_ids=private.player_ids,
+        bank_tenths=private.bank_tenths,
+        purchase_prices_tenths=private.purchase_prices_tenths,
+        catalog=catalog,
+        projections=proj_by_id,
+        best_single=best_plan_obj,
+        risk_profile=settings.manager.risk_profile,
+        gameweek=gw,
+    )
+    transfer_decision = compare_roll_vs_transfer(
+        free_transfers=int(private.free_transfers),
+        best_plan=best_plan_obj,
+        margin=hit_margin,
+        rules=load_season_rules_2026_27(),
+        ft_bank_option_value=settings.planning.ft_bank_option_value,
+        min_horizon_delta_to_spend_ft=settings.planning.min_horizon_delta_to_spend_ft,
+        deferred_upside=deferred_upside,
+    )
+    weekly_plan["transfer_decision"] = transfer_decision.as_payload()
+    weekly_plan["horizon_impact"] = None
+    if this_week is not None:
+        after_ids = [
+            this_week.in_id if pid == this_week.out_id else pid for pid in private.player_ids
+        ]
+        weekly_plan["horizon_impact"] = horizon_transfer_impact(
+            owned_ids=private.player_ids,
+            after_ids=after_ids,
+            projections=proj_by_id,
+            gameweeks=gameweeks,
+            weights=weights,
+        )
     weekly_plan["chips"] = [c.as_payload() for c in chip_advice]
     try:
         from fpl_agent.evaluation.scorecard import build_previous_scorecard
@@ -539,6 +588,9 @@ def _llm_weekly_plan(plan: dict[str, Any]) -> dict[str, Any]:
         "also_considered",
         "chips",
         "after_transfer",
+        "transfer_decision",
+        "horizon_impact",
+        "best_plan",
     )
     out = {key: plan[key] for key in keys if key in plan}
     out["horizon"] = list(plan.get("horizon") or [])[:3]
@@ -721,6 +773,22 @@ def _weekly_plan_section(report: DailyReport) -> list[str]:
     if horizon:
         bits = " · ".join(f"GW{row.get('gw')} {row.get('xi_xp')}" for row in horizon)
         lines.append(f"- Next GWs (XI xP): {bits}")
+    impact = plan.get("horizon_impact") or {}
+    impact_rows = list(impact.get("by_gw") or [])[:4]
+    if impact_rows:
+        bits = " · ".join(
+            f"GW{row.get('gw')} {float(row.get('delta_xp') or 0):+.1f}" for row in impact_rows
+        )
+        lines.append(f"- Transfer vs hold (XI pts): {bits}")
+        reason = str(impact.get("reason") or "").strip()
+        if reason:
+            lines.append(f"- Future weeks: {reason}")
+    decision = plan.get("transfer_decision") or {}
+    decision_reason = str(decision.get("reason") or "").strip()
+    if decision_reason:
+        action = str(decision.get("action") or "").lower()
+        label = "Spend FT now" if action == "transfer" else "Bank FT"
+        lines.append(f"- FT timing ({label}): {decision_reason}")
     return lines
 
 

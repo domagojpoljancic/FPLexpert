@@ -229,6 +229,21 @@ def test_report_includes_weekly_model_decisions() -> None:
             "chips": [
                 {"kind": "3xc", "action": "hold", "available": True, "reason": "not an outlier week"},
             ],
+            "horizon_impact": {
+                "by_gw": [
+                    {"gw": 3, "hold_xi_xp": 40.0, "after_xi_xp": 42.8, "delta_xp": 2.8},
+                    {"gw": 4, "hold_xi_xp": 38.0, "after_xi_xp": 40.0, "delta_xp": 2.0},
+                ],
+                "weighted_delta": 4.6,
+                "reason": "Adds +2.8 pts to the XI this GW and keeps paying later (GW4 +2.0; +4.6 weighted overall).",
+            },
+            "transfer_decision": {
+                "action": "transfer",
+                "reason": "Spend the FT: +4.6 horizon xP clears the bar (+2.8 this GW).",
+                "free_transfers_now": 1,
+                "free_transfers_if_roll": 2,
+                "free_transfers_if_transfer": 1,
+            },
             "previous_scorecard": {
                 "gameweek": 2,
                 "model_xi_points": 55,
@@ -247,6 +262,9 @@ def test_report_includes_weekly_model_decisions() -> None:
     assert "Virgil drops out of the XI" in text
     assert "Compared with other affordable defenders:" in text
     assert "**Egan** (recommended)" in text
+    assert "Transfer vs hold (XI pts):" in text
+    assert "FT timing (Spend FT now):" in text
+    assert "Future weeks:" in text
     assert "**Ajayi** (also looked at)" in text
     assert "## Model decisions" not in text
     assert "### Horizon" not in text
