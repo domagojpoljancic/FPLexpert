@@ -787,4 +787,40 @@ def write_daily_artifact(report: DailyReport, root: Path = Path("reports")) -> P
     path.write_text(render_daily_text(report), encoding="utf-8")
     json_path = path.with_suffix(".json")
     json_path.write_text(json.dumps(asdict(report), indent=2, default=str), encoding="utf-8")
+    _write_decision_ledger(report)
     return path
+
+
+def _write_decision_ledger(report: DailyReport) -> None:
+    from fpl_agent.evaluation.ledger import DecisionRecord, build_decision_id, write_decision_record
+
+    if report.skipped:
+        return
+    payload = {
+        "gameweek": report.gameweek,
+        "weekly_plan": report.weekly_plan,
+        "plan_action": report.plan_action,
+    }
+    now = datetime.now(UTC).isoformat()
+    record = DecisionRecord(
+        decision_id=build_decision_id(payload),
+        season="2026-27",
+        gameweek=report.gameweek,
+        generated_at=now,
+        data_cutoff=now,
+        team_state={"executability": report.executability},
+        executability=report.executability,
+        rules_hash="",
+        catalog_hash="",
+        projection_hash="",
+        config_hash="",
+        code_version="",
+        roll={},
+        primary={"plan_action": report.plan_action},
+        warnings=list(report.warnings),
+        report_hash=build_decision_id({"headline": report.headline}),
+    )
+    try:
+        write_decision_record(Path("data/decision-ledger"), record)
+    except FileExistsError:
+        pass
