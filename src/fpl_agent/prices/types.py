@@ -117,5 +117,6 @@ class PriceOutcome(BaseModel):
     hours_since_prediction: float | None = None
     ownership_band: str
     hit: bool
+    price_moved: bool = True
     recorded_at: datetime
     model_version: str

@@ -48,10 +48,33 @@ def outcomes_from_snapshots(
     out: list[PriceOutcome] = []
     for pid, old in before.items():
         new = after.get(pid)
-        if new is None or new.now_cost == old.now_cost:
-            continue
         pred = pred_map.get(pid)
         if pred is None:
+            continue
+        if new is None:
+            continue
+        if new.now_cost == old.now_cost:
+            if pred.likelihood in {
+                LikelihoodBand.LIKELY_NEXT_WINDOW,
+                LikelihoodBand.WATCH,
+                LikelihoodBand.ALREADY_MOVED,
+                LikelihoodBand.UNLIKELY,
+            }:
+                out.append(
+                    PriceOutcome(
+                        player_id=pid,
+                        gameweek=gameweek,
+                        predicted_direction=pred.direction,
+                        predicted_band=pred.likelihood,
+                        actual_delta_tenths=0,
+                        hours_since_prediction=hours,
+                        ownership_band=ownership_band(old.selected_by_percent),
+                        hit=False,
+                        price_moved=False,
+                        recorded_at=now,
+                        model_version=pred.model_version,
+                    )
+                )
             continue
         delta = new.now_cost - old.now_cost
         actual_dir = PriceDirection.RISE if delta > 0 else PriceDirection.FALL
@@ -59,6 +82,7 @@ def outcomes_from_snapshots(
             LikelihoodBand.LIKELY_NEXT_WINDOW,
             LikelihoodBand.WATCH,
             LikelihoodBand.ALREADY_MOVED,
+            LikelihoodBand.UNLIKELY,
         }
         out.append(
             PriceOutcome(
@@ -70,6 +94,7 @@ def outcomes_from_snapshots(
                 hours_since_prediction=hours,
                 ownership_band=ownership_band(old.selected_by_percent),
                 hit=hit,
+                price_moved=True,
                 recorded_at=now,
                 model_version=pred.model_version,
             )
