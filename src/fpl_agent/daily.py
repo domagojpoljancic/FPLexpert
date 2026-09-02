@@ -26,6 +26,7 @@ from fpl_agent.llm.client import (
 )
 from fpl_agent.projections.preseason import project_all
 from fpl_agent.suggest import load_public_data
+from fpl_agent.strategy.transfers import POSITION_LABEL
 from fpl_agent.team_state.private import load_and_validate_private_state
 from fpl_agent.team_state.resolve import resolve_team_state
 
@@ -252,8 +253,10 @@ def run_predeadline(
     from fpl_agent.strategy.chips import recommend_chips
     from fpl_agent.strategy.plan import build_weekly_plan
     from fpl_agent.strategy.transfers import (
+        explain_vs_pick,
         rank_transfer_candidates,
         rank_transfer_plans,
+        same_position_shortlist,
         this_week_upgrade,
     )
 
@@ -288,6 +291,16 @@ def run_predeadline(
     )
     this_week = this_week_upgrade(affordable_transfers)
     weekly_plan["best_affordable"] = this_week.as_payload() if this_week else None
+    weekly_plan["also_considered"] = []
+    if this_week is not None:
+        considered: list[dict[str, Any]] = []
+        for cand in same_position_shortlist(this_week, affordable_transfers, limit=3):
+            row = cand.as_payload()
+            row["picked"] = cand.in_id == this_week.in_id
+            if not row["picked"]:
+                row["reason"] = explain_vs_pick(cand, this_week)
+            considered.append(row)
+        weekly_plan["also_considered"] = considered
     weekly_plan["best_stretch"] = stretch_transfers[0].as_payload() if stretch_transfers else None
     weekly_plan["after_transfer"] = None
     if this_week is not None:
@@ -510,6 +523,7 @@ def _llm_weekly_plan(plan: dict[str, Any]) -> dict[str, Any]:
         "model_vice",
         "best_affordable",
         "best_stretch",
+        "also_considered",
         "chips",
         "after_transfer",
     )
@@ -669,6 +683,21 @@ def _weekly_plan_section(report: DailyReport) -> list[str]:
             f"- Captain: **{cap.get('web_name')}** ({cap.get('xp_next')} xP) · "
             f"Vice: **{(vice or {}).get('web_name') or '—'}**"
         )
+    also = [row for row in (plan.get("also_considered") or []) if row.get("in_name")]
+    if also:
+        pos_n = int(also[0].get("element_type") or 0)
+        pos = POSITION_LABEL.get(pos_n, "player")
+        if len(also) == 1:
+            reason = str(also[0].get("reason") or "").strip()
+            if reason:
+                lines.append(f"- Why this transfer: {reason}")
+        else:
+            lines.append(f"- Compared with other affordable {pos}s:")
+            for row in also:
+                tag = "recommended" if row.get("picked") else "also looked at"
+                reason = str(row.get("reason") or "").strip()
+                bit = f": {reason}" if reason else ""
+                lines.append(f"  - **{row.get('in_name')}** ({tag}){bit}")
     chips = plan.get("chips") or []
     play = [c for c in chips if c.get("action") == "play" and c.get("available")]
     if play:

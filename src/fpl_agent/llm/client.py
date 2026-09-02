@@ -164,9 +164,14 @@ class FakeOpenAIClient:
         if starter_buys:
             top = starter_buys[0]
             action = PlanAction.REVISE
+            reason = str(top.get("reason") or "").strip()
+            if not reason:
+                reason = (
+                    f"{top.get('in_name')} is likelier to start than {top.get('out_name')} this week "
+                    f"({float(top.get('delta_gw_xp') or 0):+.1f} pts this GW)."
+                )
             headline = (
-                f"Projection-backed FT: {top.get('out_name')} -> {top.get('in_name')} "
-                f"(+{top.get('delta_weighted_xp')} weighted xP)."
+                f"Consider {top.get('out_name')} to {top.get('in_name')} with the free transfer."
             )
             moves.append(
                 DailyMove(
@@ -175,10 +180,7 @@ class FakeOpenAIClient:
                         f"Transfer {top.get('out_name')} ({top.get('out_id')}) to "
                         f"{top.get('in_name')} ({top.get('in_id')}); affordable with current bank."
                     ),
-                    why=(
-                        f"Top affordable transfer_candidate by weighted xP "
-                        f"(+{top.get('delta_weighted_xp')} supplied)."
-                    ),
+                    why=reason,
                     player_ids=[int(top["out_id"]), int(top["in_id"])],
                     urgency="high",
                 )
@@ -541,8 +543,16 @@ class ResponsesOpenAIClient:
             "Fantasy Football Scout, r/FantasyPL, BBC Sport fantasy football, Sky Sports), "
             "then search named squad players/clubs for injury, suspension, press-conference, "
             "or fixture news. Prefer official/club/FFS sources; treat Reddit as lower-confidence. "
-            "Fill tldr (3–6 one-line bullets) and detail (decision rationale with numbers/constraints). "
+            "Fill tldr (3–6 one-line bullets) and detail (decision rationale). "
+            "Write why, headline, and detail in plain football English a manager would say out loud "
+            "(who is likelier to start, who drops from the XI, bank). "
+            "Put model numbers in parentheses at the end, e.g. "
+            "'Egan is likelier to start than O'Nien this week (+2.8 pts this GW).' "
+            "Do not lead with jargon such as net GW xP or weighted xP. "
             "Every suggested_moves item must include a non-empty why explaining that move. "
+            "Use weekly_plan.also_considered to say why the recommended IN beat the other same-position options; "
+            "do not invent names. "
+            "headline must be one sentence of advice, never a section title such as 'This week'. "
             "Use supplied price_actions if present. Do not invent price likelihoods. "
             "Do not upgrade ignore/watch price actions into transfers for price reasons. "
             "Evaluate transfer_candidates and stretch_transfer_candidates; buy IDs must come from those lists only. "
