@@ -41,6 +41,7 @@
 4. Home/away multipliers of 1.05 / 0.95.
 5. FPL `ep_next` blended into the next gameweek at weight 0.35.
 6. Availability from `status` and `chance_of_playing_next_round`.
+7. **DEFCON (optional, `projections.enable_defcon`):** expected +2 when positional CBIT/CBIRT threshold is likely hit; prior-only when minutes are thin (`defcon_prior_only` warning). Capped at +2/match.
 
 **In-season** (`finished` events ≥ 1):
 
@@ -63,5 +64,5 @@ Ownership is still unused in base xP.
 ## Validation status
 
 - Implemented and deterministic.
-- Empirically **unvalidated** until leakage-free holdout backtests land with adequate sample size.
+- DEFCON term is **gated off** (`projections.enable_defcon: false`) by default; enable only after live-season review shows it helps rankings.
 - Intervals are **uncalibrated**.

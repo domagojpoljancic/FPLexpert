@@ -44,6 +44,8 @@ class PlanningSettings(BaseModel):
     weights: list[float] = Field(default_factory=lambda: [1.00, 0.90, 0.78, 0.66, 0.55, 0.45])
     max_hit: int = Field(default=8, ge=0)
     hits_enabled: bool = True
+    early_season_gws: int = Field(default=4, ge=1, le=10)
+    early_season_hit_margin_boost: float = Field(default=1.0, ge=0.0)
 
     @model_validator(mode="after")
     def _weights_match_horizon(self) -> PlanningSettings:
@@ -159,6 +161,12 @@ class CadenceSettings(BaseModel):
         return self
 
 
+class ProjectionsSettings(BaseModel):
+    """xp-v2 projection knobs. DEFCON default on; disable if holdout regresses vs ep_next."""
+
+    enable_defcon: bool = True
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="FPL_",
@@ -176,6 +184,7 @@ class Settings(BaseSettings):
     alerts: AlertsSettings = Field(default_factory=AlertsSettings)
     prices: PricesSettings = Field(default_factory=PricesSettings)
     cadence: CadenceSettings = Field(default_factory=CadenceSettings)
+    projections: ProjectionsSettings = Field(default_factory=ProjectionsSettings)
 
 
 def _deep_merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:

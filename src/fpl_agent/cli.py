@@ -546,6 +546,94 @@ def scorecard_cmd(
         _exit(ExitCode.SUCCESS)
     typer.echo(json.dumps(card.as_payload(), indent=2))
     _exit(ExitCode.SUCCESS)
+@app.command("prices-scorecard")
+def prices_scorecard_cmd(
+    outcomes: Path = typer.Option(Path("data/outcomes/prices.jsonl"), "--outcomes"),
+    reports_dir: Path = typer.Option(Path("reports"), "--reports"),
+) -> None:
+    """Report price-band precision/recall and false-alarm rates."""
+    from datetime import UTC, datetime
+
+    from fpl_agent.prices.scorecard import build_price_scorecard, load_outcomes_jsonl
+
+    rows = load_outcomes_jsonl(outcomes)
+    card = build_price_scorecard(rows)
+    payload = card.as_payload()
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    json_path = reports_dir / f"prices-scorecard-{stamp}.json"
+    md_path = reports_dir / f"prices-scorecard-{stamp}.md"
+    json_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    md_path.write_text(
+        "# Prices scorecard\n\n"
+        f"- false_alarm_rate: {payload['false_alarm_rate']}\n"
+        f"- missed_move_rate: {payload['missed_move_rate']}\n"
+        f"- precision: {payload['precision']}\n"
+        f"- recall: {payload['recall']}\n",
+        encoding="utf-8",
+    )
+    typer.echo(json.dumps(payload, indent=2))
+    typer.echo(f"Saved {json_path}")
+    _exit(ExitCode.SUCCESS)
+
+
+@app.command("replay")
+def replay_cmd(
+    live: Path = typer.Option(..., "--live", help="Event live JSON with per-player points"),
+    hit_cost: int = typer.Option(0, "--hit-cost"),
+    triple_captain: bool = typer.Option(False, "--triple-captain"),
+) -> None:
+    """Deterministic GW total from official points (offline tests)."""
+    from fpl_agent.domain.models import Position
+    from fpl_agent.evaluation.replay import build_replay_result
+    from fpl_agent.evaluation.scorecard import points_from_live_payload
+    from fpl_agent.rules.engine import LineupPick
+    from fpl_agent.rules.season import load_season_rules_2026_27
+
+    player_points = points_from_live_payload(json.loads(live.read_text(encoding="utf-8")))
+    minutes = {pid: 90 for pid in player_points}
+    picks = [
+        LineupPick(player_id=pid, position=Position.MID, is_starter=True, bench_order=None, is_captain=pid == 1)
+        for pid in sorted(player_points)[:11]
+    ]
+    result = build_replay_result(
+        picks=picks,
+        player_points=player_points,
+        minutes=minutes,
+        hit_cost=hit_cost,
+        bench_boost=False,
+        triple_captain=triple_captain,
+        rules=load_season_rules_2026_27(),
+        predeadline_ev_positive=True,
+    )
+    typer.echo(
+        json.dumps(
+            {
+                "actual_net": result.actual_net,
+                "roll_net": result.roll_net,
+                "process": result.process.value,
+                "outcome": result.outcome.value,
+                "root_cause": result.root_cause.value,
+            },
+            indent=2,
+        )
+    )
+    _exit(ExitCode.SUCCESS)
+
+
+@app.command("prices-schedule-gate")
+def prices_schedule_gate(
+    last_success: Path = typer.Option(
+        Path("data/snapshots/prices/last-success.json"),
+        "--last-success",
+    ),
+) -> None:
+    """Print whether GitHub should run prices (20:00 Europe/Zagreb, once per day)."""
+    from fpl_agent.monitoring.liveness import evaluate_schedule_gate_file
+
+    result = evaluate_schedule_gate_file(last_success)
+    typer.echo(json.dumps(result.as_payload(), indent=2))
+    _exit(ExitCode.SUCCESS)
 
 
 @app.command("prices-watchdog")

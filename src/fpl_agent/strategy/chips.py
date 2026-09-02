@@ -7,9 +7,11 @@ from typing import Any
 
 from fpl_agent.domain.models import ChipHalf, ChipKind
 from fpl_agent.rules.engine import available_chip_instances, chip_half_for_event
-from fpl_agent.rules.season import SeasonRules, load_season_rules_2026_27
+from fpl_agent.rules.season import FIRST_HALF_CHIP_EXPIRY_EVENT, SeasonRules, load_season_rules_2026_27
+from fpl_agent.strategy.fixtures_calendar import GameweekFixtureSummary, calendar_for_horizon
 
 TC_MIN_XP = 8.0
+TC_MIN_CEILING_HAUL = 0.25
 TC_VS_NEXT_BEST = 1.35
 TC_MIN_P_START = 0.85
 BB_MIN_BENCH_XP = 8.0
@@ -44,6 +46,8 @@ def recommend_chips(
     weekly_plan: dict[str, Any],
     chip_instances: list[Any] | None = None,
     rules: SeasonRules | None = None,
+    fixtures: list[dict[str, Any]] | None = None,
+    horizon_gws: list[int] | None = None,
 ) -> list[ChipAdvice]:
     """Play vs hold for chips still available this half."""
     rules = rules or load_season_rules_2026_27()
@@ -56,6 +60,10 @@ def recommend_chips(
     captain = weekly_plan.get("model_captain") or {}
     bench = list(weekly_plan.get("bench") or [])
     xi = list(weekly_plan.get("xi") or [])
+    gws = horizon_gws or [int(row.get("gw") or 0) for row in horizon if row.get("gw")]
+    cal = calendar_for_horizon(fixtures or [], gws) if fixtures and gws else []
+    cal_by_gw = {c.gameweek: c for c in cal}
+    this_cal = cal_by_gw.get(gameweek)
 
     order = (
         ChipKind.TRIPLE_CAPTAIN,
@@ -77,14 +85,31 @@ def recommend_chips(
             )
             continue
         if kind == ChipKind.TRIPLE_CAPTAIN:
-            out.append(_triple_captain(captain, horizon, gameweek))
+            out.append(_triple_captain(captain, horizon, gameweek, this_cal))
         elif kind == ChipKind.BENCH_BOOST:
-            out.append(_bench_boost(bench))
+            out.append(_bench_boost(bench, horizon, cal_by_gw))
         elif kind == ChipKind.FREE_HIT:
-            out.append(_free_hit(gameweek, xi_xp, horizon, rules))
+            out.append(_free_hit(gameweek, xi_xp, horizon, rules, this_cal))
         else:
             out.append(_wildcard(gameweek, xi, rules))
+        if gameweek >= FIRST_HALF_CHIP_EXPIRY_EVENT - 2 and key in available:
+            out[-1] = _apply_use_or_lose_urgency(out[-1], gameweek)
     return out
+
+
+def _apply_use_or_lose_urgency(advice: ChipAdvice, gameweek: int) -> ChipAdvice:
+    if advice.action == "play" or not advice.available:
+        return advice
+    return ChipAdvice(
+        kind=advice.kind,
+        action=advice.action,
+        available=advice.available,
+        reason=(
+            f"{advice.reason} Use-or-lose: first-half chips expire at GW{FIRST_HALF_CHIP_EXPIRY_EVENT} "
+            f"(now GW{gameweek})."
+        ),
+        metric=advice.metric,
+    )
 
 
 def _available_kinds(
@@ -141,24 +166,34 @@ def _triple_captain(
     captain: dict[str, Any],
     horizon: list[dict[str, Any]],
     gameweek: int,
+    cal: GameweekFixtureSummary | None,
 ) -> ChipAdvice:
     xp = float(captain.get("xp_next") or captain.get("captain_xp") or 0.0)
     p_start = float(captain.get("p_start") or 0.0)
+    rationale = captain.get("captain_rationale") or captain
+    haul = float(rationale.get("haul_proxy") or rationale.get("ceiling", xp) / max(xp, 0.01) - 1.0)
+    ceiling = float(rationale.get("ceiling") or xp * (1.0 + haul))
     others = [
         float(row.get("captain_xp") or 0.0)
         for row in horizon
         if int(row.get("gw") or 0) != gameweek
     ]
     next_best = max(others) if others else 0.0
-    metric = xp / next_best if next_best > 0 else xp
-    if xp >= TC_MIN_XP and p_start >= TC_MIN_P_START and (not others or xp >= TC_VS_NEXT_BEST * next_best):
+    metric = ceiling / next_best if next_best > 0 else ceiling
+    if (
+        xp >= TC_MIN_XP
+        and p_start >= TC_MIN_P_START
+        and (haul >= TC_MIN_CEILING_HAUL or (cal and cal.is_double_gw))
+        and (not others or xp >= TC_VS_NEXT_BEST * next_best)
+    ):
+        dgw = " (double GW)" if cal and cal.is_double_gw else ""
         return ChipAdvice(
             kind=ChipKind.TRIPLE_CAPTAIN.value,
             action="play",
             available=True,
             reason=(
-                f"Captain xP {xp:.2f} with {p_start:.0%} start is an outlier vs the rest of the "
-                f"horizon (next-best captain week {next_best:.2f})."
+                f"Captain ceiling {ceiling:.2f} (haul proxy {haul:.2f}) with {p_start:.0%} start "
+                f"is an outlier vs next-best week {next_best:.2f}{dgw}."
             ),
             metric=metric,
         )
@@ -166,26 +201,40 @@ def _triple_captain(
         kind=ChipKind.TRIPLE_CAPTAIN.value,
         action="hold",
         reason=(
-            f"Captain xP {xp:.2f} / {p_start:.0%} start is not a clear Triple Captain week "
-            f"(need ≥{TC_MIN_XP:.0f} xP, ≥{TC_MIN_P_START:.0%} start, and {TC_VS_NEXT_BEST:.2f}× next-best week)."
+            f"Captain mean xP {xp:.2f} lacks ceiling for TC (haul proxy {haul:.2f}, need ≥{TC_MIN_CEILING_HAUL:.2f}); "
+            f"hold until a genuine haul week (DGW detection pending)."
         ),
         available=True,
         metric=metric,
     )
 
 
-def _bench_boost(bench: list[dict[str, Any]]) -> ChipAdvice:
+def _bench_boost(
+    bench: list[dict[str, Any]],
+    horizon: list[dict[str, Any]],
+    cal_by_gw: dict[int, GameweekFixtureSummary],
+) -> ChipAdvice:
     bench_xp = sum(float(p.get("xp_next") or 0.0) for p in bench)
     outfield = [p for p in bench if str(p.get("position") or "") != "GKP"]
     min_p = min((float(p.get("p_start") or 0.0) for p in outfield), default=0.0)
+    best_dgw = max(
+        (
+            (float(row.get("xi_xp") or 0.0), int(row.get("gw") or 0))
+            for row in horizon
+            if cal_by_gw.get(int(row.get("gw") or 0), None)
+            and cal_by_gw[int(row.get("gw") or 0)].is_double_gw
+        ),
+        default=(0.0, 0),
+    )
     if bench_xp >= BB_MIN_BENCH_XP and (not outfield or min_p >= BB_MIN_OUTFIELD_P_START):
+        reason = f"Bench xP {bench_xp:.2f} with outfield start ≥{min_p:.0%} looks like a Bench Boost week."
+        if best_dgw[1]:
+            reason += f" Prefer GW{best_dgw[1]} double fixtures."
         return ChipAdvice(
             kind=ChipKind.BENCH_BOOST.value,
             action="play",
             available=True,
-            reason=(
-                f"Bench xP {bench_xp:.2f} with outfield start ≥{min_p:.0%} looks like a Bench Boost week."
-            ),
+            reason=reason,
             metric=bench_xp,
         )
     return ChipAdvice(
@@ -205,6 +254,7 @@ def _free_hit(
     xi_xp: float,
     horizon: list[dict[str, Any]],
     rules: SeasonRules,
+    cal: GameweekFixtureSummary | None,
 ) -> ChipAdvice:
     if gameweek in rules.free_hit_forbidden_events:
         return ChipAdvice(
@@ -231,6 +281,28 @@ def _free_hit(
     mid = len(ordered) // 2
     median = (ordered[mid] if len(ordered) % 2 else (ordered[mid - 1] + ordered[mid]) / 2)
     gap = median - xi_xp
+    thin_blank = cal is not None and cal.is_blank_gw and cal.clubs_with_fixtures > 8
+    real_blank = cal is not None and cal.is_blank_gw and not thin_blank
+    big_dgw = cal is not None and cal.is_double_gw and xi_xp < median * 0.85
+    if real_blank or big_dgw:
+        return ChipAdvice(
+            kind=ChipKind.FREE_HIT.value,
+            action="play",
+            available=True,
+            reason=(
+                f"Fixture calendar supports Free Hit "
+                f"({'blank GW' if real_blank else 'big double GW'}; XI xP {xi_xp:.1f} vs median {median:.1f})."
+            ),
+            metric=gap,
+        )
+    if thin_blank:
+        return ChipAdvice(
+            kind=ChipKind.FREE_HIT.value,
+            action="hold",
+            available=True,
+            reason="Thin blank — not enough missing teams to justify Free Hit.",
+            metric=gap,
+        )
     if median > 0 and xi_xp <= FH_VS_MEDIAN * median and gap >= FH_MIN_GAP:
         return ChipAdvice(
             kind=ChipKind.FREE_HIT.value,

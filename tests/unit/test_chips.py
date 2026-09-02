@@ -30,7 +30,9 @@ def _plan(*, captain_xp: float, bench_xp: float, this_xi: float, other_xi: float
 
 
 def test_triple_captain_play_on_outlier_week() -> None:
-    rows = recommend_chips(gameweek=5, weekly_plan=_plan(captain_xp=12.0, bench_xp=4.0, this_xi=48.0, other_xi=46.0))
+    plan = _plan(captain_xp=12.0, bench_xp=4.0, this_xi=48.0, other_xi=46.0)
+    plan["model_captain"]["captain_rationale"] = {"haul_proxy": 0.45, "ceiling": 16.0}
+    rows = recommend_chips(gameweek=5, weekly_plan=plan)
     by_kind = {r.kind: r for r in rows}
     assert by_kind["3xc"].action == "play"
     assert by_kind["bboost"].action == "hold"
@@ -54,6 +56,35 @@ def test_wildcard_play_when_several_starters_look_benched() -> None:
         weekly_plan=_plan(captain_xp=5.0, bench_xp=4.0, this_xi=40.0, other_xi=42.0, low_starts=3),
     )
     assert next(r for r in rows if r.kind == "wildcard").action == "play"
+
+
+def test_gw19_use_or_lose_urgency() -> None:
+    rows = recommend_chips(
+        gameweek=18,
+        weekly_plan=_plan(captain_xp=5.0, bench_xp=4.0, this_xi=48.0, other_xi=46.0),
+    )
+    tc = next(r for r in rows if r.kind == "3xc")
+    assert "Use-or-lose" in tc.reason or "GW19" in tc.reason
+
+
+def test_bench_boost_targets_dgw() -> None:
+    fixtures = [
+        {"event": 5, "team_h": 1, "team_a": 2},
+        {"event": 5, "team_h": 1, "team_a": 3},
+        {"event": 6, "team_h": 2, "team_a": 3},
+    ]
+    plan = _plan(captain_xp=5.0, bench_xp=9.5, this_xi=48.0, other_xi=46.0)
+    rows = recommend_chips(gameweek=5, weekly_plan=plan, fixtures=fixtures, horizon_gws=[5, 6])
+    bb = next(r for r in rows if r.kind == "bboost")
+    assert bb.action == "play"
+    assert "double" in bb.reason.lower() or "GW5" in bb.reason
+
+
+def test_fh_not_consecutive_and_not_gw1() -> None:
+    rows = recommend_chips(gameweek=1, weekly_plan=_plan(captain_xp=5.0, bench_xp=4.0, this_xi=20.0, other_xi=45.0))
+    fh = next(r for r in rows if r.kind == "freehit")
+    assert fh.action == "hold"
+    assert not fh.available or "GW1" in fh.reason or "not allowed" in fh.reason.lower()
 
 
 def test_used_chip_is_unavailable() -> None:

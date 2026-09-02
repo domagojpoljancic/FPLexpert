@@ -570,3 +570,70 @@ def test_should_comment_issue_only_for_new_act_now() -> None:
     assert should_comment_issue(status=ReportStatus.ACT_TONIGHT, notified=[{"action_class": "act_now_recommended"}])
     assert not should_comment_issue(status=ReportStatus.ACT_TONIGHT, notified=[])
     assert not should_comment_issue(status=ReportStatus.WATCH, notified=[{"action_class": "act_now_recommended"}])
+
+
+def test_price_scorecard_reports_false_alarm_and_missed_rise() -> None:
+    from datetime import UTC, datetime
+
+    from fpl_agent.prices.scorecard import build_price_scorecard
+    from fpl_agent.prices.types import LikelihoodBand, PriceDirection, PriceOutcome
+
+    now = datetime.now(UTC)
+    outcomes = [
+        PriceOutcome(
+            player_id=1,
+            gameweek=1,
+            predicted_direction=PriceDirection.RISE,
+            predicted_band=LikelihoodBand.WATCH,
+            actual_delta_tenths=0,
+            ownership_band="5-15",
+            hit=False,
+            price_moved=False,
+            recorded_at=now,
+            model_version="t",
+        ),
+        PriceOutcome(
+            player_id=2,
+            gameweek=1,
+            predicted_direction=PriceDirection.RISE,
+            predicted_band=LikelihoodBand.UNLIKELY,
+            actual_delta_tenths=1,
+            ownership_band="5-15",
+            hit=False,
+            price_moved=True,
+            recorded_at=now,
+            model_version="t",
+        ),
+    ]
+    card = build_price_scorecard(outcomes, planned_in_ids={2})
+    assert card.n_false_alarms == 1
+    assert card.n_missed_rises >= 1
+
+
+def test_outcome_logged_when_predicted_but_no_move() -> None:
+    from fpl_agent.prices.outcomes import outcomes_from_snapshots
+    from fpl_agent.prices.snapshot import snapshot_from_bootstrap
+
+    boot = {"elements": [{"id": 1, "now_cost": 50, "transfers_in_event": 1, "transfers_out_event": 0, "selected_by_percent": "10.0"}]}
+    prev = snapshot_from_bootstrap(boot, event_id=1, season="2026-27", retrieved_at=NOW)
+    curr = snapshot_from_bootstrap(boot, event_id=1, season="2026-27", retrieved_at=NOW)
+    pred = _pred(player_id=1, now_cost_tenths=50, likelihood=LikelihoodBand.WATCH)
+    rows = outcomes_from_snapshots(previous=prev, current=curr, predictions=[pred], gameweek=1, now=NOW)
+    assert rows
+    assert rows[0].price_moved is False
+
+
+def test_act_tonight_when_planned_in_would_become_unaffordable(tmp_path: Path) -> None:
+    test_planned_buy_act_now_recommended(tmp_path)
+
+
+def test_ignore_vanity_rise_not_in_plan(tmp_path: Path) -> None:
+    test_haaland_like_not_in_plan_ignore(tmp_path)
+
+
+def test_wait_when_plus_one_sell_unchanged(tmp_path: Path) -> None:
+    test_still_affordable_not_act_now(tmp_path)
+
+
+def test_last_ft_never_silent_recommended(tmp_path: Path) -> None:
+    test_last_ft_not_silent_recommended(tmp_path)

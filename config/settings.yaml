@@ -9,6 +9,8 @@ planning:
   weights: [1.00, 0.90, 0.78, 0.66, 0.55, 0.45]
   max_hit: 8
   hits_enabled: true
+  early_season_gws: 4
+  early_season_hit_margin_boost: 1.0
 
 freshness:
   public_fpl_max_age_minutes: 180
@@ -68,6 +70,9 @@ prices:
   webhook_url: ""
   external_predictor_url: ""
   model_version: prices-v1.0.0
+
+projections:
+  enable_defcon: false
 
 cadence:
   predeadline_hours_before: 24

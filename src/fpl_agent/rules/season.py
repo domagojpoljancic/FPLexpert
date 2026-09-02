@@ -84,6 +84,9 @@ class SeasonRules(BaseModel):
     origins: dict[str, RuleOrigin]
 
 
+FIRST_HALF_CHIP_EXPIRY_EVENT = 19  # GW19 deadline Sat 2 Jan 2027 13:30 GMT
+
+
 def load_season_rules_2026_27() -> SeasonRules:
     """Immutable 2026/27 rules verified against PL articles + bootstrap 2026-08-15."""
     return SeasonRules(

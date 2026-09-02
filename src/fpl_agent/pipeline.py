@@ -40,6 +40,9 @@ def run_pipeline(
     settings_path: Path | None = None,
 ) -> dict[str, Any]:
     settings = load_settings(settings_path)
+    from fpl_agent.projections.preseason import configure_from_settings
+
+    configure_from_settings(settings)
     rules = load_season_rules(SeasonId.S2026_27)
     run_id = new_run_id()
     now = utc_now()

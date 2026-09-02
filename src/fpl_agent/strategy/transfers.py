@@ -14,6 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from fpl_agent.domain.models import RiskProfile
 from fpl_agent.projections.preseason import PlayerProjection
 from fpl_agent.rules.engine import budget_after_transfers, selling_price_tenths
 from fpl_agent.rules.season import SeasonRules, load_season_rules_2026_27
@@ -54,8 +55,18 @@ MIN_WEIGHTED_DELTA = 0.25
 CANDIDATES_PER_OUT = 30
 # Stretch list ignores budget but still caps how far above bank we bother listing.
 MAX_STRETCH_SHORTFALL_TENTHS = 30  # £3.0m
+CROSS_RESTRUCTURE_OUTS = 6
+CROSS_RESTRUCTURE_INS = 16
+HORIZON_TIE_EPSILON = 0.15
 PAIR_POOL = 8
-MIN_HIT_NET_GW = 0.5
+MIN_HIT_NET_GW = 0.5  # legacy single-GW floor; horizon gate supersedes for hits
+HIT_MARGIN_BY_RISK: dict[RiskProfile, float] = {
+    RiskProfile.CONSERVATIVE: 1.5,
+    RiskProfile.MODERATE: 1.0,
+    RiskProfile.AGGRESSIVE: 0.5,
+}
+MAX_BANKED_FTS = 5
+FT_BANK_OPTION_VALUE = 0.35
 MAX_TRANSFERS_IN_PLAN = 2
 
 
@@ -388,6 +399,212 @@ def this_week_upgrade(candidates: list[TransferCandidate]) -> TransferCandidate 
     return None
 
 
+def _position_counts(owned_ids: list[int], catalog: dict[int, dict[str, Any]]) -> dict[int, int]:
+    counts = {1: 0, 2: 0, 3: 0, 4: 0}
+    for pid in owned_ids:
+        el = catalog.get(pid) or {}
+        et = int(el.get("element_type") or 0)
+        if et in counts:
+            counts[et] += 1
+    return counts
+
+
+def _squad_position_legal(counts: dict[int, int], rules: SeasonRules) -> bool:
+    return counts.get(1, 0) == 2 and counts.get(2, 0) == 5 and counts.get(3, 0) == 5 and counts.get(4, 0) == 3
+
+
+def _differential_tiebreak_key(
+    plan: TransferPlan,
+    *,
+    catalog: dict[int, dict[str, Any]] | None,
+    risk_profile: RiskProfile,
+) -> float:
+    """Display-only mild lean toward lower ownership when horizon xP is tied (moderate risk)."""
+    if risk_profile != RiskProfile.MODERATE or not catalog or not plan.moves:
+        return 0.0
+    inn = plan.moves[-1].in_id
+    el = catalog.get(inn) or {}
+    try:
+        ownership = float(el.get("selected_by_percent") or 50.0)
+    except (TypeError, ValueError):
+        ownership = 50.0
+    return -ownership / 100.0
+
+
+def hit_horizon_margin(
+    *,
+    risk_profile: RiskProfile,
+    gameweek: int = 1,
+    early_season_gws: int = 4,
+    early_season_boost: float = 1.0,
+) -> float:
+    margin = HIT_MARGIN_BY_RISK.get(risk_profile, 1.0)
+    if gameweek <= early_season_gws:
+        margin += early_season_boost
+    return margin
+
+
+def hit_clears_horizon_bar(
+    plan: TransferPlan,
+    *,
+    margin: float,
+) -> bool:
+    """Horizon-weighted gain must exceed hit cost by a risk-scaled margin."""
+    if plan.hit_cost <= 0:
+        return True
+    net_horizon = plan.delta_weighted_xp - plan.hit_cost
+    required = (plan.hit_cost / 4.0) * margin
+    return net_horizon >= required
+
+
+def roll_recommendation_reason(
+    *,
+    free_transfers: int,
+    best_plan: TransferPlan | None,
+    margin: float,
+) -> str:
+    if best_plan is None:
+        return "No affordable move clears the horizon EV bar; banking FT preserves optionality."
+    if best_plan.hit_cost == 0 and best_plan.delta_weighted_xp < margin * 0.5:
+        return (
+            f"Marginal +{best_plan.delta_weighted_xp:.1f} horizon xP; roll to bank FT "
+            f"({free_transfers}/{MAX_BANKED_FTS} now)."
+        )
+    return "Top move clears bar."
+
+
+def rank_cross_position_plans(
+    *,
+    owned_ids: list[int],
+    bank_tenths: int,
+    free_transfers: int,
+    purchase_prices_tenths: dict[str, int],
+    catalog: dict[int, dict[str, Any]],
+    projections: dict[int, PlayerProjection],
+    rules: SeasonRules,
+    hit_points: int,
+    base_xi: tuple[float, float] | None,
+) -> list[TransferPlan]:
+    """Two-swap restructures across positions (e.g. two mids → premium FWD + enabler)."""
+    if MAX_TRANSFERS_IN_PLAN < 2 or free_transfers < 2:
+        return []
+    weak = sorted(
+        owned_ids,
+        key=lambda pid: projections[pid].weighted_xp if pid in projections else 0.0,
+    )[:CROSS_RESTRUCTURE_OUTS]
+    market = sorted(
+        [
+            p
+            for p in projections.values()
+            if p.player_id not in owned_ids and p.p_start >= MIN_IN_P_START
+        ],
+        key=lambda p: (-p.weighted_xp, p.player_id),
+    )[:CROSS_RESTRUCTURE_INS]
+    plans: list[TransferPlan] = []
+    for i, out_a in enumerate(weak):
+        for out_b in weak[i + 1 :]:
+            if out_a == out_b:
+                continue
+            for j, in_a in enumerate(market):
+                for in_b in market[j + 1 :]:
+                    if in_a.player_id == in_b.player_id:
+                        continue
+                    out_types = {
+                        int((catalog.get(out_a) or {}).get("element_type", 0)),
+                        int((catalog.get(out_b) or {}).get("element_type", 0)),
+                    }
+                    in_types = {in_a.element_type, in_b.element_type}
+                    if out_types != in_types:
+                        continue
+                    swap_map = {out_a: in_a.player_id, out_b: in_b.player_id}
+                    if not all(out_id in owned_ids for out_id in swap_map):
+                        continue
+                    trial_ids = [swap_map.get(pid, pid) for pid in owned_ids]
+                    counts = _position_counts(trial_ids, catalog)
+                    if not _squad_position_legal(counts, rules):
+                        continue
+                    moves = _synthetic_moves(
+                            owned_ids=owned_ids,
+                            outs=(out_a, out_b),
+                            ins=(in_a, in_b),
+                            bank_tenths=bank_tenths,
+                            purchase_prices_tenths=purchase_prices_tenths,
+                            catalog=catalog,
+                            projections=projections,
+                            rules=rules,
+                    )
+                    if moves is None:
+                        continue
+                    plan = _plan_from_moves(
+                        owned_ids=owned_ids,
+                        bank_tenths=bank_tenths,
+                        free_transfers=free_transfers,
+                        moves=moves,
+                        projections=projections,
+                        rules=rules,
+                        base_xi=base_xi,
+                        hit_points=hit_points,
+                    )
+                    if plan is not None and plan.affordable:
+                        plans.append(plan)
+    return plans
+
+
+def _synthetic_moves(
+    *,
+    owned_ids: list[int],
+    outs: tuple[int, int],
+    ins: tuple[PlayerProjection, PlayerProjection],
+    bank_tenths: int,
+    purchase_prices_tenths: dict[str, int],
+    catalog: dict[int, dict[str, Any]],
+    projections: dict[int, PlayerProjection],
+    rules: SeasonRules,
+) -> tuple[TransferCandidate, TransferCandidate] | None:
+    moves: list[TransferCandidate] = []
+    running_bank = bank_tenths
+    sells: list[tuple[int, int]] = []
+    for out_id, inn in zip(outs, ins, strict=True):
+        out_el = catalog.get(out_id) or {}
+        out_proj = projections.get(out_id)
+        if not out_proj:
+            return None
+        purchase = int(purchase_prices_tenths.get(str(out_id), out_el.get("now_cost") or out_proj.price_tenths))
+        current = int(out_el.get("now_cost") or out_proj.price_tenths)
+        sell = selling_price_tenths(purchase, current, rules)
+        buy = int(catalog.get(inn.player_id, {}).get("now_cost") or inn.price_tenths)
+        bank_after = budget_after_transfers(
+            bank_tenths=running_bank,
+            sells=sells + [(purchase, current)],
+            buys_current_tenths=[buy],
+            rules=rules,
+        )
+        if bank_after < 0:
+            return None
+        moves.append(
+            TransferCandidate(
+                out_id=out_id,
+                in_id=inn.player_id,
+                out_name=str(out_el.get("web_name") or out_proj.web_name),
+                in_name=inn.web_name,
+                element_type=int(out_el.get("element_type") or out_proj.element_type),
+                sell_tenths=sell,
+                buy_tenths=buy,
+                bank_after_tenths=bank_after,
+                bank_shortfall_tenths=0,
+                affordable=True,
+                delta_weighted_xp=0.0,
+                delta_gw_xp=0.0,
+                out_p_start=out_proj.p_start,
+                in_p_start=inn.p_start,
+                in_starts=True,
+            )
+        )
+        running_bank = bank_after
+        sells.append((purchase, current))
+    return (moves[0], moves[1])
+
+
 def rank_transfer_plans(
     *,
     owned_ids: list[int],
@@ -399,6 +616,11 @@ def rank_transfer_plans(
     rules: SeasonRules | None = None,
     hits_enabled: bool = True,
     max_hit: int | None = None,
+    risk_profile: RiskProfile = RiskProfile.MODERATE,
+    catalog_for_tiebreak: dict[int, dict[str, Any]] | None = None,
+    gameweek: int = 1,
+    early_season_gws: int = 4,
+    early_season_hit_margin_boost: float = 1.0,
 ) -> list[TransferPlan]:
     """Rank 1- and 2-swap plans. Hits cost `hit_cost_points` per extra transfer."""
     rules = rules or load_season_rules_2026_27()
@@ -426,6 +648,16 @@ def rank_transfer_plans(
             hit_points=hit_points,
         )
         if plan is not None and plan.hit_cost <= cap:
+            if plan.hit_cost > 0 and not hit_clears_horizon_bar(
+                plan,
+                margin=hit_horizon_margin(
+                    risk_profile=risk_profile,
+                    gameweek=gameweek,
+                    early_season_gws=early_season_gws,
+                    early_season_boost=early_season_hit_margin_boost,
+                ),
+            ):
+                continue
             plans.append(plan)
 
     if MAX_TRANSFERS_IN_PLAN >= 2:
@@ -460,14 +692,40 @@ def rank_transfer_plans(
                 )
                 if plan is None or plan.hit_cost > cap:
                     continue
-                if plan.hit_cost > 0 and plan.net_gw_xp < MIN_HIT_NET_GW:
+                if plan.hit_cost > 0 and not hit_clears_horizon_bar(
+                    plan, margin=hit_horizon_margin(risk_profile=risk_profile, gameweek=gameweek)
+                ):
                     continue
                 plans.append(plan)
 
-    return sorted(
-        plans,
-        key=lambda p: (-p.net_gw_xp, -p.delta_weighted_xp, p.hit_cost, len(p.moves)),
+    cross = rank_cross_position_plans(
+        owned_ids=owned_ids,
+        bank_tenths=bank_tenths,
+        free_transfers=free_transfers,
+        purchase_prices_tenths=purchase_prices_tenths,
+        catalog=catalog,
+        projections=projections,
+        rules=rules,
+        hit_points=hit_points,
+        base_xi=base_xi,
     )
+    hit_margin = hit_horizon_margin(
+        risk_profile=risk_profile,
+        gameweek=gameweek,
+        early_season_gws=early_season_gws,
+        early_season_boost=early_season_hit_margin_boost,
+    )
+    cross = [p for p in cross if hit_clears_horizon_bar(p, margin=hit_margin) or p.hit_cost == 0]
+    plans.extend(cross)
+
+    def sort_key(p: TransferPlan) -> tuple[float, float, float, float, int]:
+        net_horizon = p.delta_weighted_xp - (p.hit_cost / 4.0)
+        tie = _differential_tiebreak_key(
+            p, catalog=catalog_for_tiebreak or catalog, risk_profile=risk_profile
+        )
+        return (-net_horizon, -p.delta_weighted_xp, tie, -p.delta_gw_xp, p.hit_cost)
+
+    return sorted(plans, key=sort_key)
 
 
 def _plan_from_moves(

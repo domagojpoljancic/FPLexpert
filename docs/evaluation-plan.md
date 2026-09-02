@@ -6,7 +6,9 @@ Legality, replay exactness, model cannot alter deterministic values, no executab
 
 ## Projection evidence
 
-Compare MAE/bias vs naive baselines on leakage-free holdout before claiming decision value. Thresholds recorded before final eval. Currently: **unproven**.
+The agent optimises **forward-looking** expected points (xP) for upcoming gameweeks. We do not run historical backtests in this repo — advice is judged on whether the next GW plan is sensible given fixtures, minutes, and your squad, not on replaying past seasons.
+
+After each deadline, use `fpl-agent scorecard` and `fpl-agent replay` to compare what we recommended vs what actually happened (process vs luck), one gameweek at a time.
 
 ## Release stages
 

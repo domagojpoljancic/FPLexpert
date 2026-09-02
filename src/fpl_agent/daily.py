@@ -151,6 +151,9 @@ def run_predeadline(
     reports_dir: Path = Path("reports"),
 ) -> DailyReport:
     settings = settings or load_settings()
+    from fpl_agent.projections.preseason import configure_from_settings
+
+    configure_from_settings(settings)
 
     bootstrap, fixtures = load_public_data(offline=offline)
     gw, deadline = next_deadline(bootstrap)
@@ -224,6 +227,14 @@ def run_predeadline(
         elements=list(bootstrap.get("elements") or []),
         player_ids=set(private.player_ids),
     )
+    from fpl_agent.evidence.overrides import apply_official_overrides
+
+    override_result = apply_official_overrides(
+        claims=fpl_claims,
+        projections=proj_by_id,
+        allowed_player_ids=set(private.player_ids),
+    )
+    proj_by_id = override_result.projections
     search_req = build_squad_search_request(
         player_ids=private.player_ids,
         club_ids=sorted({int(catalog[p]["team"]) for p in private.player_ids if p in catalog}),
@@ -468,6 +479,8 @@ def run_predeadline(
     ]
 
     extra_warnings = _unique_texts(list(team.warnings))
+    if override_result.warnings:
+        extra_warnings = _unique_texts(extra_warnings + list(override_result.warnings))
     if price_report is not None:
         extra_warnings = _unique_texts(extra_warnings + list(price_report.warnings))
 
@@ -784,4 +797,40 @@ def write_daily_artifact(report: DailyReport, root: Path = Path("reports")) -> P
     path.write_text(render_daily_text(report), encoding="utf-8")
     json_path = path.with_suffix(".json")
     json_path.write_text(json.dumps(asdict(report), indent=2, default=str), encoding="utf-8")
+    _write_decision_ledger(report)
     return path
+
+
+def _write_decision_ledger(report: DailyReport) -> None:
+    from fpl_agent.evaluation.ledger import DecisionRecord, build_decision_id, write_decision_record
+
+    if report.skipped:
+        return
+    payload = {
+        "gameweek": report.gameweek,
+        "weekly_plan": report.weekly_plan,
+        "plan_action": report.plan_action,
+    }
+    now = datetime.now(UTC).isoformat()
+    record = DecisionRecord(
+        decision_id=build_decision_id(payload),
+        season="2026-27",
+        gameweek=report.gameweek,
+        generated_at=now,
+        data_cutoff=now,
+        team_state={"executability": report.executability},
+        executability=report.executability,
+        rules_hash="",
+        catalog_hash="",
+        projection_hash="",
+        config_hash="",
+        code_version="",
+        roll={},
+        primary={"plan_action": report.plan_action},
+        warnings=list(report.warnings),
+        report_hash=build_decision_id({"headline": report.headline}),
+    )
+    try:
+        write_decision_record(Path("data/decision-ledger"), record)
+    except FileExistsError:
+        pass

@@ -111,9 +111,59 @@ def grade_process_outcome(
     if process == ProcessQuality.GOOD and outcome == OutcomeQuality.NEGATIVE:
         root = RootCause.SOUND_PROCESS_NORMAL_VARIANCE
     elif process == ProcessQuality.POOR and outcome == OutcomeQuality.POSITIVE:
-        root = RootCause.SOUND_PROCESS_NORMAL_VARIANCE  # lucky haul — still poor process
-        # represent lucky haul via poor process + positive outcome; root stays variance-adjacent
         root = RootCause.RANKING_OR_REASONING_MISS
-    else:
+    elif process == ProcessQuality.GOOD and outcome == OutcomeQuality.POSITIVE:
         root = RootCause.SOUND_PROCESS_NORMAL_VARIANCE
+    else:
+        root = RootCause.PROJECTION_OR_MINUTES_MISS
     return process, outcome, root
+
+
+def build_replay_result(
+    *,
+    picks: list[LineupPick],
+    player_points: dict[int, int],
+    minutes: dict[int, int],
+    hit_cost: int,
+    bench_boost: bool,
+    triple_captain: bool,
+    rules: SeasonRules,
+    roll_picks: list[LineupPick] | None = None,
+    roll_hit_cost: int = 0,
+    predeadline_ev_positive: bool | None = None,
+) -> ReplayResult:
+    actual = replay_scenario(
+        picks=picks,
+        player_points=player_points,
+        minutes=minutes,
+        hit_cost=hit_cost,
+        bench_boost=bench_boost,
+        triple_captain=triple_captain,
+        rules=rules,
+    )
+    roll = None
+    if roll_picks is not None:
+        roll = replay_scenario(
+            picks=roll_picks,
+            player_points=player_points,
+            minutes=minutes,
+            hit_cost=roll_hit_cost,
+            bench_boost=False,
+            triple_captain=False,
+            rules=rules,
+        )
+    process, outcome, root = grade_process_outcome(
+        recommendation_net=actual,
+        roll_net=roll,
+        actual_net=actual,
+        predeadline_ev_positive=predeadline_ev_positive,
+    )
+    return ReplayResult(
+        actual_net=actual,
+        recommendation_net=actual,
+        roll_net=roll,
+        alternatives={},
+        process=process,
+        outcome=outcome,
+        root_cause=root,
+    )

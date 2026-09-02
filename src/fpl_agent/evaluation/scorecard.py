@@ -21,7 +21,12 @@ class Scorecard:
     transfer_out_points: int | None
     transfer_in_points: int | None
     transfer_delta: int | None
-    notes: tuple[str, ...]
+    predicted_xi_xp: float | None = None
+    predicted_captain_xp: float | None = None
+    process_quality: str | None = None
+    outcome_quality: str | None = None
+    horizon_window_delta: float | None = None
+    notes: tuple[str, ...] = ()
 
     def as_payload(self) -> dict[str, Any]:
         return {
@@ -34,6 +39,11 @@ class Scorecard:
             "transfer_out_points": self.transfer_out_points,
             "transfer_in_points": self.transfer_in_points,
             "transfer_delta": self.transfer_delta,
+            "predicted_xi_xp": self.predicted_xi_xp,
+            "predicted_captain_xp": self.predicted_captain_xp,
+            "process_quality": self.process_quality,
+            "outcome_quality": self.outcome_quality,
+            "horizon_window_delta": self.horizon_window_delta,
             "notes": list(self.notes),
         }
 
@@ -100,6 +110,26 @@ def scorecard_from_plan(
             f"recommended {best.get('out_name')} ({out_pts}) → {best.get('in_name')} ({in_pts})"
         )
 
+    predicted_xi_xp = sum(float(row.get("xp_next") or 0) for row in xi)
+    predicted_captain_xp = float(cap.get("xp_next") or 0) * 2
+    from fpl_agent.evaluation.replay import grade_process_outcome
+
+    ev_flag = weekly_plan.get("predeadline_ev_positive")
+    rec_net = weekly_plan.get("recommendation_net")
+    roll_net = weekly_plan.get("roll_net")
+    process, outcome, _root = grade_process_outcome(
+        recommendation_net=int(rec_net) if rec_net is not None else None,
+        roll_net=int(roll_net) if roll_net is not None else None,
+        actual_net=xi_points + cap_scored - (cap_raw if cap_id else 0),
+        predeadline_ev_positive=ev_flag if isinstance(ev_flag, bool) else None,
+    )
+    horizon_rows = list(weekly_plan.get("horizon") or [])
+    horizon_window_delta = None
+    if len(horizon_rows) >= 2:
+        horizon_window_delta = float(horizon_rows[0].get("xi_xp") or 0) - float(
+            horizon_rows[-1].get("xi_xp") or 0
+        )
+
     return Scorecard(
         gameweek=gameweek,
         model_xi_points=xi_points,
@@ -110,6 +140,11 @@ def scorecard_from_plan(
         transfer_out_points=out_pts,
         transfer_in_points=in_pts,
         transfer_delta=delta,
+        predicted_xi_xp=round(predicted_xi_xp, 2),
+        predicted_captain_xp=round(predicted_captain_xp, 2),
+        process_quality=process.value,
+        outcome_quality=outcome.value,
+        horizon_window_delta=horizon_window_delta,
         notes=tuple(notes),
     )
 
