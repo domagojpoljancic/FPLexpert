@@ -55,6 +55,7 @@ class DailyReport:
     detail: str = ""
     search_queries: list[str] = field(default_factory=list)
     suggested_hubs: list[dict[str, str]] = field(default_factory=list)
+    weekly_plan: dict[str, Any] = field(default_factory=dict)
 
 
 def _squad_rows(
@@ -248,7 +249,16 @@ def run_predeadline(
     except AgentError as exc:
         price_block = {"price_error": str(exc)}
 
+    from fpl_agent.strategy.plan import build_weekly_plan
     from fpl_agent.strategy.transfers import rank_transfer_candidates
+
+    weekly_plan = build_weekly_plan(
+        owned_ids=private.player_ids,
+        projections=proj_by_id,
+        gameweeks=gameweeks,
+        captain_id=private.captain_id,
+        vice_id=private.vice_id,
+    )
 
     affordable_transfers, stretch_transfers = rank_transfer_candidates(
         owned_ids=private.player_ids,
@@ -257,6 +267,10 @@ def run_predeadline(
         catalog=catalog,
         projections=proj_by_id,
     )
+    weekly_plan["best_affordable"] = (
+        affordable_transfers[0].as_payload() if affordable_transfers else None
+    )
+    weekly_plan["best_stretch"] = stretch_transfers[0].as_payload() if stretch_transfers else None
     transfer_note = (
         "No legal improving 1-FT upgrade fits the current bank; stretch targets need more funds."
         if not affordable_transfers and stretch_transfers
@@ -286,6 +300,7 @@ def run_predeadline(
         "search_request": search_req.model_dump(mode="json"),
         "sources": [c.model_dump(mode="json") for c in fpl_claims],
         "suggested_source_hubs": [dict(h) for h in SUGGESTED_SOURCE_HUBS],
+        "weekly_plan": weekly_plan,
         "transfer_candidates": [c.as_payload() for c in affordable_transfers],
         "stretch_transfer_candidates": [c.as_payload() for c in stretch_transfers],
         "transfer_market_note": transfer_note,
@@ -401,6 +416,7 @@ def run_predeadline(
         detail=advice.detail.strip(),
         search_queries=list(meta.search_queries),
         suggested_hubs=[dict(h) for h in SUGGESTED_SOURCE_HUBS],
+        weekly_plan=weekly_plan,
     )
 
 
@@ -549,6 +565,68 @@ def _sources_section(report: DailyReport) -> list[str]:
     return lines
 
 
+def _weekly_plan_section(report: DailyReport) -> list[str]:
+    plan = report.weekly_plan or {}
+    if not plan.get("ok"):
+        return []
+    gw = report.gameweek
+    cap = plan.get("model_captain") or {}
+    vice = plan.get("model_vice") or {}
+    xi = plan.get("xi") or []
+    bench = plan.get("bench") or []
+    lines = [
+        "## Model decisions",
+        "",
+        f"Deterministic xP (`xp-v2`) for **GW{gw}** and the configured horizon. "
+        "News can override this; the LLM cannot invent other buy IDs.",
+        "",
+        f"### This week (GW{gw})",
+        "",
+        f"- Formation: **{plan.get('formation')}**",
+        f"- Captain: **{cap.get('web_name')}** ({cap.get('xp_next')} xP, {float(cap.get('p_start') or 0):.0%} start)",
+    ]
+    if vice:
+        lines.append(
+            f"- Vice: **{vice.get('web_name')}** ({vice.get('xp_next')} xP, {float(vice.get('p_start') or 0):.0%} start)"
+        )
+    if xi:
+        names = ", ".join(str(p.get("web_name")) for p in xi)
+        lines.append(f"- XI: {names}")
+    if bench:
+        names = ", ".join(
+            f"{p.get('web_name')} ({float(p.get('p_start') or 0):.0%})" for p in bench
+        )
+        lines.append(f"- Bench (autosub order): {names}")
+
+    best = plan.get("best_affordable")
+    stretch = plan.get("best_stretch")
+    if best:
+        lines.append(
+            f"- Best affordable FT: **{best.get('out_name')} → {best.get('in_name')}** "
+            f"(+{best.get('delta_gw_xp')} this GW, +{best.get('delta_weighted_xp')} weighted, "
+            f"bank after £{float(best.get('bank_after_tenths') or 0) / 10:.1f}m)"
+        )
+    elif stretch:
+        lines.append(
+            f"- Roll the FT: no affordable upgrade. Best stretch is "
+            f"**{stretch.get('out_name')} → {stretch.get('in_name')}** "
+            f"(needs £{float(stretch.get('bank_shortfall_tenths') or 0) / 10:.1f}m more)"
+        )
+    else:
+        lines.append("- Roll the FT: no improving same-position 1-FT found")
+
+    horizon = plan.get("horizon") or []
+    if horizon:
+        lines += ["", "### Horizon (model XI xP by gameweek)", ""]
+        lines.append("| GW | XI xP | Model captain | Captain xP |")
+        lines.append("| --- | ---: | --- | ---: |")
+        for row in horizon:
+            lines.append(
+                f"| {row.get('gw')} | {row.get('xi_xp')} | {row.get('captain')} | {row.get('captain_xp')} |"
+            )
+    return lines
+
+
 def render_daily_text(report: DailyReport) -> str:
     if report.skipped:
         lines = [
@@ -584,6 +662,9 @@ def render_daily_text(report: DailyReport) -> str:
     lines.append(f"- Plan: **{report.plan_action.upper()}**")
     lines.extend(f"- {item}" for item in tldr)
     lines.append(f"- {_act_tldr_bullet(report)}")
+    plan_lines = _weekly_plan_section(report)
+    if plan_lines:
+        lines += ["", *plan_lines]
     lines += ["", "## Do this", ""]
     if report.suggested_moves:
         for move in report.suggested_moves:

@@ -142,3 +142,36 @@ def test_candidate_pool_excludes_non_starters() -> None:
     benched = PlayerProjection(**{**benched.__dict__, "p_start": 0.0})
     pool = build_candidate_pool([*_synthetic_pool(), benched])
     assert all(p.player_id != 999 for p in pool[3])
+
+
+def test_bench_orders_higher_start_probability_first() -> None:
+    rules = load_season_rules_2026_27()
+    squad: list[PlayerProjection] = []
+    pid = 1
+    for team in (1, 2):
+        squad.append(_player(pid, 1, 45, 8.0, team))
+        pid += 1
+    for i in range(5):
+        xp = 8.0 if i < 4 else 1.0
+        p_start = 0.9 if i < 4 else 0.85
+        row = _player(pid, 2, 45, xp, 3 + i)
+        squad.append(PlayerProjection(**{**row.__dict__, "p_start": p_start}))
+        pid += 1
+    for i in range(5):
+        squad.append(_player(pid, 3, 50, 8.0, 8 + i))
+        pid += 1
+    likely = _player(pid, 4, 45, 1.0, 13)
+    likely = PlayerProjection(**{**likely.__dict__, "p_start": 0.70})
+    squad.append(likely)
+    pid += 1
+    unlikely = _player(pid, 4, 45, 0.9, 14)
+    unlikely = PlayerProjection(**{**unlikely.__dict__, "p_start": 0.10})
+    squad.append(unlikely)
+    pid += 1
+    squad.append(_player(pid, 4, 70, 9.0, 15))
+
+    _xi, bench, _ = select_best_xi(squad, rules)
+    outfield = [p for p in bench if p.element_type != 1]
+    assert outfield[0].p_start >= outfield[-1].p_start
+    names = [p.player_id for p in outfield]
+    assert names.index(likely.player_id) < names.index(unlikely.player_id)

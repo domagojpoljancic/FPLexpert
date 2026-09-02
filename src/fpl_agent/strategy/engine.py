@@ -205,39 +205,8 @@ def generate_scenarios(
         scenarios = scenarios[:beam_width]
         return scenarios, SearchDiagnostics(candidates, len(scenarios), pruned, beam_width)
 
-    # One-FT placeholder: swap lowest XI xp with a synthetic better in-pool differential not in squad
-    if free_transfers >= 1 and executability == Executability.EXECUTABLE:
-        worst = min(xi, key=lambda pid: squad_xp.get(pid, 0.0))
-        # Without external market catalog here, model a +1.5 weighted gain template for golden tests via notes
-        candidates += 1
-        gain = 1.5
-        hit = 0
-        net = roll_gross + gain - hit
-        scenarios.append(
-            Scenario(
-                scenario_id=_scenario_id({"type": "one_ft", "out": worst}),
-                risk_level=RiskLevel.MEDIUM,
-                transfers=[TransferMove(out_id=worst, in_id=0, sell_tenths=0, buy_tenths=0)],
-                hit_cost=0,
-                bank_after=bank_tenths,
-                projected_by_gw=[x + (gain / horizon) for x in roll_by_gw],
-                weighted_gross=roll_gross + gain,
-                weighted_net=net,
-                gain_vs_roll=gain,
-                break_even_gw=1,
-                sensitivities={"availability_limited": net - 0.8},
-                future_moves=[],
-                assumptions=["candidate requires catalog-validated target in full pipeline"],
-                legality_ok=True,
-                executability=Executability.EXECUTABLE,
-                captain_id=roll.captain_id,
-                vice_id=roll.vice_id,
-                xi=xi,
-                bench=bench,
-                notes=["one_free_transfer_template"],
-            )
-        )
-
+    # Real 1-FT search lives in strategy.transfers and the predeadline path.
+    # Do not emit placeholder in_id=0 / hardcoded +1.5 gains here.
     if hits_enabled and free_transfers is not None and executability == Executability.EXECUTABLE:
         for extra in range(1, 3):
             hit_cost = extra * rules.hit_cost_points

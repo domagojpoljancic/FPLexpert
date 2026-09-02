@@ -56,7 +56,8 @@ Reports: `reports/prices-gw*.md` and `reports/predeadline-gw*.md`. JSON next to 
 
 ## What is here
 
-- CLI `fpl-agent` — rules, projections, price watch, pre-deadline news, `team-state lookup` for screenshot names
+- CLI `fpl-agent` — rules, **xp-v2** projections (in-season minutes + xG adjustment), 1-FT candidates vs roll, price watch, pre-deadline news, `team-state lookup`
 - GitHub Action `fpl-prices.yml` — 21:00 Europe/Zagreb (GitHub cron can skip or run late)
 - Cursor rule `.cursor/rules/predeadline.mdc` — phone Cloud Agent flow
+- Pre-deadline Markdown includes a deterministic **Model decisions** block (this-week XI/captain/bench plus a GW horizon table), then the LLM news layer
 - Never mutates your FPL team
