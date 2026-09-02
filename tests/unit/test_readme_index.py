@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fpl_agent.reporting.readme_index import (
@@ -12,6 +13,8 @@ from fpl_agent.reporting.readme_index import (
     refresh_readme_recent_runs,
     render_recent_runs_block,
 )
+
+NOW = datetime(2026, 8, 18, 19, 0, tzinfo=UTC)
 
 
 def _write_report(folder: Path, name: str, status: str, headline: str) -> Path:
@@ -44,14 +47,14 @@ def test_lists_newest_price_and_news_files(tmp_path: Path) -> None:
     _write_report(reports, "predeadline-gw1-20260818T120000Z.md", "WATCH", "new news")
     _write_report(reports, "predeadline-gw1-20260809T120000Z.md", "WATCH", "oldest")
 
-    prices = list_price_runs(reports, tmp_path / "missing-log.md", limit=7)
+    prices = list_price_runs(reports, tmp_path / "missing-log.md", limit=7, now=NOW)
     assert len(prices) == 7
     assert prices[0].rel_path.endswith("20260818T190000Z.md")
     assert prices[-1].rel_path.endswith("20260812T190000Z.md")
     assert "20260811T190000Z" not in prices[-1].rel_path
 
-    news = list_report_files(reports, kind="predeadline", limit=3)
-    assert [n.headline for n in news] == ["new news", "mid news", "old news"]
+    news = list_report_files(reports, kind="predeadline", limit=7, now=NOW)
+    assert [n.headline for n in news] == ["new news", "mid news"]
 
 
 def test_parses_new_predeadline_markdown_shape(tmp_path: Path) -> None:
@@ -72,7 +75,7 @@ def test_parses_new_predeadline_markdown_shape(tmp_path: Path) -> None:
         "## Do this\n",
         encoding="utf-8",
     )
-    news = list_report_files(reports, kind="predeadline", limit=3)
+    news = list_report_files(reports, kind="predeadline", limit=3, now=NOW)
     assert len(news) == 1
     assert news[0].status == "WATCH"
     assert news[0].headline == "Watch O'Nien"
@@ -89,7 +92,7 @@ def test_run_log_fills_price_rows_without_files(tmp_path: Path) -> None:
         "| 2026-08-18 17:20 CEST | 2026-08-18T15:20Z | 1 | NO ACTION | No price action tonight. |\n",
         encoding="utf-8",
     )
-    rows = list_price_runs(reports, log, limit=7)
+    rows = list_price_runs(reports, log, limit=7, now=NOW)
     assert len(rows) == 1
     assert rows[0].rel_path == "run-log.md"
     assert rows[0].status == "NO ACTION"
@@ -105,7 +108,7 @@ def test_report_file_wins_over_run_log_same_minute(tmp_path: Path) -> None:
         "| x | 2026-08-18T15:20Z | 1 | NO ACTION | from log |\n",
         encoding="utf-8",
     )
-    rows = list_price_runs(reports, log, limit=7)
+    rows = list_price_runs(reports, log, limit=7, now=NOW)
     assert len(rows) == 1
     assert rows[0].rel_path.endswith("prices-gw1-20260818T152044Z.md")
     assert rows[0].status == "WATCH"
@@ -125,7 +128,7 @@ def test_refresh_replaces_marked_readme_section(tmp_path: Path) -> None:
         f"# Title\n\n{START}\nold\n{END}\n\n## After\n",
         encoding="utf-8",
     )
-    assert refresh_readme_recent_runs(readme, reports, tmp_path / "run-log.md") is True
+    assert refresh_readme_recent_runs(readme, reports, tmp_path / "run-log.md", now=NOW) is True
     text = readme.read_text(encoding="utf-8")
     assert "Watch O'Nien" in text
     assert "reports/predeadline-gw1-20260818T152951Z.md" in text
@@ -143,10 +146,31 @@ def test_refresh_skips_readme_without_markers(tmp_path: Path) -> None:
     assert readme.read_text(encoding="utf-8") == "# nope\n"
 
 
+def test_drops_runs_older_than_seven_days(tmp_path: Path) -> None:
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    now = datetime(2026, 9, 2, 12, 0, tzinfo=UTC)
+    _write_report(reports, "predeadline-gw3-20260902T100000Z.md", "REVISE", "this week")
+    _write_report(reports, "predeadline-gw1-20260821T171955Z.md", "REVISE", "too old")
+    news = list_report_files(reports, kind="predeadline", limit=7, now=now)
+    assert [n.headline for n in news] == ["this week"]
+
+
+def test_falls_back_to_last_checks_when_window_empty(tmp_path: Path) -> None:
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    now = datetime(2026, 9, 2, 12, 0, tzinfo=UTC)
+    _write_report(reports, "prices-gw1-20260810T190000Z.md", "NO ACTION", "old check")
+    prices = list_price_runs(reports, tmp_path / "missing-log.md", limit=7, now=now)
+    assert len(prices) == 1
+    assert prices[0].headline == "old check"
+
+
 def test_render_empty_lists() -> None:
     block = render_recent_runs_block([], [])
     assert "No price reports yet." in block
     assert "No pre-deadline reports yet." in block
+    assert "last 7 days" in block
 
 
 def test_readme_times_use_cet_cest() -> None:

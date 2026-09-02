@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -12,8 +12,9 @@ DISPLAY_TZ = ZoneInfo("Europe/Zagreb")
 
 START = "<!-- recent-runs:start -->"
 END = "<!-- recent-runs:end -->"
+RECENT_DAYS = 7
 PRICE_LIMIT = 7
-NEWS_LIMIT = 3
+NEWS_LIMIT = 7
 _FILE_RE = re.compile(r"^(prices|predeadline)-gw(\d+)-(\d{8}T\d{6}Z)\.md$")
 _STATUS_RE = re.compile(r"Status:\s*\*\*(.+?)\*\*")
 _PLAN_RE = re.compile(r"Plan:\s*\*\*(.+?)\*\*")
@@ -32,10 +33,28 @@ class RunLink:
     rel_path: str
 
 
+def take_recent(
+    rows: list[RunLink],
+    *,
+    now: datetime,
+    days: int = RECENT_DAYS,
+    limit: int,
+) -> list[RunLink]:
+    """Keep the last `days`, capped at `limit`. If that window is empty, last `limit` checks."""
+    ordered = sorted(rows, key=lambda r: r.utc, reverse=True)
+    cutoff = now.astimezone(UTC) - timedelta(days=days)
+    in_window = [row for row in ordered if row.utc >= cutoff][:limit]
+    if in_window:
+        return in_window
+    return ordered[:limit]
+
+
 def refresh_readme_recent_runs(
     readme: Path = Path("README.md"),
     reports_dir: Path = Path("reports"),
     run_log: Path = Path("run-log.md"),
+    *,
+    now: datetime | None = None,
 ) -> bool:
     """Replace the marked README section. Returns False if markers are missing."""
     if not readme.exists():
@@ -43,8 +62,9 @@ def refresh_readme_recent_runs(
     text = readme.read_text(encoding="utf-8")
     if START not in text or END not in text:
         return False
-    prices = list_price_runs(reports_dir, run_log, limit=PRICE_LIMIT)
-    news = list_report_files(reports_dir, kind="predeadline", limit=NEWS_LIMIT)
+    clock = now or datetime.now(UTC)
+    prices = list_price_runs(reports_dir, run_log, limit=PRICE_LIMIT, now=clock)
+    news = list_report_files(reports_dir, kind="predeadline", limit=NEWS_LIMIT, now=clock)
     block = render_recent_runs_block(prices, news)
     start = text.index(START)
     end = text.index(END) + len(END)
@@ -59,13 +79,18 @@ def list_price_runs(
     run_log: Path = Path("run-log.md"),
     *,
     limit: int = PRICE_LIMIT,
+    now: datetime | None = None,
 ) -> list[RunLink]:
     merged: dict[str, RunLink] = {}
     for row in _parse_run_log(run_log):
         merged[minute_key(row.utc)] = row
     for row in list_report_files(reports_dir, kind="prices", limit=None):
         merged[minute_key(row.utc)] = row
-    return sorted(merged.values(), key=lambda r: r.utc, reverse=True)[:limit]
+    return take_recent(
+        list(merged.values()),
+        now=now or datetime.now(UTC),
+        limit=limit,
+    )
 
 
 def list_report_files(
@@ -73,6 +98,7 @@ def list_report_files(
     *,
     kind: str,
     limit: int | None,
+    now: datetime | None = None,
 ) -> list[RunLink]:
     if not reports_dir.is_dir():
         return []
@@ -85,7 +111,7 @@ def list_report_files(
     rows.sort(key=lambda r: r.utc, reverse=True)
     if limit is None:
         return rows
-    return rows[:limit]
+    return take_recent(rows, now=now or datetime.now(UTC), limit=limit)
 
 
 def render_recent_runs_block(prices: list[RunLink], news: list[RunLink]) -> str:
@@ -93,10 +119,10 @@ def render_recent_runs_block(prices: list[RunLink], news: list[RunLink]) -> str:
         START,
         "## Latest results",
         "",
-        "**Price watch** (GitHub, ~21:00 Zagreb)",
+        "**Price watch** (GitHub, ~21:00 Zagreb — last 7 days)",
         *_bullets(prices, empty="No price reports yet."),
         "",
-        "**Squad news** (pre-deadline)",
+        "**Squad news** (pre-deadline — last 7 days)",
         *_bullets(news, empty="No pre-deadline reports yet."),
         END,
     ]
@@ -171,6 +197,7 @@ def _headline_from_md(text: str) -> str:
         "do this",
         "why",
         "notes",
+        "model decisions",
         "suggested hubs",
         "pages openai returned",
         "search queries",

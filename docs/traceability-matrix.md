@@ -1,4 +1,4 @@
-# Traceability matrix (WIP)
+# Traceability matrix
 
 | Requirement | Module | Owner | Tests | Degradation | Gate |
 | --- | --- | --- | --- | --- | --- |

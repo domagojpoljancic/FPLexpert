@@ -1,11 +1,11 @@
 # FPL Expert
 
-WIP. Recommends transfers, hits, lineup, captain, bench, and chips. **You** make every FPL change. It never logs into FPL.
+A read-only Fantasy Premier League assistant. It recommends transfers, captain, lineup, bench, and overnight price moves. **You** make every change in the official FPL app. It never logs into FPL.
 
 <!-- recent-runs:start -->
 ## Latest results
 
-**Price watch** (GitHub, ~21:00 Zagreb)
+**Price watch** (GitHub, ~21:00 Zagreb — last 7 days)
 - [01 Sep 23:40 CEST](reports/prices-gw3-20260901T214030Z.md) · GW3 · **NO ACTION** — No price action tonight.
 - [01 Sep 01:09 CEST](reports/prices-gw3-20260831T230954Z.md) · GW3 · **NO ACTION** — No price action tonight.
 - [30 Aug 23:52 CEST](reports/prices-gw3-20260830T215242Z.md) · GW3 · **NO ACTION** — No price action tonight.
@@ -14,13 +14,16 @@ WIP. Recommends transfers, hits, lineup, captain, bench, and chips. **You** make
 - [28 Aug 05:31 CEST](reports/prices-gw2-20260828T033149Z.md) · GW2 · **NO ACTION** — No price action tonight.
 - [26 Aug 23:44 CEST](reports/prices-gw2-20260826T214423Z.md) · GW2 · **NO ACTION** — No price action tonight.
 
-**Squad news** (pre-deadline)
+**Squad news** (pre-deadline — last 7 days)
 - [02 Sep 12:03 CEST](reports/predeadline-gw3-20260902T100329Z.md) · GW3 · **REVISE** — Use the free transfer on O'Nien to Egan, retain Bruno Fernandes as captain, and recheck T…
 - [28 Aug 06:55 CEST](reports/predeadline-gw2-20260828T045547Z.md) · GW2 · **REVISE** — Consider Gibbs-White to Cherki, then start João Pedro over Shaw and keep Bruno Fernandes…
-- [21 Aug 19:19 CEST](reports/predeadline-gw1-20260821T171955Z.md) · GW1 · **REVISE** — Use the free transfer on Tzolis to Wilson, keep Bruno Fernandes captain, and switch the v…
 <!-- recent-runs:end -->
 
-## From your phone (Cursor)
+## How it works
+
+Overnight, a GitHub Action watches FPL prices and writes a short report. About a day before each gameweek deadline, you run a squad review from your phone. You get a TLDR, the model’s XI / captain / bench, and only the news pages the review actually opened.
+
+## From your phone
 
 **Prices** run overnight on GitHub. Watch the repo (or issue **FPL price alerts**) for email only when you should act. Reports land in the list above.
 
@@ -43,7 +46,7 @@ Re-encode private state and update GitHub secret `FPL_PRIVATE_STATE_B64` (and th
 uv run fpl-agent team-state encode-for-github PATH
 ```
 
-## Laptop
+## On a laptop
 
 ```bash
 uv sync
@@ -54,10 +57,4 @@ uv run pytest
 
 Reports: `reports/prices-gw*.md` and `reports/predeadline-gw*.md`. JSON next to them stays local.
 
-## What is here
-
-- CLI `fpl-agent` — rules, **xp-v2** projections (in-season minutes + xG adjustment), 1-FT candidates vs roll, price watch, pre-deadline news, `team-state lookup`
-- GitHub Action `fpl-prices.yml` — 21:00 Europe/Zagreb (GitHub cron can skip or run late)
-- Cursor rule `.cursor/rules/predeadline.mdc` — phone Cloud Agent flow
-- Pre-deadline Markdown includes a deterministic **Model decisions** block (this-week XI/captain/bench plus a GW horizon table), then the LLM news layer
-- Never mutates your FPL team
+Private squad files stay on your machine (`data/private-state/`). They are gitignored and never committed.
