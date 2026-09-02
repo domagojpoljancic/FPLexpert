@@ -19,22 +19,22 @@ Overnight **price watch** runs on GitHub (20:00 Zagreb). **Squad news** runs whe
 ## Latest results
 
 **Price watch** (GitHub, 20:00 Zagreb — last 7 days)
+- [02 Sep 23:41 CEST](reports/prices-gw3-20260902T214102Z.md) · GW3 · **WATCH** — Watch list only — do not churn for £0.1m.
 - [01 Sep 23:40 CEST](reports/prices-gw3-20260901T214030Z.md) · GW3 · **NO ACTION** — No price action tonight.
 - [01 Sep 01:09 CEST](reports/prices-gw3-20260831T230954Z.md) · GW3 · **NO ACTION** — No price action tonight.
 - [30 Aug 23:52 CEST](reports/prices-gw3-20260830T215242Z.md) · GW3 · **NO ACTION** — No price action tonight.
 - [29 Aug 23:36 CEST](reports/prices-gw3-20260829T213616Z.md) · GW3 · **NO ACTION** — No price action tonight.
 - [29 Aug 04:02 CEST](reports/prices-gw3-20260829T020207Z.md) · GW3 · **NO ACTION** — No price action tonight.
 - [28 Aug 05:31 CEST](reports/prices-gw2-20260828T033149Z.md) · GW2 · **NO ACTION** — No price action tonight.
-- [26 Aug 23:44 CEST](reports/prices-gw2-20260826T214423Z.md) · GW2 · **NO ACTION** — No price action tonight.
 
 **Squad news** (pre-deadline — last 7 days)
 - [02 Sep 21:49 CEST](reports/predeadline-gw3-20260902T194928Z.md) · GW3 · **REVISE** — Consider Virgil to De Cuyper, keep Bruno Fernandes captain, and do not spend a chip.
-- [02 Sep 21:48 CEST](reports/predeadline-gw3-20260902T194829Z.md) · GW3 · **REVISE** — Consider Virgil to De Cuyper, captain Bruno Fernandes, and confirm the move only after th…
 - [02 Sep 21:20 CEST](reports/predeadline-gw3-20260902T192018Z.md) · GW3 · **REVISE** — Consider Virgil to Ajayi with the free transfer, keep Bruno Fernandes captain, and wait f…
 - [02 Sep 19:44 CEST](reports/predeadline-gw3-20260902T174456Z.md) · GW3 · **REVISE** — Consider Virgil to Ajayi, start Ajayi, and captain Bruno Fernandes, but check late team n…
 - [02 Sep 14:55 CEST](reports/predeadline-gw3-20260902T125520Z.md) · GW3 · **REVISE** — Consider Virgil to Ajayi with the free transfer, subject to a final availability check ne…
 - [02 Sep 14:34 CEST](reports/predeadline-gw3-20260902T123407Z.md) · GW3 · **REVISE** — Consider O'Nien to Egan with the free transfer: it fixes the clearest start-risk slot and…
 - [02 Sep 12:03 CEST](reports/predeadline-gw3-20260902T100329Z.md) · GW3 · **REVISE** — Use the free transfer on O'Nien to Egan, retain Bruno Fernandes as captain, and recheck T…
+- [28 Aug 06:55 CEST](reports/predeadline-gw2-20260828T045547Z.md) · GW2 · **REVISE** — Consider Gibbs-White to Cherki, then start João Pedro over Shaw and keep Bruno Fernandes…
 <!-- recent-runs:end -->
 
 ---
