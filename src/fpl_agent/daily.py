@@ -21,6 +21,7 @@ from fpl_agent.evidence.news import (
 )
 from fpl_agent.llm.client import (
     DailyAdvice,
+    apply_news_fail_closed,
     build_client,
     validate_daily_advice,
 )
@@ -249,8 +250,9 @@ def run_predeadline(
     except AgentError as exc:
         price_block = {"price_error": str(exc)}
 
+    from fpl_agent.strategy.chips import recommend_chips
     from fpl_agent.strategy.plan import build_weekly_plan
-    from fpl_agent.strategy.transfers import rank_transfer_candidates
+    from fpl_agent.strategy.transfers import rank_transfer_candidates, rank_transfer_plans
 
     weekly_plan = build_weekly_plan(
         owned_ids=private.player_ids,
@@ -267,10 +269,38 @@ def run_predeadline(
         catalog=catalog,
         projections=proj_by_id,
     )
+    transfer_plans = rank_transfer_plans(
+        owned_ids=private.player_ids,
+        bank_tenths=private.bank_tenths,
+        free_transfers=int(private.free_transfers),
+        purchase_prices_tenths=private.purchase_prices_tenths,
+        catalog=catalog,
+        projections=proj_by_id,
+        hits_enabled=True,
+    )
+    chip_advice = recommend_chips(
+        gameweek=gw,
+        weekly_plan=weekly_plan,
+        chip_instances=private.chip_instances,
+    )
     weekly_plan["best_affordable"] = (
         affordable_transfers[0].as_payload() if affordable_transfers else None
     )
     weekly_plan["best_stretch"] = stretch_transfers[0].as_payload() if stretch_transfers else None
+    weekly_plan["best_plan"] = transfer_plans[0].as_payload() if transfer_plans else None
+    hit_plans = [p for p in transfer_plans if p.hit_cost > 0]
+    weekly_plan["best_hit"] = hit_plans[0].as_payload() if hit_plans else None
+    weekly_plan["chips"] = [c.as_payload() for c in chip_advice]
+    try:
+        from fpl_agent.evaluation.scorecard import build_previous_scorecard
+
+        prev = build_previous_scorecard(
+            previous_gameweek=gw - 1,
+            reports_dir=reports_dir,
+        )
+        weekly_plan["previous_scorecard"] = prev.as_payload() if prev else None
+    except Exception:  # noqa: BLE001
+        weekly_plan["previous_scorecard"] = None
     transfer_note = (
         "No legal improving 1-FT upgrade fits the current bank; stretch targets need more funds."
         if not affordable_transfers and stretch_transfers
@@ -303,6 +333,8 @@ def run_predeadline(
         "weekly_plan": weekly_plan,
         "transfer_candidates": [c.as_payload() for c in affordable_transfers],
         "stretch_transfer_candidates": [c.as_payload() for c in stretch_transfers],
+        "transfer_plans": [p.as_payload() for p in transfer_plans[:8]],
+        "chip_advice": [c.as_payload() for c in chip_advice],
         "transfer_market_note": transfer_note,
         "policy": {
             "do_not_transfer_just_because_ran": True,
@@ -343,12 +375,22 @@ def run_predeadline(
     for cand in affordable_transfers + stretch_transfers:
         extra_ids.add(cand.out_id)
         extra_ids.add(cand.in_id)
+    for plan in transfer_plans:
+        for move in plan.moves:
+            extra_ids.add(move.out_id)
+            extra_ids.add(move.in_id)
     advice = validate_daily_advice(
         advice if isinstance(advice, DailyAdvice) else DailyAdvice.model_validate(advice),
         allowed_player_ids=set(private.player_ids) | extra_ids,
         allowed_source_ids=allowed_sources or {c.claim_id for c in fpl_claims},
         price_actions=price_block.get("price_actions") if isinstance(price_block.get("price_actions"), list) else None,
         owned_player_ids=set(private.player_ids),
+    )
+    advice = apply_news_fail_closed(
+        advice,
+        used_live=used_live and not meta.fallback,
+        web_search_calls=int(meta.web_search_calls),
+        page_count=len(meta.sources),
     )
 
     if private.applies_before_gameweek != gw:
@@ -615,6 +657,41 @@ def _weekly_plan_section(report: DailyReport) -> list[str]:
     else:
         lines.append("- Roll the FT: no improving same-position 1-FT found")
 
+    best_plan = plan.get("best_plan")
+    if best_plan and int(best_plan.get("n_transfers") or 0) >= 2:
+        lines.append(
+            f"- Best 2-swap plan: {best_plan.get('summary')} "
+            f"(bank after £{float(best_plan.get('bank_after_tenths') or 0) / 10:.1f}m)"
+        )
+    best_hit = plan.get("best_hit")
+    if best_hit and int(best_hit.get("hit_cost") or 0) > 0:
+        if not best_plan or best_plan.get("summary") != best_hit.get("summary"):
+            lines.append(f"- Best hit: {best_hit.get('summary')}")
+
+    chips = plan.get("chips") or []
+    if chips:
+        play = [c for c in chips if c.get("action") == "play" and c.get("available")]
+        hold = [c for c in chips if c.get("action") != "play" or not c.get("available")]
+        if play:
+            bits = ", ".join(f"**{c.get('kind')}** ({c.get('reason')})" for c in play)
+            lines.append(f"- Chips to consider: {bits}")
+        elif hold:
+            kinds = ", ".join(str(c.get("kind")) for c in hold)
+            lines.append(f"- Chips: hold {kinds}")
+
+    prev = plan.get("previous_scorecard")
+    if prev:
+        lines += ["", f"### Last week (GW{prev.get('gameweek')} actuals)", ""]
+        lines.append(
+            f"- Model XI scored **{prev.get('model_xi_points')}**; "
+            f"captain {prev.get('model_captain_name')} **{prev.get('model_captain_points')}** (C x2)."
+        )
+        if prev.get("transfer_delta") is not None:
+            lines.append(
+                f"- Recommended transfer delta: **{int(prev.get('transfer_delta')):+d}** "
+                f"({prev.get('transfer_out_points')} out vs {prev.get('transfer_in_points')} in)."
+            )
+
     horizon = plan.get("horizon") or []
     if horizon:
         lines += ["", "### Horizon (model XI xP by gameweek)", ""]
@@ -661,6 +738,8 @@ def render_daily_text(report: DailyReport) -> str:
     lines += ["", "## TLDR", ""]
     lines.append(f"- Plan: **{report.plan_action.upper()}**")
     lines.extend(f"- {item}" for item in tldr)
+    if any(w == "news_search_empty" for w in report.warnings):
+        lines.append("- News search returned **no pages** — numbers below are model-only.")
     lines.append(f"- {_act_tldr_bullet(report)}")
     plan_lines = _weekly_plan_section(report)
     if plan_lines:

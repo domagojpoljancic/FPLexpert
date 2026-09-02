@@ -186,6 +186,18 @@ def test_report_includes_weekly_model_decisions() -> None:
                 "in_name": "Haaland",
                 "bank_shortfall_tenths": 20,
             },
+            "chips": [
+                {"kind": "3xc", "action": "hold", "available": True, "reason": "not an outlier week"},
+            ],
+            "previous_scorecard": {
+                "gameweek": 2,
+                "model_xi_points": 55,
+                "model_captain_points": 16,
+                "model_captain_name": "B.Fernandes",
+                "transfer_delta": 3,
+                "transfer_out_points": 2,
+                "transfer_in_points": 5,
+            },
         },
     )
     text = render_daily_text(report)
@@ -195,8 +207,44 @@ def test_report_includes_weekly_model_decisions() -> None:
     assert "B.Fernandes" in text
     assert "Roll the FT" in text
     assert "Haaland" in text
+    assert "Last week (GW2 actuals)" in text
+    assert "hold 3xc" in text or "Chips: hold" in text
     assert text.index("## TLDR") < text.index("## Model decisions")
     assert text.index("## Model decisions") < text.index("## Do this")
+
+
+def test_apply_news_fail_closed_when_live_search_empty() -> None:
+    from fpl_agent.llm.client import NEWS_SEARCH_EMPTY, apply_news_fail_closed
+
+    advice = DailyAdvice(plan_action=PlanAction.KEEP, headline="Hold")
+    closed = apply_news_fail_closed(advice, used_live=True, web_search_calls=0, page_count=0)
+    assert NEWS_SEARCH_EMPTY in closed.warnings
+    assert any("No web pages" in u for u in closed.uncertainty)
+    untouched = apply_news_fail_closed(advice, used_live=True, web_search_calls=3, page_count=2)
+    assert NEWS_SEARCH_EMPTY not in untouched.warnings
+    fake = apply_news_fail_closed(advice, used_live=False, web_search_calls=0, page_count=0)
+    assert NEWS_SEARCH_EMPTY not in fake.warnings
+
+
+def test_report_flags_empty_news_search() -> None:
+    from fpl_agent.daily import DailyReport, render_daily_text
+
+    report = DailyReport(
+        gameweek=3,
+        plan_action="keep",
+        headline="Hold",
+        what_changed=[],
+        attention_triggers=[],
+        suggested_moves=[],
+        uncertainty=["No web pages were returned this run. Treat injury/line-up claims as unverified; use FPL status fields and supplied xP only."],
+        warnings=["news_search_empty"],
+        sources=[],
+        model_meta={"web_search_calls": 0},
+        executability="EXECUTABLE",
+        used_live_ai=True,
+    )
+    text = render_daily_text(report)
+    assert "no pages" in text.lower()
 
 
 def test_extract_web_search_trace_collects_queries_and_pages() -> None:

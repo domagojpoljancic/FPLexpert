@@ -517,6 +517,55 @@ def predeadline(
     _exit(ExitCode.SUCCESS)
 
 
+@app.command("scorecard")
+def scorecard_cmd(
+    gameweek: int = typer.Option(..., "--gameweek", "-g", help="Finished gameweek to score"),
+    reports_dir: Path = typer.Option(Path("reports"), "--reports"),
+    live: Path | None = typer.Option(None, "--live", help="Optional event live JSON (offline tests)"),
+) -> None:
+    """Compare the last pre-deadline plan for a GW with official player points."""
+    from fpl_agent.evaluation.scorecard import (
+        build_previous_scorecard,
+        points_from_live_payload,
+    )
+
+    player_points = None
+    if live is not None:
+        player_points = points_from_live_payload(json.loads(live.read_text(encoding="utf-8")))
+    try:
+        card = build_previous_scorecard(
+            previous_gameweek=gameweek,
+            reports_dir=reports_dir,
+            player_points=player_points,
+        )
+    except AgentError as exc:
+        typer.echo(f"FAILED: {exc}", err=True)
+        _exit(exc.exit_code)
+    if card is None:
+        typer.echo(f"No saved pre-deadline plan for GW{gameweek}.")
+        _exit(ExitCode.SUCCESS)
+    typer.echo(json.dumps(card.as_payload(), indent=2))
+    _exit(ExitCode.SUCCESS)
+
+
+@app.command("prices-watchdog")
+def prices_watchdog(
+    last_success: Path = typer.Option(
+        Path("data/snapshots/prices/last-success.json"),
+        "--last-success",
+    ),
+    max_age_hours: float = typer.Option(26.0, "--max-age-hours"),
+) -> None:
+    """Exit 2 if the overnight price job is stale; prints JSON either way."""
+    from fpl_agent.monitoring.liveness import evaluate_last_success_file
+
+    result = evaluate_last_success_file(last_success, max_age_hours=max_age_hours)
+    typer.echo(json.dumps(result.as_payload(), indent=2))
+    if result.stale:
+        raise typer.Exit(2)
+    _exit(ExitCode.SUCCESS)
+
+
 @app.command("analyze")
 def analyze(
     mode: str = typer.Option("dry_run", "--mode"),

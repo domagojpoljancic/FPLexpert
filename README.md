@@ -52,9 +52,13 @@ uv run fpl-agent team-state encode-for-github PATH
 uv sync
 uv run fpl-agent prices                 # overnight-style price watch (no OpenAI)
 uv run fpl-agent predeadline --live-ai  # squad news; add --force outside the ~24h window
+uv run fpl-agent scorecard -g 2         # last week's plan vs official points
+uv run fpl-agent prices-watchdog        # alert if overnight price job looks skipped
 uv run pytest
 ```
 
 Reports: `reports/prices-gw*.md` and `reports/predeadline-gw*.md`. JSON next to them stays local.
 
-Private squad files stay on your machine (`data/private-state/`). They are gitignored and never committed.
+Private squad files stay on your machine (`data/private-state/`). They are gitignored and never committed. The assistant never mutates your FPL team.
+
+Overnight price watch runs on GitHub (`fpl-prices.yml`, ~21:00 Zagreb). A second workflow (`fpl-prices-watchdog.yml`) comments if that job is more than 26 hours late.
