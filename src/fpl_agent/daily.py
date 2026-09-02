@@ -365,10 +365,12 @@ def run_predeadline(
         "search_request": search_req.model_dump(mode="json"),
         "sources": [c.model_dump(mode="json") for c in fpl_claims],
         "suggested_source_hubs": [dict(h) for h in SUGGESTED_SOURCE_HUBS],
-        "weekly_plan": weekly_plan,
-        "transfer_candidates": [c.as_payload() for c in affordable_transfers],
-        "stretch_transfer_candidates": [c.as_payload() for c in stretch_transfers],
-        "transfer_plans": [p.as_payload() for p in transfer_plans[:8]],
+        "weekly_plan": _llm_weekly_plan(weekly_plan),
+        "transfer_candidates": [
+            c.as_payload() for c in affordable_transfers if c.in_starts
+        ][:8],
+        "stretch_transfer_candidates": [c.as_payload() for c in stretch_transfers[:4]],
+        "transfer_plans": [p.as_payload() for p in transfer_plans[:4]],
         "chip_advice": [c.as_payload() for c in chip_advice],
         "transfer_market_note": transfer_note,
         "policy": {
@@ -495,6 +497,25 @@ def run_predeadline(
         suggested_hubs=[dict(h) for h in SUGGESTED_SOURCE_HUBS],
         weekly_plan=weekly_plan,
     )
+
+
+def _llm_weekly_plan(plan: dict[str, Any]) -> dict[str, Any]:
+    """Smaller weekly_plan for the model so after_transfer is not truncated."""
+    keys = (
+        "ok",
+        "formation",
+        "xi",
+        "bench",
+        "model_captain",
+        "model_vice",
+        "best_affordable",
+        "best_stretch",
+        "chips",
+        "after_transfer",
+    )
+    out = {key: plan[key] for key in keys if key in plan}
+    out["horizon"] = list(plan.get("horizon") or [])[:3]
+    return out
 
 
 def _unique_texts(items: list[str]) -> list[str]:
@@ -713,7 +734,7 @@ def render_daily_text(report: DailyReport) -> str:
     lines += ["", "## Why", "", detail]
     watch = _unique_texts(
         list(report.attention_triggers[:4])
-        + [u for u in report.uncertainty if "weekly-plan" not in u.lower()][:2]
+        + [u for u in report.uncertainty if "weekly_plan" not in u.lower() and "weekly-plan" not in u.lower()][:2]
         + warnings[:3]
     )
     notes = _can_act_lines(report)
