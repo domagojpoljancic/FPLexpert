@@ -1,6 +1,19 @@
 # FPL Expert
 
-A read-only Fantasy Premier League assistant. It recommends transfers, captain, lineup, bench, and overnight price moves. **You** make every change in the official FPL app. It never logs into FPL.
+**A read-only Fantasy Premier League co-pilot.** It reads your squad, fixtures, prices, and news, then recommends transfers, captain, bench, and overnight price moves. **You** make every change in the official FPL app — it never logs into FPL.
+
+## Cheat sheet
+
+| When | What to run |
+| --- | --- |
+| **~24h before deadline** | `uv run fpl-agent predeadline --live-ai` |
+| **Squad changed?** | Send an FPL screenshot in Cursor, or update `data/private-state/current.json` |
+| **After a deadline** (optional) | `uv run fpl-agent scorecard -g N` — compare last plan vs real points |
+| **Price accuracy** (optional, later in season) | `uv run fpl-agent prices-scorecard` |
+| **Too early/late for predeadline?** | add `--force` |
+| **FPL API down?** | add `--offline` |
+
+**On your phone:** Cursor → Cloud Agent on this repo → prompt: `Run the pre-deadline review.` The agent lists your saved squad, waits for **unchanged** or a screenshot, then runs the review and publishes the report below.
 
 <!-- recent-runs:start -->
 ## Latest results
@@ -22,21 +35,25 @@ A read-only Fantasy Premier League assistant. It recommends transfers, captain, 
 - [28 Aug 06:55 CEST](reports/predeadline-gw2-20260828T045547Z.md) · GW2 · **REVISE** — Consider Gibbs-White to Cherki, then start João Pedro over Shaw and keep Bruno Fernandes…
 <!-- recent-runs:end -->
 
-## How it works
+## What you get
 
-Overnight, a GitHub Action watches FPL prices and writes a short report. About a day before each gameweek deadline, you run a squad review from your phone. You get a TLDR, the model’s XI / captain / bench, and only the news pages the review actually opened.
+- **Pre-deadline review** — TLDR, recommended XI / captain / bench, transfer options (including cross-position restructures when sensible), hit advice with a moderate risk bar, chip hints, and a **Why** section with only news pages the review actually opened.
+- **Overnight price watch** — automated report on whether to lock a move before a likely rise/fall (plan-gated: it won't chase random template rises).
+- **After the deadline** — optional scorecard comparing what we recommended vs official points for that gameweek.
+
+Numbers (xP, prices, legality) are computed in code. An LLM only ranks and explains **legal candidates we already generated** — it cannot invent players, prices, or injuries.
 
 ## From your phone
 
-**Prices** run overnight on GitHub. Watch the repo (or issue **FPL price alerts**) for email only when you should act. Reports land in the list above.
+**Prices** run overnight on GitHub. Watch the repo (or issue **FPL price alerts**) for email only when you should act. Reports appear in the list above.
 
-**Squad news** — about a day before the GW deadline:
+**Squad news** — about a day before the gameweek deadline:
 
 1. Cursor mobile → **Cloud Agent** on this repo (not a local session on a sleeping laptop).
 2. Cloud secrets: `OPENAI_API_KEY` and `FPL_PRIVATE_STATE_B64`. Python 3.12 + `uv`.
 3. Prompt: `Run the pre-deadline review.`
 4. The agent lists the saved squad and waits. Reply **unchanged**, or send an FPL screenshot if the team changed. A pitch or transfers screenshot is enough — it maps **printed name + opponent line under the name** (`Raya|COV|H|6.0`), not kits or last-season clubs.
-5. Leave Cursor’s model on **Auto**. OpenAI inside `predeadline` uses the **`gpt-5.6`** alias (current GPT-5.6 Sol), not a dated snapshot.
+5. Leave Cursor's model on **Auto**. OpenAI inside `predeadline` uses the **`gpt-5.6`** alias (current GPT-5.6 Sol), not a dated snapshot.
 6. Read the report (chat + GitHub link above): **TLDR** first, then why, then every page OpenAI actually returned. You still transfer in the FPL app.
 
 The agent saves `reports/predeadline-*.md`, refreshes the list above, commits, pushes, and **merges to `main`** in the same run so the links here work from your phone. An open PR is not enough.
@@ -53,10 +70,12 @@ uv run fpl-agent team-state encode-for-github PATH
 
 ```bash
 uv sync
-uv run fpl-agent prices                 # overnight-style price watch (no OpenAI)
-uv run fpl-agent predeadline --live-ai  # squad news; add --force outside the ~24h window
-uv run fpl-agent scorecard -g 2         # last week's plan vs official points
-uv run fpl-agent prices-watchdog        # alert if overnight price job looks skipped
+uv run fpl-agent team-state names          # show saved squad (no secrets printed)
+uv run fpl-agent predeadline --live-ai     # full review; add --force outside ~24h window
+uv run fpl-agent scorecard -g 3             # last week's plan vs official points
+uv run fpl-agent prices                    # overnight-style price watch (no OpenAI)
+uv run fpl-agent prices-scorecard          # price prediction accuracy (optional)
+uv run fpl-agent prices-watchdog           # alert if overnight price job looks skipped
 uv run pytest
 ```
 
