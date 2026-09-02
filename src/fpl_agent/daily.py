@@ -227,6 +227,14 @@ def run_predeadline(
         elements=list(bootstrap.get("elements") or []),
         player_ids=set(private.player_ids),
     )
+    from fpl_agent.evidence.overrides import apply_official_overrides
+
+    override_result = apply_official_overrides(
+        claims=fpl_claims,
+        projections=proj_by_id,
+        allowed_player_ids=set(private.player_ids),
+    )
+    proj_by_id = override_result.projections
     search_req = build_squad_search_request(
         player_ids=private.player_ids,
         club_ids=sorted({int(catalog[p]["team"]) for p in private.player_ids if p in catalog}),
@@ -471,6 +479,8 @@ def run_predeadline(
     ]
 
     extra_warnings = _unique_texts(list(team.warnings))
+    if override_result.warnings:
+        extra_warnings = _unique_texts(extra_warnings + list(override_result.warnings))
     if price_report is not None:
         extra_warnings = _unique_texts(extra_warnings + list(price_report.warnings))
 
