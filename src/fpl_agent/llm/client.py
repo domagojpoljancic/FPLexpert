@@ -502,6 +502,7 @@ class ResponsesOpenAIClient:
             "Use supplied price_actions if present. Do not invent price likelihoods. "
             "Do not upgrade ignore/watch price actions into transfers for price reasons. "
             "Evaluate transfer_candidates and stretch_transfer_candidates; buy IDs must come from those lists only. "
+            "Treat weekly_plan as the deterministic XI, captain, bench, and horizon xP; do not contradict those numbers without news. "
             "If affordable candidates exist and news does not veto them, prefer revise with a concrete transfer. "
             "If only stretch candidates exist, say the FT is blocked by bank and name the best stretch target. "
             "Do not invent player IDs. Do not recommend a transfer merely because this run happened."

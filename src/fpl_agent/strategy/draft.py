@@ -97,7 +97,7 @@ def select_best_xi(
     starter_ids = {p.player_id for p in best[1]}
     bench_outfield = sorted(
         [p for p in squad if p.player_id not in starter_ids and p.element_type != 1],
-        key=lambda p: (-score(p), p.player_id),
+        key=lambda p: (-p.p_start, -score(p), p.player_id),
     )
     bench_gk = [p for p in squad if p.player_id not in starter_ids and p.element_type == 1]
     return best[1], bench_gk + bench_outfield, best[2]

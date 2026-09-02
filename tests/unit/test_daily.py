@@ -150,6 +150,53 @@ def test_report_lists_openai_pages_and_hubs() -> None:
     assert "No material injury news" in text
     assert "Why: No injury news and no affordable upgrade beat rolling." in text
     assert "you can act" in text
+    assert text.index("## TLDR") < text.index("## Do this")
+
+
+def test_report_includes_weekly_model_decisions() -> None:
+    from fpl_agent.daily import DailyReport, render_daily_text
+
+    report = DailyReport(
+        gameweek=3,
+        plan_action="keep",
+        headline="Hold",
+        what_changed=[],
+        attention_triggers=[],
+        suggested_moves=[],
+        uncertainty=[],
+        warnings=[],
+        sources=[],
+        model_meta={},
+        executability="EXECUTABLE",
+        used_live_ai=False,
+        weekly_plan={
+            "ok": True,
+            "formation": "3-5-2",
+            "model_captain": {"web_name": "B.Fernandes", "xp_next": 4.2, "p_start": 0.95},
+            "model_vice": {"web_name": "Raya", "xp_next": 3.1, "p_start": 0.95},
+            "xi": [{"web_name": "Raya"}, {"web_name": "B.Fernandes"}],
+            "bench": [{"web_name": "O'Nien", "p_start": 0.4}],
+            "horizon": [
+                {"gw": 3, "xi_xp": 42.1, "captain": "B.Fernandes", "captain_xp": 4.2},
+                {"gw": 4, "xi_xp": 38.0, "captain": "Haaland", "captain_xp": 5.1},
+            ],
+            "best_affordable": None,
+            "best_stretch": {
+                "out_name": "Thiago",
+                "in_name": "Haaland",
+                "bank_shortfall_tenths": 20,
+            },
+        },
+    )
+    text = render_daily_text(report)
+    assert "## Model decisions" in text
+    assert "### This week (GW3)" in text
+    assert "### Horizon (model XI xP by gameweek)" in text
+    assert "B.Fernandes" in text
+    assert "Roll the FT" in text
+    assert "Haaland" in text
+    assert text.index("## TLDR") < text.index("## Model decisions")
+    assert text.index("## Model decisions") < text.index("## Do this")
 
 
 def test_extract_web_search_trace_collects_queries_and_pages() -> None:

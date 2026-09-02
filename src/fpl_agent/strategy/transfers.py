@@ -17,6 +17,24 @@ from typing import Any
 from fpl_agent.projections.preseason import PlayerProjection
 from fpl_agent.rules.engine import budget_after_transfers, selling_price_tenths
 from fpl_agent.rules.season import SeasonRules, load_season_rules_2026_27
+from fpl_agent.strategy.draft import BENCH_WEIGHT, select_best_xi
+
+MIN_IN_P_START = 0.40
+
+
+def _xi_objective(
+    owned_ids: list[int],
+    projections: dict[int, PlayerProjection],
+    rules: SeasonRules,
+) -> tuple[float, float] | None:
+    players = [projections[pid] for pid in owned_ids if pid in projections]
+    if len(players) != len(owned_ids) or len(players) != rules.squad_size:
+        return None
+    xi, bench, _ = select_best_xi(players, rules)
+    weighted = sum(p.weighted_xp for p in xi) + BENCH_WEIGHT * sum(p.weighted_xp for p in bench)
+    gw = sum((p.xp_by_gw[0] if p.xp_by_gw else 0.0) for p in xi)
+    return weighted, gw
+
 
 DEFAULT_LIMIT = 12
 STRETCH_LIMIT = 8
@@ -142,6 +160,8 @@ def rank_transfer_candidates(
     affordable: list[TransferCandidate] = []
     stretch: list[TransferCandidate] = []
 
+    base_xi = _xi_objective(owned_ids, projections, rules)
+
     for out_id in owned_ids:
         out_el = catalog.get(out_id)
         out_proj = projections.get(out_id)
@@ -155,6 +175,8 @@ def rank_transfer_candidates(
         sell = selling_price_tenths(purchase, current, rules)
 
         for inn in market_by_pos.get(element_type, [])[:CANDIDATES_PER_OUT]:
+            if inn.p_start < MIN_IN_P_START and inn.p_start <= out_proj.p_start:
+                continue
             buy = int(catalog.get(inn.player_id, {}).get("now_cost") or inn.price_tenths)
             bank_after = budget_after_transfers(
                 bank_tenths=bank_tenths,
@@ -169,11 +191,20 @@ def rank_transfer_candidates(
                 club_limit=rules.club_limit,
             ):
                 continue
-            delta_w = inn.weighted_xp - out_proj.weighted_xp
+            if base_xi is not None:
+                new_ids = [inn.player_id if pid == out_id else pid for pid in owned_ids]
+                new_xi = _xi_objective(new_ids, projections, rules)
+                if new_xi is None:
+                    continue
+                delta_w = new_xi[0] - base_xi[0]
+                delta_gw = new_xi[1] - base_xi[1]
+            else:
+                delta_w = inn.weighted_xp - out_proj.weighted_xp
+                out_gw = out_proj.xp_by_gw[0] if out_proj.xp_by_gw else 0.0
+                in_gw = inn.xp_by_gw[0] if inn.xp_by_gw else 0.0
+                delta_gw = in_gw - out_gw
             if delta_w < min_weighted_delta:
                 continue
-            out_gw = out_proj.xp_by_gw[0] if out_proj.xp_by_gw else 0.0
-            in_gw = inn.xp_by_gw[0] if inn.xp_by_gw else 0.0
             shortfall = max(0, -bank_after)
             cand = TransferCandidate(
                 out_id=out_id,
@@ -187,7 +218,7 @@ def rank_transfer_candidates(
                 bank_shortfall_tenths=shortfall,
                 affordable=bank_after >= 0,
                 delta_weighted_xp=delta_w,
-                delta_gw_xp=in_gw - out_gw,
+                delta_gw_xp=delta_gw,
                 out_p_start=out_proj.p_start,
                 in_p_start=inn.p_start,
             )

@@ -1,9 +1,8 @@
-"""Preseason expected-points baseline built from public bootstrap + fixtures.
+"""Expected-points model used by pre-deadline (`xp-v2`).
 
-Preseason there is no current-season form, so this model blends last season's
-per-90 production, a price-based prior for players with little history, and
-FPL's own published `ep_next`. Every constant here is a transparent default,
-not a validated football truth. See docs/projection-methodology.md.
+Preseason uses last-season minutes/starts. After GW1 lockdown it switches to
+starts / finished gameweeks and an xG/xA adjustment. Constants are transparent
+defaults, not validated football truth. See docs/projection-methodology.md.
 """
 
 from __future__ import annotations
@@ -11,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-PRESEASON_MODEL_VERSION = "preseason-v1"
+PRESEASON_MODEL_VERSION = "xp-v2"
 
 # Fixture difficulty rating (1 easy .. 5 hard) -> multiplier.
 ATTACK_FDR_MULTIPLIER: dict[int, float] = {1: 1.20, 2: 1.10, 3: 1.00, 4: 0.90, 5: 0.80}
@@ -28,8 +27,12 @@ PRICE_PRIOR_SLOPE_PER_TENTH: dict[int, float] = {1: 0.024, 2: 0.030, 3: 0.036, 4
 # Shrinkage strength (in "90s played") toward the price prior.
 SHRINKAGE_90S = 12.0
 
-# Weight given to FPL's published ep_next for gameweek 1.
+# Weight given to FPL's published ep_next for the next gameweek.
 EP_NEXT_BLEND = 0.35
+EP_NEXT_BLEND_IN_SEASON = 0.45
+
+# FPL attacking points for a goal, by element_type.
+GOAL_POINTS = {1: 6.0, 2: 6.0, 3: 5.0, 4: 4.0}
 
 MINUTES_IF_START = 78.0
 MINUTES_IF_SUB = 18.0
@@ -86,8 +89,40 @@ def price_prior_per_90(element_type: int, price_tenths: int) -> float:
     return intercept + slope * max(0, price_tenths - 40)
 
 
+def finished_gameweeks(bootstrap: dict[str, Any]) -> int:
+    """Count official finished events. 0 means preseason / before GW1 lockdown."""
+    return sum(1 for event in (bootstrap.get("events") or []) if event.get("finished"))
+
+
+def apply_xg_adjustment(element: dict[str, Any], pp90: float) -> tuple[float, tuple[str, ...]]:
+    """Move pp90 toward xGI when finishing has diverged from underlying chance."""
+    warnings: list[str] = []
+    minutes = _f(element.get("minutes"))
+    element_type = int(element.get("element_type", 3))
+    pen_order = element.get("penalties_order")
+    if minutes < 45:
+        if pen_order == 1:
+            warnings.append("pen_taker_prior")
+            return pp90 + 0.20, tuple(warnings)
+        return pp90, ()
+    nineties = minutes / 90.0
+    xg = _f(element.get("expected_goals"))
+    xa = _f(element.get("expected_assists"))
+    if xg + xa <= 0:
+        return pp90, ()
+    goal_pts = GOAL_POINTS.get(element_type, 4.0)
+    adj = 0.5 * (
+        ((xg - _f(element.get("goals_scored"))) / nineties) * goal_pts
+        + ((xa - _f(element.get("assists"))) / nineties) * 3.0
+    )
+    adj = max(-1.2, min(1.2, adj))
+    if abs(adj) >= 0.05:
+        warnings.append("xg_adjustment")
+    return pp90 + adj, tuple(warnings)
+
+
 def points_per_90_estimate(element: dict[str, Any]) -> tuple[float, tuple[str, ...]]:
-    """Shrink last season's per-90 scoring toward a price-based prior."""
+    """Shrink observed per-90 scoring toward a price prior, then apply xGI."""
     warnings: list[str] = []
     minutes = _f(element.get("minutes"))
     total_points = _f(element.get("total_points"))
@@ -97,36 +132,62 @@ def points_per_90_estimate(element: dict[str, Any]) -> tuple[float, tuple[str, .
     prior = price_prior_per_90(element_type, price)
     nineties = minutes / 90.0
     if nineties <= 0:
-        warnings.append("no prior-season minutes; price prior only")
-        return prior, tuple(warnings)
+        warnings.append("no minutes; price prior only")
+        pp90 = prior
+    else:
+        observed = total_points / nineties
+        pp90 = (nineties * observed + SHRINKAGE_90S * prior) / (nineties + SHRINKAGE_90S)
+        if nineties < 10:
+            warnings.append("small minutes sample")
+    adjusted, xg_warn = apply_xg_adjustment(element, pp90)
+    return adjusted, tuple(warnings) + xg_warn
 
-    observed = total_points / nineties
-    shrunk = (nineties * observed + SHRINKAGE_90S * prior) / (nineties + SHRINKAGE_90S)
-    if nineties < 10:
-        warnings.append("small prior-season sample")
-    return shrunk, tuple(warnings)
 
+def start_probability(
+    element: dict[str, Any],
+    *,
+    games_played: int = 0,
+) -> tuple[float, tuple[str, ...]]:
+    """Start probability.
 
-def start_probability(element: dict[str, Any]) -> tuple[float, tuple[str, ...]]:
-    """Estimate probability of starting from last season's starts, price-adjusted."""
+    Preseason (`games_played == 0`) uses last-season starts / 38.
+    In-season uses starts / finished gameweeks so a #1 GK with 2/2 starts is
+    not treated as a backup (the /38 bug).
+    """
     warnings: list[str] = []
     starts = _f(element.get("starts"))
     minutes = _f(element.get("minutes"))
     price = int(element.get("now_cost", 45))
     element_type = int(element.get("element_type", 3))
 
-    # Price-based prior for new signings / promoted players with no PL history.
     price_prior = min(0.85, max(0.20, (price - 40) / 60.0 + 0.35))
+
+    if games_played >= 1:
+        warnings.append("in_season_minutes")
+        if minutes <= 0:
+            cap = 0.10 if games_played >= 2 else 0.25
+            return min(price_prior, cap), tuple(warnings + ["no_minutes_this_season"])
+        observed = min(1.0, starts / float(games_played))
+        if element_type == 1:
+            if starts >= games_played:
+                return 0.95, tuple(warnings)
+            if starts <= 0:
+                return 0.08, tuple(warnings + ["backup_gk"])
+            return max(0.20, min(0.90, observed)), tuple(warnings)
+        weight = min(0.85, games_played / 6.0)
+        estimate = weight * observed + (1.0 - weight) * price_prior
+        if starts >= games_played:
+            estimate = max(estimate, 0.80)
+        return max(0.05, min(0.97, estimate)), tuple(warnings)
+
     if minutes <= 0:
         warnings.append("no prior-season minutes; start probability from price")
         return price_prior, tuple(warnings)
 
     observed = min(1.0, starts / LEAGUE_GAMES)
-    # Shrink toward the price prior using games of evidence.
     weight = min(1.0, starts / 20.0)
     estimate = weight * observed + (1 - weight) * price_prior
     if element_type == 1:
-        # Goalkeepers are near-binary: reward clear number ones, punish backups.
         estimate = 0.95 if observed >= 0.6 else min(estimate, 0.35)
     return max(0.02, min(0.97, estimate)), tuple(warnings)
 
@@ -165,6 +226,7 @@ def project_player(
     fixtures_by_gw: dict[int, list[tuple[int, bool]]],
     gameweeks: list[int],
     weights: list[float],
+    games_played: int = 0,
 ) -> PlayerProjection:
     element_type = int(element.get("element_type", 3))
     price = int(element.get("now_cost", 45))
@@ -172,7 +234,7 @@ def project_player(
 
     avail, note = availability_factor(element)
     per_90, warn_pts = points_per_90_estimate(element)
-    p_start, warn_min = start_probability(element)
+    p_start, warn_min = start_probability(element, games_played=games_played)
     p_start *= avail
 
     p_sub = min(0.25, (1.0 - p_start) * 0.3) if avail > 0 else 0.0
@@ -192,10 +254,10 @@ def project_player(
             gw_total += per_90 * (expected_minutes / 90.0) * fixture_mult
         xp_by_gw.append(gw_total)
 
-    # Blend FPL's own published expectation into gameweek 1 only.
     ep_next = _f(element.get("ep_next"))
     if xp_by_gw and ep_next > 0 and avail > 0:
-        xp_by_gw[0] = (1 - EP_NEXT_BLEND) * xp_by_gw[0] + EP_NEXT_BLEND * ep_next
+        blend = EP_NEXT_BLEND_IN_SEASON if games_played >= 1 else EP_NEXT_BLEND
+        xp_by_gw[0] = (1 - blend) * xp_by_gw[0] + blend * ep_next
 
     weighted = sum(w * x for w, x in zip(weights, xp_by_gw, strict=True))
     return PlayerProjection(
@@ -222,6 +284,7 @@ def project_all(
     weights: list[float],
 ) -> list[PlayerProjection]:
     by_team = team_fixtures_by_gw(fixtures, gameweeks)
+    played = finished_gameweeks(bootstrap)
     out: list[PlayerProjection] = []
     for element in bootstrap.get("elements") or []:
         if element.get("removed"):
@@ -233,6 +296,7 @@ def project_all(
                 fixtures_by_gw=team_fixtures,
                 gameweeks=gameweeks,
                 weights=weights,
+                games_played=played,
             )
         )
     out.sort(key=lambda p: (-p.weighted_xp, p.player_id))
