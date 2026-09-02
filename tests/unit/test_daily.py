@@ -104,7 +104,8 @@ def test_predeadline_report_explains_insufficient() -> None:
     assert "Web searches actually made: 0" in text
     assert text.count("private squad stale") == 0
     assert "keep FT" in text
-    assert "## TLDR" in text
+    assert "## TLDR" not in text
+    assert "## Do this" in text
     assert datetime.now(UTC) - report.squad_as_of > timedelta(hours=24)
 
 
@@ -140,17 +141,15 @@ def test_report_lists_openai_pages_and_hubs() -> None:
         ],
     )
     text = render_daily_text(report)
-    assert text.index("## TLDR") < text.index("## Why")
-    assert text.index("## Why") < text.index("## Sources checked")
+    assert text.index("## Do this") < text.index("## Why")
+    assert text.index("## Why") < text.index("## Sources")
     assert "Injuries and bans" in text
     assert "fantasyfootballscout.co.uk/injuries" in text
-    assert "returned this run" in text
-    assert "not returned this run" in text
-    assert "FPL GW1 team news" in text
     assert "No material injury news" in text
-    assert "Why: No injury news and no affordable upgrade beat rolling." in text
+    assert "No injury news and no affordable upgrade beat rolling." in text
     assert "you can act" in text
-    assert text.index("## TLDR") < text.index("## Do this")
+    assert "## Notes" not in text
+    assert "returned this run" not in text
 
 
 def test_report_includes_weekly_model_decisions() -> None:
@@ -180,7 +179,22 @@ def test_report_includes_weekly_model_decisions() -> None:
                 {"gw": 3, "xi_xp": 42.1, "captain": "B.Fernandes", "captain_xp": 4.2},
                 {"gw": 4, "xi_xp": 38.0, "captain": "Haaland", "captain_xp": 5.1},
             ],
-            "best_affordable": None,
+            "best_affordable": {
+                "out_name": "O'Nien",
+                "in_name": "Egan",
+                "in_starts": True,
+                "xi_drop_name": "Virgil",
+            },
+            "after_transfer": {
+                "out_name": "O'Nien",
+                "in_name": "Egan",
+                "xi_drop_name": "Virgil",
+                "formation": "3-5-2",
+                "xi": [{"web_name": "Raya"}, {"web_name": "Egan"}, {"web_name": "B.Fernandes"}],
+                "bench": [{"web_name": "Virgil", "p_start": 0.84}],
+                "model_captain": {"web_name": "B.Fernandes", "xp_next": 4.2, "p_start": 0.95},
+                "model_vice": {"web_name": "Raya", "xp_next": 3.1, "p_start": 0.95},
+            },
             "best_stretch": {
                 "out_name": "Thiago",
                 "in_name": "Haaland",
@@ -201,16 +215,17 @@ def test_report_includes_weekly_model_decisions() -> None:
         },
     )
     text = render_daily_text(report)
-    assert "## Model decisions" in text
-    assert "### This week (GW3)" in text
-    assert "### Horizon (model XI xP by gameweek)" in text
+    assert "## This week" in text
+    assert "Egan" in text
+    assert "After **O'Nien → Egan**" in text
+    assert "Virgil drops out of the XI" in text
+    assert "## Model decisions" not in text
+    assert "### Horizon" not in text
+    assert "Last week (GW2 actuals)" not in text
     assert "B.Fernandes" in text
-    assert "Roll the FT" in text
-    assert "Haaland" in text
-    assert "Last week (GW2 actuals)" in text
-    assert "hold 3xc" in text or "Chips: hold" in text
-    assert text.index("## TLDR") < text.index("## Model decisions")
-    assert text.index("## Model decisions") < text.index("## Do this")
+    assert "Chips: hold" in text
+    assert text.index("## Do this") < text.index("## This week")
+    assert text.index("## This week") < text.index("## Why")
 
 
 def test_apply_news_fail_closed_when_live_search_empty() -> None:

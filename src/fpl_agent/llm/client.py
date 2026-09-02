@@ -17,7 +17,7 @@ from fpl_agent.config import load_dotenv_files
 from fpl_agent.errors import AgentError, AgentErrorCode, ExitCode
 from fpl_agent.observability import redact_value
 
-PROMPT_VERSION = "predeadline-v3"
+PROMPT_VERSION = "predeadline-v4"
 SCHEMA_VERSION = "daily-advice-1.1.0"
 
 # Preferred domains for FPL-relevant search (omit scheme; includes subdomains).
@@ -160,8 +160,9 @@ class FakeOpenAIClient:
         stretch = list(payload.get("stretch_transfer_candidates") or [])
         moves: list[DailyMove] = []
         tldr: list[str] = []
-        if affordable:
-            top = affordable[0]
+        starter_buys = [c for c in affordable if c.get("in_starts", True)]
+        if starter_buys:
+            top = starter_buys[0]
             action = PlanAction.REVISE
             headline = (
                 f"Projection-backed FT: {top.get('out_name')} -> {top.get('in_name')} "
@@ -187,8 +188,23 @@ class FakeOpenAIClient:
                 "Keep FT only if late news vetoes the buy target",
             ]
             detail = (
-                "Deterministic fallback chose the top affordable transfer_candidate by weighted xP. "
+                "Deterministic fallback chose the top affordable transfer that starts this GW. "
                 "Live OpenAI synthesis was not used."
+            )
+        elif affordable:
+            action = PlanAction.WATCH if triggers else PlanAction.KEEP
+            headline = "Hold the FT: affordable upgrades do not start in the modelled XI this week."
+            moves.append(
+                DailyMove(
+                    move_type=MoveType.HOLD,
+                    summary="Do not spend the FT on a player who would sit on the bench this week.",
+                    why="Affordable candidates exist but in_starts is false for all of them.",
+                    urgency="low",
+                )
+            )
+            tldr = ["Hold the FT: no buy target starts this week"]
+            detail = (
+                "Deterministic fallback: every affordable 1-FT leaves the buy on the bench this GW."
             )
         elif stretch:
             top = stretch[0]
@@ -530,8 +546,9 @@ class ResponsesOpenAIClient:
             "Use supplied price_actions if present. Do not invent price likelihoods. "
             "Do not upgrade ignore/watch price actions into transfers for price reasons. "
             "Evaluate transfer_candidates and stretch_transfer_candidates; buy IDs must come from those lists only. "
-            "Treat weekly_plan as the deterministic XI, captain, bench, horizon xP, chips, and transfer plans; "
-            "do not contradict those numbers without news. "
+            "Treat weekly_plan.after_transfer as the XI / captain / bench if you recommend that transfer. "
+            "Do not recommend a transfer whose in_starts is false. "
+            "Treat weekly_plan (current squad) as the hold-path XI. "
             "Use transfer_plans (including 2-FT and hits) when present; buy IDs must still come from those moves. "
             "If news_search_empty is already in the JSON, do not invent presser or injury outcomes. "
             "If affordable candidates exist and news does not veto them, prefer revise with a concrete transfer. "

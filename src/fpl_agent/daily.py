@@ -17,7 +17,6 @@ from fpl_agent.evidence.news import (
     build_squad_search_request,
     claims_from_bootstrap_news,
     claims_from_search_sources,
-    source_tier_for_url,
 )
 from fpl_agent.llm.client import (
     DailyAdvice,
@@ -252,7 +251,11 @@ def run_predeadline(
 
     from fpl_agent.strategy.chips import recommend_chips
     from fpl_agent.strategy.plan import build_weekly_plan
-    from fpl_agent.strategy.transfers import rank_transfer_candidates, rank_transfer_plans
+    from fpl_agent.strategy.transfers import (
+        rank_transfer_candidates,
+        rank_transfer_plans,
+        this_week_upgrade,
+    )
 
     weekly_plan = build_weekly_plan(
         owned_ids=private.player_ids,
@@ -283,10 +286,38 @@ def run_predeadline(
         weekly_plan=weekly_plan,
         chip_instances=private.chip_instances,
     )
-    weekly_plan["best_affordable"] = (
-        affordable_transfers[0].as_payload() if affordable_transfers else None
-    )
+    this_week = this_week_upgrade(affordable_transfers)
+    weekly_plan["best_affordable"] = this_week.as_payload() if this_week else None
     weekly_plan["best_stretch"] = stretch_transfers[0].as_payload() if stretch_transfers else None
+    weekly_plan["after_transfer"] = None
+    if this_week is not None:
+        after_ids = [
+            this_week.in_id if pid == this_week.out_id else pid for pid in private.player_ids
+        ]
+        after_plan = build_weekly_plan(
+            owned_ids=after_ids,
+            projections=proj_by_id,
+            gameweeks=gameweeks,
+            captain_id=(
+                private.captain_id
+                if private.captain_id != this_week.out_id
+                else this_week.in_id
+            ),
+            vice_id=private.vice_id if private.vice_id != this_week.out_id else None,
+        )
+        if after_plan.get("ok"):
+            weekly_plan["after_transfer"] = {
+                "out_id": this_week.out_id,
+                "in_id": this_week.in_id,
+                "out_name": this_week.out_name,
+                "in_name": this_week.in_name,
+                "xi_drop_name": this_week.xi_drop_name,
+                "formation": after_plan.get("formation"),
+                "xi": after_plan.get("xi"),
+                "bench": after_plan.get("bench"),
+                "model_captain": after_plan.get("model_captain"),
+                "model_vice": after_plan.get("model_vice"),
+            }
     weekly_plan["best_plan"] = transfer_plans[0].as_payload() if transfer_plans else None
     hit_plans = [p for p in transfer_plans if p.hit_cost > 0]
     weekly_plan["best_hit"] = hit_plans[0].as_payload() if hit_plans else None
@@ -305,9 +336,13 @@ def run_predeadline(
         "No legal improving 1-FT upgrade fits the current bank; stretch targets need more funds."
         if not affordable_transfers and stretch_transfers
         else (
-            "Legal improving 1-FT upgrades are listed in transfer_candidates."
-            if affordable_transfers
-            else "No improving same-position 1-FT upgrades found in the projection set."
+            "No this-week FT: affordable upgrades do not start in the modelled XI."
+            if affordable_transfers and this_week is None
+            else (
+                "Legal improving 1-FT upgrades that start this GW are listed in transfer_candidates."
+                if this_week
+                else "No improving same-position 1-FT upgrades found in the projection set."
+            )
         )
     )
 
@@ -534,31 +569,6 @@ def _ai_line(report: DailyReport) -> str:
     return f"AI: **{model}** (live OpenAI).{extra}"
 
 
-def _page_urls(report: DailyReport) -> list[str]:
-    urls: list[str] = []
-    seen: set[str] = set()
-    for src in report.sources:
-        url = str(src.get("url") or "")
-        if not url or url in seen:
-            continue
-        seen.add(url)
-        urls.append(url)
-    return urls
-
-
-def _hub_hit(hub_url: str, page_urls: list[str]) -> bool:
-    from urllib.parse import urlparse
-
-    hub_host = urlparse(hub_url).netloc.lower().removeprefix("www.")
-    if not hub_host or "google." in hub_host:
-        return False
-    for page in page_urls:
-        host = urlparse(page).netloc.lower().removeprefix("www.")
-        if hub_host and hub_host in host:
-            return True
-    return False
-
-
 def _source_label(src: dict[str, Any]) -> str:
     title = str(src.get("title") or src.get("text") or "").strip()
     url = str(src.get("url") or "")
@@ -572,135 +582,82 @@ def _source_label(src: dict[str, Any]) -> str:
 
 
 def _sources_section(report: DailyReport) -> list[str]:
-    lines = ["## Sources checked", ""]
     searches = report.model_meta.get("web_search_calls")
-    if report.used_live_ai:
-        lines.append(f"OpenAI web searches this run: **{searches if searches is not None else 0}**.")
-    else:
-        lines.append("No live OpenAI search this run.")
-    if report.search_queries:
-        lines += ["", "Queries:"]
-        lines.extend(f"- {q}" for q in report.search_queries)
-
-    fpl_pages = [s for s in report.sources if str(s.get("claim_id") or "").startswith("fpl-")]
     web_pages = [s for s in report.sources if not str(s.get("claim_id") or "").startswith("fpl-")]
+    lines = ["## Sources", ""]
+    if report.used_live_ai:
+        lines.append(f"{searches if searches is not None else 0} web searches.")
+    else:
+        lines.append("No live OpenAI search.")
     if web_pages:
-        lines += ["", "Pages OpenAI returned:"]
-        for src in web_pages[:40]:
-            tier = src.get("tier") or source_tier_for_url(str(src.get("url") or ""))
-            lines.append(f"- {_source_label(src)} — {tier}")
+        for src in web_pages[:5]:
+            lines.append(f"- {_source_label(src)}")
+        extra = len(web_pages) - 5
+        if extra > 0:
+            lines.append(f"- _{extra} more pages omitted._")
     elif report.used_live_ai:
-        lines += ["", "Pages OpenAI returned: none parsed from the tool trace."]
-    if fpl_pages:
-        lines += ["", "Official FPL status fields:"]
-        for src in fpl_pages[:20]:
-            lines.append(f"- {src.get('title') or src.get('text')}")
-
-    hubs = report.suggested_hubs or [dict(h) for h in SUGGESTED_SOURCE_HUBS]
-    pages = _page_urls(report)
-    lines += ["", "Suggested hubs (always listed; check these yourself too):"]
-    for hub in hubs:
-        name = hub.get("name") or "source"
-        url = hub.get("url") or ""
-        mark = "returned this run" if _hub_hit(url, pages) else "not returned this run"
-        lines.append(f"- [{name}]({url}) — {mark}")
+        lines.append("- No pages returned.")
     return lines
+
+
+def _player_names(rows: list[Any], *, with_start: bool = False) -> str:
+    names: list[str] = []
+    for player in rows:
+        name = str(player.get("web_name") or player.get("player_id") or "?")
+        if with_start:
+            names.append(f"{name} ({float(player.get('p_start') or 0):.0%})")
+        else:
+            names.append(name)
+    return ", ".join(names)
 
 
 def _weekly_plan_section(report: DailyReport) -> list[str]:
     plan = report.weekly_plan or {}
     if not plan.get("ok"):
         return []
-    gw = report.gameweek
-    cap = plan.get("model_captain") or {}
-    vice = plan.get("model_vice") or {}
-    xi = plan.get("xi") or []
-    bench = plan.get("bench") or []
-    lines = [
-        "## Model decisions",
-        "",
-        f"Deterministic xP (`xp-v2`) for **GW{gw}** and the configured horizon. "
-        "News can override this; the LLM cannot invent other buy IDs.",
-        "",
-        f"### This week (GW{gw})",
-        "",
-        f"- Formation: **{plan.get('formation')}**",
-        f"- Captain: **{cap.get('web_name')}** ({cap.get('xp_next')} xP, {float(cap.get('p_start') or 0):.0%} start)",
-    ]
-    if vice:
-        lines.append(
-            f"- Vice: **{vice.get('web_name')}** ({vice.get('xp_next')} xP, {float(vice.get('p_start') or 0):.0%} start)"
-        )
-    if xi:
-        names = ", ".join(str(p.get("web_name")) for p in xi)
-        lines.append(f"- XI: {names}")
-    if bench:
-        names = ", ".join(
-            f"{p.get('web_name')} ({float(p.get('p_start') or 0):.0%})" for p in bench
-        )
-        lines.append(f"- Bench (autosub order): {names}")
-
+    after = plan.get("after_transfer") or {}
+    using = after if after.get("xi") else plan
+    cap = using.get("model_captain") or plan.get("model_captain") or {}
+    vice = using.get("model_vice") or plan.get("model_vice") or {}
+    xi = using.get("xi") or []
+    bench = using.get("bench") or []
+    lines = ["## This week", ""]
     best = plan.get("best_affordable")
-    stretch = plan.get("best_stretch")
-    if best:
+    if after.get("xi") and best:
+        drop = after.get("xi_drop_name") or best.get("xi_drop_name")
+        drop_bit = f"; {drop} drops out of the XI" if drop and drop != best.get("out_name") else ""
         lines.append(
-            f"- Best affordable FT: **{best.get('out_name')} → {best.get('in_name')}** "
-            f"(+{best.get('delta_gw_xp')} this GW, +{best.get('delta_weighted_xp')} weighted, "
-            f"bank after £{float(best.get('bank_after_tenths') or 0) / 10:.1f}m)"
+            f"After **{best.get('out_name')} → {best.get('in_name')}** "
+            f"({best.get('in_name')} starts{drop_bit}):"
         )
-    elif stretch:
+        lines.append("")
+    elif best is None and plan.get("best_stretch"):
+        stretch = plan["best_stretch"]
         lines.append(
-            f"- Roll the FT: no affordable upgrade. Best stretch is "
+            f"Hold the FT. Best stretch (does not fit the bank): "
             f"**{stretch.get('out_name')} → {stretch.get('in_name')}** "
-            f"(needs £{float(stretch.get('bank_shortfall_tenths') or 0) / 10:.1f}m more)"
+            f"(needs £{float(stretch.get('bank_shortfall_tenths') or 0) / 10:.1f}m)."
         )
-    else:
-        lines.append("- Roll the FT: no improving same-position 1-FT found")
-
-    best_plan = plan.get("best_plan")
-    if best_plan and int(best_plan.get("n_transfers") or 0) >= 2:
+        lines.append("")
+    if xi:
+        lines.append(f"- XI ({using.get('formation') or plan.get('formation')}): {_player_names(xi)}")
+    if bench:
+        lines.append(f"- Bench: {_player_names(bench, with_start=True)}")
+    if cap:
         lines.append(
-            f"- Best 2-swap plan: {best_plan.get('summary')} "
-            f"(bank after £{float(best_plan.get('bank_after_tenths') or 0) / 10:.1f}m)"
+            f"- Captain: **{cap.get('web_name')}** ({cap.get('xp_next')} xP) · "
+            f"Vice: **{(vice or {}).get('web_name') or '—'}**"
         )
-    best_hit = plan.get("best_hit")
-    if best_hit and int(best_hit.get("hit_cost") or 0) > 0:
-        if not best_plan or best_plan.get("summary") != best_hit.get("summary"):
-            lines.append(f"- Best hit: {best_hit.get('summary')}")
-
     chips = plan.get("chips") or []
-    if chips:
-        play = [c for c in chips if c.get("action") == "play" and c.get("available")]
-        hold = [c for c in chips if c.get("action") != "play" or not c.get("available")]
-        if play:
-            bits = ", ".join(f"**{c.get('kind')}** ({c.get('reason')})" for c in play)
-            lines.append(f"- Chips to consider: {bits}")
-        elif hold:
-            kinds = ", ".join(str(c.get("kind")) for c in hold)
-            lines.append(f"- Chips: hold {kinds}")
-
-    prev = plan.get("previous_scorecard")
-    if prev:
-        lines += ["", f"### Last week (GW{prev.get('gameweek')} actuals)", ""]
-        lines.append(
-            f"- Model XI scored **{prev.get('model_xi_points')}**; "
-            f"captain {prev.get('model_captain_name')} **{prev.get('model_captain_points')}** (C x2)."
-        )
-        if prev.get("transfer_delta") is not None:
-            lines.append(
-                f"- Recommended transfer delta: **{int(prev.get('transfer_delta')):+d}** "
-                f"({prev.get('transfer_out_points')} out vs {prev.get('transfer_in_points')} in)."
-            )
-
-    horizon = plan.get("horizon") or []
+    play = [c for c in chips if c.get("action") == "play" and c.get("available")]
+    if play:
+        lines.append("- Chips: " + ", ".join(f"**{c.get('kind')}**" for c in play))
+    elif chips:
+        lines.append("- Chips: hold")
+    horizon = list(plan.get("horizon") or [])[:3]
     if horizon:
-        lines += ["", "### Horizon (model XI xP by gameweek)", ""]
-        lines.append("| GW | XI xP | Model captain | Captain xP |")
-        lines.append("| --- | ---: | --- | ---: |")
-        for row in horizon:
-            lines.append(
-                f"| {row.get('gw')} | {row.get('xi_xp')} | {row.get('captain')} | {row.get('captain_xp')} |"
-            )
+        bits = " · ".join(f"GW{row.get('gw')} {row.get('xi_xp')}" for row in horizon)
+        lines.append(f"- Next GWs (XI xP): {bits}")
     return lines
 
 
@@ -723,70 +680,49 @@ def render_daily_text(report: DailyReport) -> str:
         ]
         return "\n".join(lines)
 
-    hide = {"private squad stale"}
+    hide = {"private squad stale", "notify_dry_run", "news_search_empty"}
     warnings = [w for w in _unique_texts(report.warnings) if w not in hide]
-    tldr = [item for item in report.tldr if item] or ([report.headline] if report.headline else [])
+    tldr = [item for item in report.tldr if item][:5] or ([report.headline] if report.headline else [])
     lines = [
         f"# Pre-deadline FPL review — Gameweek {report.gameweek}",
         "",
-        f"Plan: **{report.plan_action.upper()}**",
-        f"Headline: {report.headline}",
+        f"Plan: **{report.plan_action.upper()}** — {report.headline}",
         _ai_line(report),
     ]
-    if report.price_status:
-        lines.append(f"Price watch: **{report.price_status}** (overnight rises/falls — not news).")
-    lines += ["", "## TLDR", ""]
-    lines.append(f"- Plan: **{report.plan_action.upper()}**")
-    lines.extend(f"- {item}" for item in tldr)
+    if report.price_status and report.price_status not in {"NO ACTION", "no action"}:
+        lines.append(f"Price: **{report.price_status}**")
+    lines += ["", "## Do this", ""]
+    if report.suggested_moves:
+        for move in report.suggested_moves:
+            lines.append(f"- {move.get('move_type')}: {move.get('summary')}")
+            why = str(move.get("why") or "").strip()
+            if why:
+                lines.append(f"  - {why}")
+    else:
+        if tldr:
+            lines.extend(f"- {item}" for item in tldr)
+        else:
+            lines.append("- Hold.")
     if any(w == "news_search_empty" for w in report.warnings):
-        lines.append("- News search returned **no pages** — numbers below are model-only.")
+        lines.append("- News search returned no pages — treat injury claims as unverified.")
     lines.append(f"- {_act_tldr_bullet(report)}")
     plan_lines = _weekly_plan_section(report)
     if plan_lines:
         lines += ["", *plan_lines]
-    lines += ["", "## Do this", ""]
-    if report.suggested_moves:
-        for move in report.suggested_moves:
-            lines.append(
-                f"- [{move.get('urgency', 'low')}] {move.get('move_type')}: {move.get('summary')}"
-            )
-            why = str(move.get("why") or "").strip()
-            if why:
-                lines.append(f"  - Why: {why}")
-    else:
-        lines.append("- Hold.")
     detail = report.detail.strip() or report.headline
-    lines += [
-        "",
-        "## Why",
-        "",
-        detail,
-        "",
-        "_Each item under Do this also has its own Why line when the model supplied one._",
-        "",
-        "## Notes",
-        "",
-    ]
+    lines += ["", "## Why", "", detail]
+    watch = _unique_texts(
+        list(report.attention_triggers[:4])
+        + [u for u in report.uncertainty if "weekly-plan" not in u.lower()][:2]
+        + warnings[:3]
+    )
     notes = _can_act_lines(report)
-    if notes:
-        lines.extend(notes)
-        lines.append("")
-    lines += ["### What changed"]
-    if report.what_changed:
-        lines.extend(f"- {x}" for x in report.what_changed)
-    else:
-        lines.append("- Nothing material from FPL status fields.")
-    lines += ["", "### Attention"]
-    if report.attention_triggers:
-        lines.extend(f"- {x}" for x in report.attention_triggers)
-    else:
-        lines.append("- None.")
-    if report.uncertainty:
-        lines += ["", "### Uncertainty"]
-        lines.extend(f"- {x}" for x in report.uncertainty)
-    if warnings:
-        lines += ["", "### Other warnings"]
-        lines.extend(f"- {x}" for x in warnings)
+    if watch or notes:
+        lines += ["", "## Watch", ""]
+        if notes:
+            lines.extend(x for x in notes if not x.startswith("#") and x)
+            lines.append("")
+        lines.extend(f"- {x}" for x in watch[:6])
     lines += ["", *_sources_section(report), "", "_Recommend only — you make all FPL changes._"]
     return "\n".join(lines)
 

@@ -19,7 +19,8 @@ This prompt is used about **one day before** the gameweek deadline — not for t
 - If `news_search_empty` is set or web search returned no pages, do **not** invent injuries, pressers, or predicted XIs. Say news was not retrieved. Captain/transfer advice may still use supplied xP.
 
 ## Transfer evaluation (required)
-- Treat `weekly_plan` as the deterministic XI / captain / bench / horizon / chip play-hold. Do not contradict those numbers unless news in the JSON (injury, 0% chance) vetoes a player. You may still recommend a supplied transfer that changes next week's XI.
+- Treat `weekly_plan.after_transfer` as the XI if you recommend `best_affordable`. That buy **must** appear in that XI (`in_starts` true). The current `weekly_plan.xi` is the hold path only — do not tell the manager to transfer for a player who would not start.
+- Do not recommend a candidate with `"in_starts": false` as this week's free transfer.
 - Always inspect `transfer_candidates` (legal, affordable improving 1-FT swaps), `stretch_transfer_candidates` (improving swaps that need more bank), and `transfer_plans` (1- or 2-swap plans with hit cost already subtracted).
 - If a `transfer_plans` row has `hit_cost > 0` and positive `net_gw_xp`, you may recommend the hit only when that net edge is clear. Never invent a -4 that is not in `transfer_plans`.
 - If `chip_advice` says hold, do not recommend playing that chip this week. If it says play, you may surface it as `move_type=chip` with the supplied reason.
@@ -33,9 +34,9 @@ Use web_search. Spend the budget: first the `suggested_source_hubs` (Premier Lea
 
 ## Output intent
 - `plan_action`: keep (no action), watch (monitor a risk), revise (user should consider a concrete change).
-- `tldr`: 3–6 one-line bullets. Most important first (hold/transfer, captain, vice, the one watch item).
-- `headline`: one sentence that can stand alone.
-- `detail`: the decision rationale (about 150–300 words). Not a dump. Must explain **why** the plan was chosen: cite supplied projection deltas / start probabilities / bank / FT / news when relevant; say what was considered and rejected (e.g. better stretch but unaffordable); and state what would change your mind.
+- `tldr`: 3–5 short bullets. Transfer, captain, the one watch. No essays.
+- `headline`: one sentence.
+- `detail`: 80–150 words. Why this transfer (or hold), who starts after it, what was rejected. Not a dump.
 - `suggested_moves`: at most a few concrete, legal ideas referencing supplied player_ids only.
 - Every `suggested_moves` item **must** include a non-empty `why` that stands alone (e.g. "+1.0 GW1 xP and affordable at £0.0m bank", "highest supplied GW1 projection in the squad"). Do not leave `why` blank.
 - Focus on injuries, suspensions, rotation, pressers, fixture/news risk, the supplied transfer candidate lists, and the supplied price actions for this deadline.
