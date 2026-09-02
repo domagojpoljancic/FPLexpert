@@ -46,6 +46,16 @@ class PlanningSettings(BaseModel):
     hits_enabled: bool = True
     early_season_gws: int = Field(default=4, ge=1, le=10)
     early_season_hit_margin_boost: float = Field(default=1.0, ge=0.0)
+    ft_bank_option_value: float = Field(
+        default=0.35,
+        ge=0.0,
+        description="Horizon xP penalty per extra FT gained by rolling instead of spending.",
+    )
+    min_horizon_delta_to_spend_ft: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="Extra floor on horizon xP before spending a free transfer (before FT-banking penalty).",
+    )
 
     @model_validator(mode="after")
     def _weights_match_horizon(self) -> PlanningSettings:
