@@ -105,7 +105,7 @@ def test_roll_always_present_when_legal() -> None:
     for i, pos in enumerate(positions, start=1):
         squad.append({"player_id": i, "position": pos, "club_id": i})
     xp = {i: [5.0] * 6 for i in range(1, 16)}
-    scenarios, _ = generate_scenarios(
+    scenarios, diag = generate_scenarios(
         rules=rules,
         executability=Executability.EXECUTABLE,
         bank_tenths=10,
@@ -118,6 +118,8 @@ def test_roll_always_present_when_legal() -> None:
         risk_profile=RiskProfile.MODERATE,
     )
     assert any(s.hit_cost == 0 and not s.transfers for s in scenarios)
+    assert all(not (s.hit_cost > 0 and not s.transfers) for s in scenarios)
+    assert "hits_evaluated_in_transfer_plans" in diag.pruned
 
 
 def test_insufficient_blocks_scenarios() -> None:

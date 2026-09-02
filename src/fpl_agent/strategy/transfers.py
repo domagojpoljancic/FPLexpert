@@ -42,6 +42,9 @@ MIN_WEIGHTED_DELTA = 0.25
 CANDIDATES_PER_OUT = 30
 # Stretch list ignores budget but still caps how far above bank we bother listing.
 MAX_STRETCH_SHORTFALL_TENTHS = 30  # £3.0m
+PAIR_POOL = 8
+MIN_HIT_NET_GW = 0.5
+MAX_TRANSFERS_IN_PLAN = 2
 
 
 @dataclass(frozen=True)
@@ -78,6 +81,40 @@ class TransferCandidate:
             "out_p_start": round(self.out_p_start, 3),
             "in_p_start": round(self.in_p_start, 3),
         }
+
+
+@dataclass(frozen=True)
+class TransferPlan:
+    """One or two legal swaps, with hit cost taken from unused free transfers."""
+
+    moves: tuple[TransferCandidate, ...]
+    free_transfers_used: int
+    hit_cost: int
+    delta_weighted_xp: float
+    delta_gw_xp: float
+    net_gw_xp: float
+    bank_after_tenths: int
+    affordable: bool
+
+    def as_payload(self) -> dict[str, Any]:
+        return {
+            "moves": [move.as_payload() for move in self.moves],
+            "n_transfers": len(self.moves),
+            "free_transfers_used": self.free_transfers_used,
+            "hit_cost": self.hit_cost,
+            "delta_weighted_xp": round(self.delta_weighted_xp, 3),
+            "delta_gw_xp": round(self.delta_gw_xp, 3),
+            "net_gw_xp": round(self.net_gw_xp, 3),
+            "bank_after_tenths": self.bank_after_tenths,
+            "affordable": self.affordable,
+            "summary": _plan_summary(self),
+        }
+
+
+def _plan_summary(plan: TransferPlan) -> str:
+    swaps = ", ".join(f"{m.out_name}→{m.in_name}" for m in plan.moves)
+    hit = f", -{plan.hit_cost} hit" if plan.hit_cost else ""
+    return f"{swaps} ({plan.net_gw_xp:+.2f} net GW xP{hit})"
 
 
 def _is_available(element: dict[str, Any]) -> bool:
@@ -228,3 +265,148 @@ def rank_transfer_candidates(
                 stretch.append(cand)
 
     return _dedupe_top(affordable, limit=limit), _dedupe_top(stretch, limit=stretch_limit)
+
+
+def rank_transfer_plans(
+    *,
+    owned_ids: list[int],
+    bank_tenths: int,
+    free_transfers: int,
+    purchase_prices_tenths: dict[str, int],
+    catalog: dict[int, dict[str, Any]],
+    projections: dict[int, PlayerProjection],
+    rules: SeasonRules | None = None,
+    hits_enabled: bool = True,
+    max_hit: int | None = None,
+) -> list[TransferPlan]:
+    """Rank 1- and 2-swap plans. Hits cost `hit_cost_points` per extra transfer."""
+    rules = rules or load_season_rules_2026_27()
+    hit_points = rules.hit_cost_points
+    cap = max_hit if max_hit is not None else 2 * hit_points
+    affordable, _stretch = rank_transfer_candidates(
+        owned_ids=owned_ids,
+        bank_tenths=bank_tenths,
+        purchase_prices_tenths=purchase_prices_tenths,
+        catalog=catalog,
+        projections=projections,
+        rules=rules,
+    )
+    base_xi = _xi_objective(owned_ids, projections, rules)
+    plans: list[TransferPlan] = []
+    for move in affordable:
+        plan = _plan_from_moves(
+            owned_ids=owned_ids,
+            bank_tenths=bank_tenths,
+            free_transfers=free_transfers,
+            moves=(move,),
+            projections=projections,
+            rules=rules,
+            base_xi=base_xi,
+            hit_points=hit_points,
+        )
+        if plan is not None and plan.hit_cost <= cap:
+            plans.append(plan)
+
+    if MAX_TRANSFERS_IN_PLAN >= 2:
+        pool = affordable[:PAIR_POOL]
+        for i, first in enumerate(pool):
+            for second in pool[i + 1 :]:
+                if not hits_enabled and free_transfers < 2:
+                    continue
+                if first.out_id == second.out_id or first.in_id == second.in_id:
+                    continue
+                combined_bank = first.bank_after_tenths + second.bank_after_tenths - bank_tenths
+                if combined_bank < 0:
+                    continue
+                if not _club_ok_two(
+                    owned_ids=owned_ids,
+                    catalog=catalog,
+                    first=first,
+                    second=second,
+                    club_limit=rules.club_limit,
+                ):
+                    continue
+                plan = _plan_from_moves(
+                    owned_ids=owned_ids,
+                    bank_tenths=bank_tenths,
+                    free_transfers=free_transfers,
+                    moves=(first, second),
+                    projections=projections,
+                    rules=rules,
+                    base_xi=base_xi,
+                    hit_points=hit_points,
+                    bank_after_override=combined_bank,
+                )
+                if plan is None or plan.hit_cost > cap:
+                    continue
+                if plan.hit_cost > 0 and plan.net_gw_xp < MIN_HIT_NET_GW:
+                    continue
+                plans.append(plan)
+
+    return sorted(
+        plans,
+        key=lambda p: (-p.net_gw_xp, -p.delta_weighted_xp, p.hit_cost, len(p.moves)),
+    )
+
+
+def _plan_from_moves(
+    *,
+    owned_ids: list[int],
+    bank_tenths: int,
+    free_transfers: int,
+    moves: tuple[TransferCandidate, ...],
+    projections: dict[int, PlayerProjection],
+    rules: SeasonRules,
+    base_xi: tuple[float, float] | None,
+    hit_points: int,
+    bank_after_override: int | None = None,
+) -> TransferPlan | None:
+    new_ids = list(owned_ids)
+    for move in moves:
+        if move.out_id not in new_ids:
+            return None
+        new_ids = [move.in_id if pid == move.out_id else pid for pid in new_ids]
+    new_xi = _xi_objective(new_ids, projections, rules)
+    if new_xi is None or base_xi is None:
+        return None
+    delta_w = new_xi[0] - base_xi[0]
+    delta_gw = new_xi[1] - base_xi[1]
+    paid = max(0, len(moves) - max(0, free_transfers))
+    hit_cost = paid * hit_points
+    bank_after = bank_after_override if bank_after_override is not None else moves[-1].bank_after_tenths
+    return TransferPlan(
+        moves=moves,
+        free_transfers_used=min(len(moves), max(0, free_transfers)),
+        hit_cost=hit_cost,
+        delta_weighted_xp=delta_w,
+        delta_gw_xp=delta_gw,
+        net_gw_xp=delta_gw - hit_cost,
+        bank_after_tenths=bank_after,
+        affordable=bank_after >= 0,
+    )
+
+
+def _club_ok_two(
+    *,
+    owned_ids: list[int],
+    catalog: dict[int, dict[str, Any]],
+    first: TransferCandidate,
+    second: TransferCandidate,
+    club_limit: int,
+) -> bool:
+    counts: dict[int, int] = {}
+    for pid in owned_ids:
+        if pid in {first.out_id, second.out_id}:
+            continue
+        el = catalog.get(pid) or {}
+        team = int(el.get("team") or 0)
+        if team:
+            counts[team] = counts.get(team, 0) + 1
+    for inn in (first, second):
+        team = int((catalog.get(inn.in_id) or {}).get("team") or 0)
+        if not team:
+            continue
+        counts[team] = counts.get(team, 0) + 1
+        if counts[team] > club_limit:
+            return False
+    return True

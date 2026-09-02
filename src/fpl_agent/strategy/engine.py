@@ -205,44 +205,9 @@ def generate_scenarios(
         scenarios = scenarios[:beam_width]
         return scenarios, SearchDiagnostics(candidates, len(scenarios), pruned, beam_width)
 
-    # Real 1-FT search lives in strategy.transfers and the predeadline path.
-    # Do not emit placeholder in_id=0 / hardcoded +1.5 gains here.
-    if hits_enabled and free_transfers is not None and executability == Executability.EXECUTABLE:
-        for extra in range(1, 3):
-            hit_cost = extra * rules.hit_cost_points
-            if hit_cost > max_hit:
-                pruned.append(f"hit_{hit_cost}_above_max")
-                continue
-            candidates += 1
-            # only keep if modeled net gain positive and robust
-            modeled_gain = 3.0 * extra
-            net = roll_gross + modeled_gain - hit_cost
-            if net <= roll_gross:
-                pruned.append(f"hit_{hit_cost}_non_positive_ev")
-                continue
-            if net - 1.0 <= roll_gross:  # sensitivity
-                pruned.append(f"hit_{hit_cost}_not_robust")
-                continue
-            scenarios.append(
-                Scenario(
-                    scenario_id=_scenario_id({"type": "hit", "extra": extra}),
-                    risk_level=RiskLevel.HIGH if risk_profile != RiskProfile.AGGRESSIVE else RiskLevel.MEDIUM,
-                    transfers=[],
-                    hit_cost=hit_cost,
-                    bank_after=bank_tenths,
-                    projected_by_gw=roll_by_gw,
-                    weighted_gross=roll_gross + modeled_gain,
-                    weighted_net=net,
-                    gain_vs_roll=net - roll_gross,
-                    break_even_gw=2,
-                    sensitivities={"minutes_down": net - 1.2},
-                    future_moves=[],
-                    assumptions=["hit must remain positive after sensitivities"],
-                    legality_ok=True,
-                    executability=Executability.EXECUTABLE,
-                    notes=[f"hit_extra_{extra}"],
-                )
-            )
+    # Real 1-FT / hit search lives in strategy.transfers.rank_transfer_plans.
+    if hits_enabled:
+        pruned.append("hits_evaluated_in_transfer_plans")
 
     scenarios.sort(key=lambda s: (s.weighted_net, s.gain_vs_roll), reverse=True)
     # ensure roll retained

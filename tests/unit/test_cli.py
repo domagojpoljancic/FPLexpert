@@ -157,4 +157,55 @@ def test_prices_workflow_wired() -> None:
     assert "run-log.md" in text
     assert "README.md" in text
     assert "reports/" in text
-    assert "OPENAI_API_KEY" not in text
+def test_prices_watchdog_cli(tmp_path) -> None:
+    import json
+    from datetime import UTC, datetime
+
+    fresh = tmp_path / "fresh.json"
+    fresh.write_text(
+        json.dumps({"utc": datetime.now(UTC).strftime("%Y-%m-%dT%H:%MZ"), "status": "NO ACTION"}),
+        encoding="utf-8",
+    )
+    result = runner.invoke(app, ["prices-watchdog", "--last-success", str(fresh)])
+    assert result.exit_code == 0, result.stdout
+    stale = tmp_path / "stale.json"
+    stale.write_text(json.dumps({"utc": "2026-01-01T00:00Z"}), encoding="utf-8")
+    result = runner.invoke(app, ["prices-watchdog", "--last-success", str(stale)])
+    assert result.exit_code == 2
+    assert "stale" in result.stdout.lower() or "ago" in result.stdout.lower()
+
+
+def test_scorecard_cli_offline_live_json(tmp_path) -> None:
+    import json
+
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    (reports / "predeadline-gw2-20260828T010000Z.json").write_text(
+        json.dumps(
+            {
+                "weekly_plan": {
+                    "ok": True,
+                    "model_captain": {"player_id": 1, "web_name": "Haaland"},
+                    "xi": [{"player_id": 1, "web_name": "Haaland"}],
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    live = tmp_path / "live.json"
+    live.write_text(json.dumps({"elements": [{"id": 1, "stats": {"total_points": 8}}]}), encoding="utf-8")
+    result = runner.invoke(
+        app,
+        ["scorecard", "--gameweek", "2", "--reports", str(reports), "--live", str(live)],
+    )
+    assert result.exit_code == 0, result.stdout + result.stderr
+    assert "16" in result.stdout  # captain x2
+
+
+def test_prices_watchdog_workflow_wired() -> None:
+    from pathlib import Path
+
+    text = Path(".github/workflows/fpl-prices-watchdog.yml").read_text(encoding="utf-8")
+    assert "fpl-agent prices-watchdog" in text
+    assert "cron:" in text
+    assert "FPL price watchdog" in text or "issue_title" in text

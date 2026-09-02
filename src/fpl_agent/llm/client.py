@@ -17,7 +17,7 @@ from fpl_agent.config import load_dotenv_files
 from fpl_agent.errors import AgentError, AgentErrorCode, ExitCode
 from fpl_agent.observability import redact_value
 
-PROMPT_VERSION = "predeadline-v2"
+PROMPT_VERSION = "predeadline-v3"
 SCHEMA_VERSION = "daily-advice-1.1.0"
 
 # Preferred domains for FPL-relevant search (omit scheme; includes subdomains).
@@ -250,6 +250,34 @@ class FakeOpenAIClient:
             ),
             CallMetadata(fallback=True, model="fake"),
         )
+
+
+NEWS_SEARCH_EMPTY = "news_search_empty"
+
+
+def apply_news_fail_closed(
+    advice: DailyAdvice,
+    *,
+    used_live: bool,
+    web_search_calls: int,
+    page_count: int,
+) -> DailyAdvice:
+    """When live search returns nothing, mark advice so reports cannot sound news-certain."""
+    if not used_live:
+        return advice
+    if web_search_calls > 0 and page_count > 0:
+        return advice
+    warnings = list(advice.warnings)
+    uncertainty = list(advice.uncertainty)
+    if NEWS_SEARCH_EMPTY not in warnings:
+        warnings.append(NEWS_SEARCH_EMPTY)
+    note = (
+        "No web pages were returned this run. Treat injury/line-up claims as unverified; "
+        "use FPL status fields and supplied xP only."
+    )
+    if note not in uncertainty:
+        uncertainty.append(note)
+    return advice.model_copy(update={"warnings": warnings, "uncertainty": uncertainty})
 
 
 def validate_synthesis(
@@ -502,7 +530,10 @@ class ResponsesOpenAIClient:
             "Use supplied price_actions if present. Do not invent price likelihoods. "
             "Do not upgrade ignore/watch price actions into transfers for price reasons. "
             "Evaluate transfer_candidates and stretch_transfer_candidates; buy IDs must come from those lists only. "
-            "Treat weekly_plan as the deterministic XI, captain, bench, and horizon xP; do not contradict those numbers without news. "
+            "Treat weekly_plan as the deterministic XI, captain, bench, horizon xP, chips, and transfer plans; "
+            "do not contradict those numbers without news. "
+            "Use transfer_plans (including 2-FT and hits) when present; buy IDs must still come from those moves. "
+            "If news_search_empty is already in the JSON, do not invent presser or injury outcomes. "
             "If affordable candidates exist and news does not veto them, prefer revise with a concrete transfer. "
             "If only stretch candidates exist, say the FT is blocked by bank and name the best stretch target. "
             "Do not invent player IDs. Do not recommend a transfer merely because this run happened."

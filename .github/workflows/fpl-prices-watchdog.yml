@@ -1,0 +1,71 @@
+name: fpl-prices-watchdog
+on:
+  workflow_dispatch:
+  schedule:
+    # Every 6 hours. The price job is 19:00 UTC; a miss should alert within ~26h.
+    - cron: "20 1,7,13,19 * * *"
+
+permissions: {}
+
+concurrency:
+  group: fpl-prices-watchdog
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+      - name: Sync
+        run: uv sync
+      - name: Check last success
+        id: liveness
+        run: |
+          set +e
+          uv run fpl-agent prices-watchdog | tee watchdog.json
+          echo "exit=$?" >> "$GITHUB_OUTPUT"
+        continue-on-error: true
+      - name: Comment if stale
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import json, os, subprocess, sys
+          from pathlib import Path
+
+          payload = json.loads(Path("watchdog.json").read_text(encoding="utf-8"))
+          if not payload.get("stale"):
+              print("price watch is fresh")
+              sys.exit(0)
+          body = (
+              "**Price watch looks stale**\n\n"
+              f"{payload.get('message')}\n\n"
+              f"- Last UTC: `{payload.get('last_utc') or 'missing'}`\n"
+              f"- Gameweek: `{payload.get('gameweek')}`\n"
+              f"- Status: `{payload.get('status')}`\n\n"
+              "The overnight `fpl-prices` cron may have skipped or failed. "
+              "This cannot see a total GitHub outage; it only notices a missing success file in the repo."
+          )
+          title = payload.get("issue_title") or "FPL price watchdog"
+          listed = subprocess.check_output(
+              ["gh", "issue", "list", "--state", "open", "--search", f"{title} in:title", "--json", "number,title"],
+              text=True,
+          )
+          matches = [i for i in json.loads(listed) if i.get("title") == title]
+          if matches:
+              number = str(matches[0]["number"])
+          else:
+              created = subprocess.check_output(
+                  ["gh", "issue", "create", "--title", title, "--body", "Standing thread when overnight price watch is overdue."],
+                  text=True,
+              )
+              number = created.strip().rsplit("/", 1)[-1]
+          subprocess.check_call(["gh", "issue", "comment", number, "--body", body])
+          print(f"commented on issue {number}")
+          PY

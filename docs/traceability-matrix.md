@@ -11,6 +11,6 @@
 | Ledger/replay | evaluation.* | det | unit + integration | provisional preview | hard |
 | LLM synthesis | llm.client | model | validation tests | deterministic fallback | hard |
 | Reports/publish | reporting, publishing | det | test_context_layers | dry-run | hard |
-| Actions | .github/workflows | ops | test_cli (workflow wired) | GitHub may skip; ping TBD | prices scheduled; predeadline manual |
+| Actions | .github/workflows | ops | test_cli (workflow wired) | GitHub may skip; watchdog issue | prices scheduled; watchdog; predeadline manual |
 | Price watch / smart-to-act | prices.* | det | test_prices | uncalibrated; Issue on act-now | evidence |
 | Pre-deadline full review | daily.run_predeadline | mixed | test_cli / test_daily | skip if too early | soft |
