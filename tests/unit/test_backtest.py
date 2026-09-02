@@ -57,7 +57,7 @@ def test_backtest_xp_v2_selectable() -> None:
     rows = _rows()
     xp = run_backtest(rows, model="xp-v2")
     baseline = run_backtest(rows, model="baseline-v1")
-    assert xp.model_version == "xp-v2"
+    assert xp.model_version.startswith("xp-v2")
     assert baseline.model_version == "baseline-v1"
     assert xp.mae != baseline.mae or xp.bias != baseline.bias
 

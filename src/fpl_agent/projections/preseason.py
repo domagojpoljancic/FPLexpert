@@ -10,7 +10,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-PRESEASON_MODEL_VERSION = "xp-v2"
+PRESEASON_MODEL_VERSION = "xp-v2.1"
+
+# DEFCON thresholds (2026/27): DEF 10 CBIT, MID/FWD 12 CBIRT, +2 capped per match.
+DEFCON_THRESHOLDS: dict[int, int] = {2: 10, 3: 12, 4: 12}
+DEFCON_POINTS_PER_HIT = 2.0
+
+# Default on; set projections.enable_defcon: false in settings if holdout regresses vs ep_next.
+_defcon_enabled: bool = True
 
 # Fixture difficulty rating (1 easy .. 5 hard) -> multiplier.
 ATTACK_FDR_MULTIPLIER: dict[int, float] = {1: 1.20, 2: 1.10, 3: 1.00, 4: 0.90, 5: 0.80}
@@ -60,6 +67,69 @@ def _f(value: Any, default: float = 0.0) -> float:
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+def set_defcon_enabled(enabled: bool) -> None:
+    """Runtime toggle (tests / settings loader)."""
+    global _defcon_enabled
+    _defcon_enabled = enabled
+
+
+def defcon_enabled() -> bool:
+    return _defcon_enabled
+
+
+def defcon_combined_actions(element: dict[str, Any], element_type: int) -> float:
+    """CBIT for DEF; CBIRT (incl. recoveries) for MID/FWD."""
+    cbit = _f(element.get("clearances_blocks_interceptions")) + _f(element.get("tackles"))
+    if element_type in (3, 4):
+        return cbit + _f(element.get("recoveries"))
+    return cbit
+
+
+def defcon_prior_p_hit(element_type: int, price_tenths: int) -> float:
+    """Position + price prior when defensive-action minutes are thin."""
+    if element_type == 2:
+        return min(0.55, max(0.08, 0.18 + (price_tenths - 40) * 0.004))
+    if element_type == 3:
+        return min(0.22, max(0.03, 0.08 + (55 - price_tenths) * 0.002))
+    return min(0.10, max(0.02, 0.05))
+
+
+def defcon_p_hit(element: dict[str, Any]) -> tuple[float, tuple[str, ...]]:
+    """Probability of hitting the positional DEFCON threshold this match."""
+    element_type = int(element.get("element_type", 3))
+    threshold = DEFCON_THRESHOLDS.get(element_type)
+    if threshold is None:
+        return 0.0, ()
+    minutes = _f(element.get("minutes"))
+    price = int(element.get("now_cost", 45))
+    if minutes >= 45:
+        total = defcon_combined_actions(element, element_type)
+        per_match = total / max(1.0, minutes / 90.0) * (MINUTES_IF_START / 90.0)
+        if per_match >= threshold:
+            p = min(1.0, 0.50 + 0.50 * (per_match - threshold) / max(2.0, threshold * 0.25))
+        else:
+            p = max(0.0, 0.50 * (per_match / threshold))
+        return p, ()
+    return defcon_prior_p_hit(element_type, price), ("defcon_prior_only",)
+
+
+def expected_defcon_pp90(element: dict[str, Any]) -> tuple[float, tuple[str, ...]]:
+    """Expected DEFCON points per 90 (capped at +2/match when scaled by minutes)."""
+    if not defcon_enabled():
+        return 0.0, ()
+    p_hit, warnings = defcon_p_hit(element)
+    return min(DEFCON_POINTS_PER_HIT, p_hit * DEFCON_POINTS_PER_HIT), warnings
+
+
+def _effective_shrinkage(price_tenths: int) -> float:
+    """Slightly less shrinkage for premiums so elite attackers are not flattened."""
+    if price_tenths >= 100:
+        return SHRINKAGE_90S * 0.70
+    if price_tenths >= 85:
+        return SHRINKAGE_90S * 0.85
+    return SHRINKAGE_90S
 
 
 def availability_factor(element: dict[str, Any]) -> tuple[float, str]:
@@ -116,6 +186,9 @@ def apply_xg_adjustment(element: dict[str, Any], pp90: float) -> tuple[float, tu
         + ((xa - _f(element.get("assists"))) / nineties) * 3.0
     )
     adj = max(-1.2, min(1.2, adj))
+    price = int(element.get("now_cost", 45))
+    if price >= 90 and element_type == 4:
+        adj = max(-1.2, min(1.5, adj))
     if abs(adj) >= 0.05:
         warnings.append("xg_adjustment")
     return pp90 + adj, tuple(warnings)
@@ -136,11 +209,13 @@ def points_per_90_estimate(element: dict[str, Any]) -> tuple[float, tuple[str, .
         pp90 = prior
     else:
         observed = total_points / nineties
-        pp90 = (nineties * observed + SHRINKAGE_90S * prior) / (nineties + SHRINKAGE_90S)
+        shrinkage = _effective_shrinkage(price)
+        pp90 = (nineties * observed + shrinkage * prior) / (nineties + shrinkage)
         if nineties < 10:
             warnings.append("small minutes sample")
     adjusted, xg_warn = apply_xg_adjustment(element, pp90)
-    return adjusted, tuple(warnings) + xg_warn
+    defcon_pp90, defcon_warn = expected_defcon_pp90(element)
+    return adjusted + defcon_pp90, tuple(warnings) + xg_warn + defcon_warn
 
 
 def start_probability(
@@ -274,6 +349,13 @@ def project_player(
         availability_note=note,
         warnings=tuple(warn_pts) + tuple(warn_min),
     )
+
+
+def configure_from_settings(settings: Any) -> None:
+    """Apply projection flags from validated settings."""
+    projections = getattr(settings, "projections", None)
+    if projections is not None:
+        set_defcon_enabled(bool(getattr(projections, "enable_defcon", True)))
 
 
 def project_all(

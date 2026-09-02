@@ -41,6 +41,11 @@ ALLOWED_FEATURE_KEYS: frozenset[str] = frozenset(
         "fdr_difficulty",
         "availability",
         "def_contrib_rate",
+        "clearances_blocks_interceptions",
+        "recoveries",
+        "tackles",
+        "defensive_contribution",
+        "defensive_contribution_per_90",
     }
 )
 

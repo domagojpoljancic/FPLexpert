@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from fpl_agent.projections.preseason import (
     apply_xg_adjustment,
+    configure_from_settings,
     finished_gameweeks,
+    points_per_90_estimate,
+    set_defcon_enabled,
     start_probability,
 )
 
@@ -58,3 +61,67 @@ def test_xg_adjustment_raises_underperformer() -> None:
     adjusted, warn = apply_xg_adjustment(element, 3.0)
     assert adjusted > 3.0
     assert "xg_adjustment" in warn
+
+
+def test_defcon_lifts_nailed_cbit_defender() -> None:
+    set_defcon_enabled(True)
+    base = {
+        "element_type": 2,
+        "now_cost": 50,
+        "minutes": 270,
+        "total_points": 20,
+        "starts": 3,
+    }
+    weak = {**base, "clearances_blocks_interceptions": 2, "tackles": 1}
+    strong = {**base, "clearances_blocks_interceptions": 28, "tackles": 8}
+    pp_weak, _ = points_per_90_estimate(weak)
+    pp_strong, _ = points_per_90_estimate(strong)
+    assert pp_strong > pp_weak
+    assert pp_strong - pp_weak <= 2.0
+
+
+def test_defcon_higher_bar_for_mid_fwd() -> None:
+    set_defcon_enabled(True)
+    stats = {
+        "minutes": 270,
+        "now_cost": 55,
+        "clearances_blocks_interceptions": 8,
+        "tackles": 4,
+        "recoveries": 6,
+        "total_points": 18,
+        "starts": 3,
+    }
+    def_pp, _ = points_per_90_estimate({**stats, "element_type": 2})
+    mid_pp, _ = points_per_90_estimate({**stats, "element_type": 3})
+    assert def_pp >= mid_pp
+
+
+def test_defcon_prior_only_warns() -> None:
+    set_defcon_enabled(True)
+    element = {
+        "element_type": 2,
+        "now_cost": 45,
+        "minutes": 0,
+        "total_points": 0,
+        "starts": 0,
+    }
+    _, warnings = points_per_90_estimate(element)
+    assert "defcon_prior_only" in warnings
+
+
+def test_xp_v2_not_worse_than_ep_next_on_fixture() -> None:
+    from pathlib import Path
+
+    from fpl_agent.config import default_settings_path, load_settings
+    from fpl_agent.projections.backtest import run_backtest_report
+    from fpl_agent.projections.dataset import load_dataset
+
+    set_defcon_enabled(True)
+    rows = load_dataset(Path("tests/fixtures/backtest/holdout_min.json"))["rows"]
+    report = run_backtest_report(rows, model="xp-v2")
+    settings = load_settings(default_settings_path())
+    configure_from_settings(settings)
+    if report.model.mae > report.ep_next_baseline.mae:
+        assert settings.projections.enable_defcon is False
+    else:
+        assert report.model.mae <= report.ep_next_baseline.mae

@@ -159,6 +159,12 @@ class CadenceSettings(BaseModel):
         return self
 
 
+class ProjectionsSettings(BaseModel):
+    """xp-v2 projection knobs. DEFCON default on; disable if holdout regresses vs ep_next."""
+
+    enable_defcon: bool = True
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="FPL_",
@@ -176,6 +182,7 @@ class Settings(BaseSettings):
     alerts: AlertsSettings = Field(default_factory=AlertsSettings)
     prices: PricesSettings = Field(default_factory=PricesSettings)
     cadence: CadenceSettings = Field(default_factory=CadenceSettings)
+    projections: ProjectionsSettings = Field(default_factory=ProjectionsSettings)
 
 
 def _deep_merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:

@@ -151,6 +151,9 @@ def run_predeadline(
     reports_dir: Path = Path("reports"),
 ) -> DailyReport:
     settings = settings or load_settings()
+    from fpl_agent.projections.preseason import configure_from_settings
+
+    configure_from_settings(settings)
 
     bootstrap, fixtures = load_public_data(offline=offline)
     gw, deadline = next_deadline(bootstrap)

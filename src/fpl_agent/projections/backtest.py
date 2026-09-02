@@ -53,6 +53,9 @@ def _element_from_row(row: dict[str, Any]) -> dict[str, Any]:
         "web_name": str(row.get("web_name", "")),
         "penalties_order": row.get("penalties_order"),
         "chance_of_playing_next_round": row.get("chance_of_playing_next_round"),
+        "clearances_blocks_interceptions": float(row.get("clearances_blocks_interceptions", 0)),
+        "recoveries": float(row.get("recoveries", 0)),
+        "tackles": float(row.get("tackles", 0)),
     }
 
 
