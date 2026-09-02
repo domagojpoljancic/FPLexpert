@@ -60,6 +60,53 @@ def test_rank_transfer_candidates_returns_affordable_and_stretch() -> None:
     assert any(c.in_id == 11 and c.affordable is False for c in stretch)
 
 
+def test_this_week_upgrade_requires_buy_to_start() -> None:
+    from fpl_agent.strategy.transfers import TransferCandidate, this_week_upgrade
+
+    def cand(*, in_id: int, in_starts: bool) -> TransferCandidate:
+        return TransferCandidate(
+            out_id=1,
+            in_id=in_id,
+            out_name="Out",
+            in_name="In",
+            element_type=2,
+            sell_tenths=50,
+            buy_tenths=50,
+            bank_after_tenths=0,
+            bank_shortfall_tenths=0,
+            affordable=True,
+            delta_weighted_xp=2.0,
+            delta_gw_xp=1.0,
+            out_p_start=0.4,
+            in_p_start=0.8,
+            in_starts=in_starts,
+        )
+
+    assert this_week_upgrade([cand(in_id=10, in_starts=False)]) is None
+    pick = this_week_upgrade(
+        [cand(in_id=10, in_starts=False), cand(in_id=11, in_starts=True)]
+    )
+    assert pick is not None
+    assert pick.in_id == 11
+
+
+def test_ranked_candidates_mark_starting_buys() -> None:
+    from fpl_agent.strategy.transfers import this_week_upgrade
+
+    owned, catalog, projections = _fifteen()
+    affordable, _stretch = rank_transfer_candidates(
+        owned_ids=owned,
+        bank_tenths=0,
+        purchase_prices_tenths={str(i): 50 for i in owned},
+        catalog=catalog,
+        projections=projections,
+    )
+    assert affordable
+    pick = this_week_upgrade(affordable)
+    assert pick is not None
+    assert pick.in_starts is True
+
+
 def test_validate_allows_football_sell_of_ignore_owned_player() -> None:
     advice = DailyAdvice(
         plan_action=PlanAction.REVISE,

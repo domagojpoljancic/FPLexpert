@@ -22,6 +22,18 @@ from fpl_agent.strategy.draft import BENCH_WEIGHT, select_best_xi
 MIN_IN_P_START = 0.40
 
 
+def _starter_ids(
+    owned_ids: list[int],
+    projections: dict[int, PlayerProjection],
+    rules: SeasonRules,
+) -> set[int] | None:
+    players = [projections[pid] for pid in owned_ids if pid in projections]
+    if len(players) != len(owned_ids) or len(players) != rules.squad_size:
+        return None
+    xi, _bench, _formation = select_best_xi(players, rules)
+    return {p.player_id for p in xi}
+
+
 def _xi_objective(
     owned_ids: list[int],
     projections: dict[int, PlayerProjection],
@@ -63,6 +75,8 @@ class TransferCandidate:
     delta_gw_xp: float
     out_p_start: float
     in_p_start: float
+    in_starts: bool = True
+    xi_drop_name: str | None = None
 
     def as_payload(self) -> dict[str, Any]:
         return {
@@ -80,6 +94,8 @@ class TransferCandidate:
             "delta_gw_xp": round(self.delta_gw_xp, 3),
             "out_p_start": round(self.out_p_start, 3),
             "in_p_start": round(self.in_p_start, 3),
+            "in_starts": self.in_starts,
+            "xi_drop_name": self.xi_drop_name,
         }
 
 
@@ -149,7 +165,7 @@ def _club_ok(
 def _dedupe_top(candidates: list[TransferCandidate], *, limit: int) -> list[TransferCandidate]:
     candidates = sorted(
         candidates,
-        key=lambda c: (-c.delta_weighted_xp, -c.delta_gw_xp, c.out_id, c.in_id),
+        key=lambda c: (-int(c.in_starts), -c.delta_gw_xp, -c.delta_weighted_xp, c.out_id, c.in_id),
     )
     per_out: dict[int, int] = {}
     selected: list[TransferCandidate] = []
@@ -235,11 +251,22 @@ def rank_transfer_candidates(
                     continue
                 delta_w = new_xi[0] - base_xi[0]
                 delta_gw = new_xi[1] - base_xi[1]
+                old_starters = _starter_ids(owned_ids, projections, rules) or set()
+                new_starters = _starter_ids(new_ids, projections, rules) or set()
+                in_starts = inn.player_id in new_starters
+                dropped = [
+                    projections[pid].web_name
+                    for pid in old_starters
+                    if pid not in new_starters and pid in projections
+                ]
+                xi_drop_name = dropped[0] if dropped else None
             else:
                 delta_w = inn.weighted_xp - out_proj.weighted_xp
                 out_gw = out_proj.xp_by_gw[0] if out_proj.xp_by_gw else 0.0
                 in_gw = inn.xp_by_gw[0] if inn.xp_by_gw else 0.0
                 delta_gw = in_gw - out_gw
+                in_starts = True
+                xi_drop_name = None
             if delta_w < min_weighted_delta:
                 continue
             shortfall = max(0, -bank_after)
@@ -258,6 +285,8 @@ def rank_transfer_candidates(
                 delta_gw_xp=delta_gw,
                 out_p_start=out_proj.p_start,
                 in_p_start=inn.p_start,
+                in_starts=in_starts,
+                xi_drop_name=xi_drop_name,
             )
             if cand.affordable:
                 affordable.append(cand)
@@ -265,6 +294,14 @@ def rank_transfer_candidates(
                 stretch.append(cand)
 
     return _dedupe_top(affordable, limit=limit), _dedupe_top(stretch, limit=stretch_limit)
+
+
+def this_week_upgrade(candidates: list[TransferCandidate]) -> TransferCandidate | None:
+    """Best affordable swap whose buy target starts this GW. Bench-only upgrades are not a weekly FT."""
+    for cand in candidates:
+        if cand.affordable and cand.in_starts:
+            return cand
+    return None
 
 
 def rank_transfer_plans(
