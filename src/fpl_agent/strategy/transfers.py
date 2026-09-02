@@ -96,6 +96,7 @@ class TransferCandidate:
             "in_p_start": round(self.in_p_start, 3),
             "in_starts": self.in_starts,
             "xi_drop_name": self.xi_drop_name,
+            "reason": explain_transfer(self),
         }
 
 
@@ -129,8 +130,91 @@ class TransferPlan:
 
 def _plan_summary(plan: TransferPlan) -> str:
     swaps = ", ".join(f"{m.out_name}→{m.in_name}" for m in plan.moves)
-    hit = f", -{plan.hit_cost} hit" if plan.hit_cost else ""
-    return f"{swaps} ({plan.net_gw_xp:+.2f} net GW xP{hit})"
+    hit = f", {plan.hit_cost}-point hit" if plan.hit_cost else ""
+    return f"{swaps} ({plan.net_gw_xp:+.1f} pts this week{hit})"
+
+
+POSITION_LABEL = {1: "goalkeeper", 2: "defender", 3: "midfielder", 4: "forward"}
+
+
+def explain_transfer(cand: TransferCandidate) -> str:
+    """Plain-language reason; model numbers stay in brackets."""
+    gw = f"{cand.delta_gw_xp:+.1f} pts this week"
+    horizon = f"{cand.delta_weighted_xp:+.1f} over the next few GWs"
+    if cand.in_starts:
+        if cand.in_p_start >= cand.out_p_start + 0.1:
+            body = (
+                f"{cand.in_name} is likelier to start than {cand.out_name} "
+                f"({cand.in_p_start:.0%} vs {cand.out_p_start:.0%}) and should add more to the XI this week"
+            )
+        else:
+            body = (
+                f"{cand.in_name} is projected to outscore {cand.out_name} this week "
+                f"while still starting ({cand.in_p_start:.0%} start chance)"
+            )
+        if cand.xi_drop_name and cand.xi_drop_name != cand.out_name:
+            body += f"; {cand.xi_drop_name} drops to the bench"
+    else:
+        body = (
+            f"{cand.in_name} is a longer-term upgrade on {cand.out_name} "
+            f"but would sit on the bench this week"
+        )
+    return f"{body} ({gw}; {horizon})."
+
+
+def explain_vs_pick(alt: TransferCandidate, pick: TransferCandidate) -> str:
+    """Why this same-position option lost (or is close) vs the recommended IN."""
+    gw_gap = pick.delta_gw_xp - alt.delta_gw_xp
+    w_gap = pick.delta_weighted_xp - alt.delta_weighted_xp
+    if gw_gap > 0.15:
+        week = f"adds less this week than {pick.in_name}"
+    elif gw_gap < -0.15:
+        week = f"adds a bit more this week than {pick.in_name}"
+    else:
+        week = f"is close to {pick.in_name} this week"
+    if w_gap < -0.3:
+        horizon = "and looks stronger over the next few gameweeks"
+    elif w_gap > 0.3:
+        horizon = "but looks weaker over the next few gameweeks"
+    else:
+        horizon = "over a similar run of gameweeks"
+    start = ""
+    if alt.out_name != pick.out_name:
+        start = f" It would sell {alt.out_name} instead of {pick.out_name}."
+    elif alt.in_p_start >= alt.out_p_start + 0.15:
+        start = (
+            f" It would replace {alt.out_name} ({alt.out_p_start:.0%} start) "
+            f"with {alt.in_name} ({alt.in_p_start:.0%})."
+        )
+    return (
+        f"{week} {horizon}.{start} "
+        f"({alt.delta_gw_xp:+.1f} pts this week; {alt.delta_weighted_xp:+.1f} over the next few GWs)."
+    )
+
+
+def same_position_shortlist(
+    pick: TransferCandidate,
+    candidates: list[TransferCandidate],
+    *,
+    limit: int = 3,
+) -> list[TransferCandidate]:
+    """Recommended buy first, then other affordable starter buys in the same position."""
+    same = [
+        cand
+        for cand in candidates
+        if cand.element_type == pick.element_type and cand.in_starts and cand.affordable
+    ]
+    ordered = [pick] + [cand for cand in same if cand.in_id != pick.in_id]
+    seen: set[int] = set()
+    out: list[TransferCandidate] = []
+    for cand in ordered:
+        if cand.in_id in seen:
+            continue
+        seen.add(cand.in_id)
+        out.append(cand)
+        if len(out) >= limit:
+            break
+    return out
 
 
 def _is_available(element: dict[str, Any]) -> bool:

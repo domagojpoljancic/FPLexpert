@@ -200,6 +200,32 @@ def test_report_includes_weekly_model_decisions() -> None:
                 "in_name": "Haaland",
                 "bank_shortfall_tenths": 20,
             },
+            "also_considered": [
+                {
+                    "in_name": "Egan",
+                    "element_type": 2,
+                    "picked": True,
+                    "reason": (
+                        "Egan is likelier to start than O'Nien (80% vs 40%) "
+                        "and should add more to the XI this week (+2.8 pts this week; +4.6 over the next few GWs)."
+                    ),
+                },
+                {
+                    "in_name": "Ajayi",
+                    "element_type": 2,
+                    "picked": False,
+                    "reason": (
+                        "adds less this week than Egan but looks stronger over the next few gameweeks. "
+                        "It would sell Virgil instead of O'Nien. (+3.4 pts this week; +3.5 over the next few GWs)."
+                    ),
+                },
+                {
+                    "in_name": "De Cuyper",
+                    "element_type": 2,
+                    "picked": False,
+                    "reason": "is close to Egan this week over a similar run of gameweeks. (+2.5 pts this week).",
+                },
+            ],
             "chips": [
                 {"kind": "3xc", "action": "hold", "available": True, "reason": "not an outlier week"},
             ],
@@ -219,6 +245,9 @@ def test_report_includes_weekly_model_decisions() -> None:
     assert "Egan" in text
     assert "After **O'Nien → Egan**" in text
     assert "Virgil drops out of the XI" in text
+    assert "Compared with other affordable defenders:" in text
+    assert "**Egan** (recommended)" in text
+    assert "**Ajayi** (also looked at)" in text
     assert "## Model decisions" not in text
     assert "### Horizon" not in text
     assert "Last week (GW2 actuals)" not in text

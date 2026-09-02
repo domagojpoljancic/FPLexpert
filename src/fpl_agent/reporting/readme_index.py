@@ -119,7 +119,7 @@ def render_recent_runs_block(prices: list[RunLink], news: list[RunLink]) -> str:
         START,
         "## Latest results",
         "",
-        "**Price watch** (GitHub, ~21:00 Zagreb — last 7 days)",
+        "**Price watch** (GitHub, 20:00 Zagreb — last 7 days)",
         *_bullets(prices, empty="No price reports yet."),
         "",
         "**Squad news** (pre-deadline — last 7 days)",
@@ -203,11 +203,16 @@ def _headline_from_md(text: str) -> str:
         "search queries",
         "official fpl status fields",
         "squad file",
+        "this week",
     }
     for line in text.splitlines()[:40]:
         stripped = line.strip()
         if stripped.lower().startswith("headline:"):
             return stripped.split(":", 1)[1].strip()
+        if stripped.lower().startswith("plan:"):
+            rest = re.sub(r"^Plan:\s*\*\*[^*]+\*\*\s*[—–\-:]*\s*", "", stripped).strip()
+            if rest and rest.lower() not in skip:
+                return rest
         if stripped.startswith("## "):
             title = stripped[3:].strip()
             if title.lower() not in skip:

@@ -90,6 +90,85 @@ def test_this_week_upgrade_requires_buy_to_start() -> None:
     assert pick.in_id == 11
 
 
+def test_explain_transfer_puts_numbers_in_brackets() -> None:
+    from fpl_agent.strategy.transfers import TransferCandidate, explain_transfer
+
+    cand = TransferCandidate(
+        out_id=1,
+        in_id=10,
+        out_name="O'Nien",
+        in_name="Egan",
+        element_type=2,
+        sell_tenths=40,
+        buy_tenths=40,
+        bank_after_tenths=0,
+        bank_shortfall_tenths=0,
+        affordable=True,
+        delta_weighted_xp=4.563,
+        delta_gw_xp=2.83,
+        out_p_start=0.4,
+        in_p_start=0.8,
+        in_starts=True,
+    )
+    text = explain_transfer(cand)
+    assert "Egan is likelier to start than O'Nien" in text
+    assert "(+2.8 pts this week; +4.6 over the next few GWs)." in text
+    assert "weighted xP" not in text
+    assert "net GW" not in text
+    assert cand.as_payload()["reason"] == text
+
+
+def test_same_position_shortlist_puts_pick_first() -> None:
+    from fpl_agent.strategy.transfers import TransferCandidate, explain_vs_pick, same_position_shortlist
+
+    def cand(*, in_id: int, in_name: str, gw: float, weighted: float, out_name: str = "Virgil") -> TransferCandidate:
+        return TransferCandidate(
+            out_id=1 if out_name == "Virgil" else 2,
+            in_id=in_id,
+            out_name=out_name,
+            in_name=in_name,
+            element_type=2,
+            sell_tenths=50,
+            buy_tenths=50,
+            bank_after_tenths=0,
+            bank_shortfall_tenths=0,
+            affordable=True,
+            delta_weighted_xp=weighted,
+            delta_gw_xp=gw,
+            out_p_start=0.84,
+            in_p_start=0.8,
+            in_starts=True,
+        )
+
+    pick = cand(in_id=10, in_name="Ajayi", gw=3.5, weighted=1.3)
+    de_cuyper = cand(in_id=11, in_name="De Cuyper", gw=3.4, weighted=3.5)
+    egan = cand(in_id=12, in_name="Egan", gw=2.8, weighted=4.6, out_name="O'Nien")
+    mid = TransferCandidate(
+        out_id=3,
+        in_id=20,
+        out_name="Rogers",
+        in_name="Cherki",
+        element_type=3,
+        sell_tenths=50,
+        buy_tenths=50,
+        bank_after_tenths=0,
+        bank_shortfall_tenths=0,
+        affordable=True,
+        delta_weighted_xp=2.0,
+        delta_gw_xp=1.0,
+        out_p_start=0.9,
+        in_p_start=0.9,
+        in_starts=True,
+    )
+    short = same_position_shortlist(pick, [pick, de_cuyper, egan, mid], limit=3)
+    assert [c.in_name for c in short] == ["Ajayi", "De Cuyper", "Egan"]
+    vs = explain_vs_pick(de_cuyper, pick)
+    assert "is close to Ajayi this week" in vs
+    assert "stronger over the next few gameweeks" in vs
+    assert "(+3.4 pts this week; +3.5 over the next few GWs)." in vs
+    assert "O'Nien" in explain_vs_pick(egan, pick)
+
+
 def test_ranked_candidates_mark_starting_buys() -> None:
     from fpl_agent.strategy.transfers import this_week_upgrade
 

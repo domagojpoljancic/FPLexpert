@@ -146,14 +146,38 @@ def test_refresh_skips_readme_without_markers(tmp_path: Path) -> None:
     assert readme.read_text(encoding="utf-8") == "# nope\n"
 
 
+def test_parses_compact_plan_line_not_this_week_heading(tmp_path: Path) -> None:
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    (reports / "predeadline-gw3-20260818T180000Z.md").write_text(
+        "# Pre-deadline FPL review — Gameweek 3\n"
+        "\n"
+        "Plan: **REVISE** — Consider Virgil to Ajayi with the free transfer.\n"
+        "AI: **gpt-5.6** (live OpenAI).\n"
+        "\n"
+        "## Do this\n"
+        "\n"
+        "- transfer: Virgil to Ajayi\n"
+        "\n"
+        "## This week\n"
+        "\n"
+        "- XI (3-5-2): Raya, Ajayi\n",
+        encoding="utf-8",
+    )
+    news = list_report_files(reports, kind="predeadline", limit=3, now=NOW)
+    assert len(news) == 1
+    assert news[0].status == "REVISE"
+    assert news[0].headline == "Consider Virgil to Ajayi with the free transfer."
+
+
 def test_drops_runs_older_than_seven_days(tmp_path: Path) -> None:
     reports = tmp_path / "reports"
     reports.mkdir()
     now = datetime(2026, 9, 2, 12, 0, tzinfo=UTC)
-    _write_report(reports, "predeadline-gw3-20260902T100000Z.md", "REVISE", "this week")
+    _write_report(reports, "predeadline-gw3-20260902T100000Z.md", "REVISE", "Consider Virgil to Ajayi")
     _write_report(reports, "predeadline-gw1-20260821T171955Z.md", "REVISE", "too old")
     news = list_report_files(reports, kind="predeadline", limit=7, now=now)
-    assert [n.headline for n in news] == ["this week"]
+    assert [n.headline for n in news] == ["Consider Virgil to Ajayi"]
 
 
 def test_falls_back_to_last_checks_when_window_empty(tmp_path: Path) -> None:
