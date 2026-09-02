@@ -8,7 +8,9 @@ from typing import Any
 
 from fpl_agent.domain.models import Executability, RiskProfile
 from fpl_agent.domain.run_state import stable_json_hash
+from fpl_agent.projections.preseason import PlayerProjection
 from fpl_agent.rules.season import SeasonRules
+from fpl_agent.strategy.transfers import TransferPlan, _plan_summary, rank_transfer_plans
 
 
 class RiskLevel(StrEnum):
@@ -111,6 +113,100 @@ def select_xi_by_xp(
     return best[1], best[2]
 
 
+def _projected_xi_by_gw(
+    owned_ids: list[int],
+    projections: dict[int, PlayerProjection],
+    rules: SeasonRules,
+    horizon: int,
+) -> list[float]:
+    from fpl_agent.strategy.draft import select_best_xi
+
+    players = [projections[pid] for pid in owned_ids if pid in projections]
+    if len(players) != len(owned_ids):
+        return [0.0] * horizon
+    out: list[float] = []
+    for index in range(horizon):
+        xi, _, _ = select_best_xi(players, rules, gameweek_index=index)
+        total = 0.0
+        for p in xi:
+            if index < len(p.xp_by_gw):
+                total += float(p.xp_by_gw[index])
+        out.append(total)
+    return out
+
+
+def break_even_gw(
+    base_by_gw: list[float],
+    new_by_gw: list[float],
+    hit_cost: int,
+) -> int | None:
+    """GW index (1-based within horizon) where cumulative gain covers the hit."""
+    if hit_cost <= 0:
+        return None
+    cumulative = 0.0
+    for index, (base, new) in enumerate(zip(base_by_gw, new_by_gw, strict=False)):
+        cumulative += new - base
+        if cumulative >= hit_cost:
+            return index + 1
+    return None
+
+
+def _scenario_from_plan(
+    *,
+    plan: TransferPlan,
+    roll: Scenario,
+    rules: SeasonRules,
+    owned_ids: list[int],
+    projections: dict[int, PlayerProjection],
+    weights: list[float],
+    horizon: int,
+    base_by_gw: list[float],
+) -> Scenario:
+    new_ids = list(owned_ids)
+    for move in plan.moves:
+        new_ids = [move.in_id if pid == move.out_id else pid for pid in new_ids]
+    projected_by_gw = _projected_xi_by_gw(new_ids, projections, rules, horizon)
+    weighted_gross = sum(w * x for w, x in zip(weights, projected_by_gw, strict=True))
+    weighted_net = weighted_gross - plan.hit_cost
+    gain = weighted_net - roll.weighted_net
+    be_gw = break_even_gw(base_by_gw, projected_by_gw, plan.hit_cost)
+    transfers = [
+        TransferMove(
+            out_id=m.out_id,
+            in_id=m.in_id,
+            sell_tenths=m.sell_tenths,
+            buy_tenths=m.buy_tenths,
+        )
+        for m in plan.moves
+    ]
+    future: list[str] = []
+    if len(plan.moves) == 1 and plan.hit_cost == 0:
+        future.append("optional second move next GW if value persists")
+    if plan.hit_cost > 0:
+        future.append(f"hit pays back by GW+{be_gw}" if be_gw else "hit may not pay back within horizon")
+    risk = RiskLevel.LOW if plan.hit_cost == 0 else RiskLevel.MEDIUM
+    return Scenario(
+        scenario_id=_scenario_id({"type": "plan", "moves": [(m.out_id, m.in_id) for m in plan.moves]}),
+        risk_level=risk,
+        transfers=transfers,
+        hit_cost=plan.hit_cost,
+        bank_after=plan.bank_after_tenths,
+        projected_by_gw=projected_by_gw,
+        weighted_gross=weighted_gross,
+        weighted_net=weighted_net,
+        gain_vs_roll=gain,
+        break_even_gw=be_gw,
+        sensitivities={
+            "horizon_weighted_minus_10pct": round(weighted_net * 0.9, 3),
+        },
+        future_moves=future,
+        assumptions=[_plan_summary(plan)],
+        legality_ok=plan.affordable,
+        executability=Executability.EXECUTABLE,
+        notes=[_plan_summary(plan)],
+    )
+
+
 def generate_scenarios(
     *,
     rules: SeasonRules,
@@ -124,6 +220,10 @@ def generate_scenarios(
     hits_enabled: bool,
     risk_profile: RiskProfile = RiskProfile.MODERATE,
     beam_width: int = 20,
+    owned_ids: list[int] | None = None,
+    catalog: dict[int, dict[str, Any]] | None = None,
+    projections: dict[int, PlayerProjection] | None = None,
+    purchase_prices_tenths: dict[str, int] | None = None,
 ) -> tuple[list[Scenario], SearchDiagnostics]:
     pruned: list[str] = []
     if executability == Executability.INSUFFICIENT:
@@ -163,9 +263,9 @@ def generate_scenarios(
         weighted_net=roll_gross,
         gain_vs_roll=0.0,
         break_even_gw=None,
-        sensitivities={"start_prob_minus_10pct": roll_gross * 0.97},
-        future_moves=[],
-        assumptions=["no transfers"],
+        sensitivities={"ft_bank_option_value": round(roll_gross * 0.02, 3)},
+        future_moves=["roll: bank FT toward 5 for flexibility"],
+        assumptions=["no transfers", "FT bank valued for optionality"],
         legality_ok=True,
         executability=exec_status,
         captain_id=max(xi, key=lambda pid: squad_xp.get(pid, 0.0)) if xi else None,
@@ -205,8 +305,44 @@ def generate_scenarios(
         scenarios = scenarios[:beam_width]
         return scenarios, SearchDiagnostics(candidates, len(scenarios), pruned, beam_width)
 
-    # Real 1-FT / hit search lives in strategy.transfers.rank_transfer_plans.
-    if hits_enabled:
+    # Transfer search when finance and projection context are available.
+    if (
+        owned_ids
+        and catalog
+        and projections
+        and purchase_prices_tenths is not None
+        and free_transfers is not None
+        and bank_tenths is not None
+    ):
+        plans = rank_transfer_plans(
+            owned_ids=owned_ids,
+            bank_tenths=bank_tenths,
+            free_transfers=free_transfers,
+            purchase_prices_tenths=purchase_prices_tenths,
+            catalog=catalog,
+            projections=projections,
+            rules=rules,
+            hits_enabled=hits_enabled,
+            max_hit=max_hit,
+            risk_profile=risk_profile,
+            catalog_for_tiebreak=catalog,
+        )
+        base_by_gw = roll_by_gw
+        for plan in plans[: max(1, beam_width - 1)]:
+            candidates += 1
+            scenarios.append(
+                _scenario_from_plan(
+                    plan=plan,
+                    roll=roll,
+                    rules=rules,
+                    owned_ids=owned_ids,
+                    projections=projections,
+                    weights=weights,
+                    horizon=horizon,
+                    base_by_gw=base_by_gw,
+                )
+            )
+    elif hits_enabled:
         pruned.append("hits_evaluated_in_transfer_plans")
 
     scenarios.sort(key=lambda s: (s.weighted_net, s.gain_vs_roll), reverse=True)

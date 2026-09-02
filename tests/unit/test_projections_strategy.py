@@ -5,6 +5,7 @@ from __future__ import annotations
 from fpl_agent.domain.models import Executability, RiskProfile
 from fpl_agent.projections.backtest import run_backtest
 from fpl_agent.projections.model import minutes_states, project_horizon, project_player_gw
+from fpl_agent.projections.preseason import PlayerProjection
 from fpl_agent.rules.season import load_season_rules_2026_27
 from fpl_agent.strategy.engine import generate_scenarios
 
@@ -137,3 +138,100 @@ def test_insufficient_blocks_scenarios() -> None:
     )
     assert scenarios == []
     assert "insufficient_team_state" in diag.pruned
+
+
+def _mini_squad_projections() -> tuple[list[int], list[dict], dict[int, list[float]], dict[int, PlayerProjection], dict[int, dict]]:
+    rules = load_season_rules_2026_27()
+    positions = ["GKP"] * 2 + ["DEF"] * 5 + ["MID"] * 5 + ["FWD"] * 3
+    owned = list(range(1, 16))
+    squad = []
+    xp: dict[int, list[float]] = {}
+    projections: dict[int, PlayerProjection] = {}
+    catalog: dict[int, dict] = {}
+    et_map = {"GKP": 1, "DEF": 2, "MID": 3, "FWD": 4}
+    for i, pos in enumerate(positions, start=1):
+        squad.append({"player_id": i, "position": pos, "club_id": i})
+        et = et_map[pos]
+        catalog[i] = {"id": i, "web_name": f"P{i}", "team": i, "element_type": et, "now_cost": 50, "status": "a"}
+        projections[i] = PlayerProjection(
+            player_id=i,
+            web_name=f"P{i}",
+            team_id=i,
+            element_type=et,
+            price_tenths=50,
+            p_start=0.85,
+            expected_minutes=78.0,
+            points_per_90=4.0,
+            xp_by_gw=(5.0, 5.0, 5.0, 5.0, 5.0, 5.0),
+            weighted_xp=20.0,
+        )
+        xp[i] = [5.0] * 6
+    catalog[20] = {"id": 20, "web_name": "In20", "team": 16, "element_type": 4, "now_cost": 50, "status": "a"}
+    projections[20] = PlayerProjection(
+        player_id=20,
+        web_name="In20",
+        team_id=16,
+        element_type=4,
+        price_tenths=50,
+        p_start=0.9,
+        expected_minutes=78.0,
+        points_per_90=6.0,
+        xp_by_gw=(7.0, 7.0, 7.0, 7.0, 7.0, 7.0),
+        weighted_xp=30.0,
+    )
+    return owned, squad, xp, projections, catalog
+
+
+def test_engine_emits_multi_move_when_finance_known() -> None:
+    rules = load_season_rules_2026_27()
+    owned, squad, xp, projections, catalog = _mini_squad_projections()
+    scenarios, diag = generate_scenarios(
+        rules=rules,
+        executability=Executability.EXECUTABLE,
+        bank_tenths=10,
+        free_transfers=1,
+        squad=squad,
+        xp_by_player=xp,
+        weights=[1, 0.9, 0.8, 0.7, 0.6, 0.5],
+        max_hit=8,
+        hits_enabled=True,
+        risk_profile=RiskProfile.MODERATE,
+        owned_ids=owned,
+        catalog=catalog,
+        projections=projections,
+        purchase_prices_tenths={str(i): 50 for i in owned},
+        beam_width=10,
+    )
+    assert len(scenarios) > 1
+    assert any(s.transfers for s in scenarios)
+    assert all(s.legality_ok for s in scenarios if s.transfers)
+
+
+def test_break_even_gw_populated() -> None:
+    from fpl_agent.strategy.engine import break_even_gw
+
+    assert break_even_gw([5.0, 5.0], [9.0, 5.0], 4) == 1
+    assert break_even_gw([5.0, 5.0], [6.0, 6.0], 4) is None
+
+
+def test_candidates_still_legal_and_bounded() -> None:
+    rules = load_season_rules_2026_27()
+    owned, squad, xp, projections, catalog = _mini_squad_projections()
+    scenarios, diag = generate_scenarios(
+        rules=rules,
+        executability=Executability.EXECUTABLE,
+        bank_tenths=10,
+        free_transfers=1,
+        squad=squad,
+        xp_by_player=xp,
+        weights=[1, 0.9, 0.8, 0.7, 0.6, 0.5],
+        max_hit=8,
+        hits_enabled=True,
+        owned_ids=owned,
+        catalog=catalog,
+        projections=projections,
+        purchase_prices_tenths={str(i): 50 for i in owned},
+        beam_width=5,
+    )
+    assert len(scenarios) <= 5
+    assert diag.beam_width == 5

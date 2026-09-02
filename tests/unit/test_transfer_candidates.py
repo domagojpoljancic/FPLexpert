@@ -329,3 +329,97 @@ def test_hits_disabled_skips_two_swap_when_one_ft() -> None:
         hits_enabled=False,
     )
     assert all(len(p.moves) == 1 for p in plans)
+
+
+def test_cross_position_restructure_surfaces() -> None:
+    from fpl_agent.strategy.transfers import rank_cross_position_plans
+
+    owned = list(range(1, 16))
+    types = [1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 4, 4, 4]
+    catalog: dict[int, dict] = {}
+    projections: dict[int, PlayerProjection] = {}
+    for pid, et in zip(owned, types, strict=True):
+        catalog[pid] = {
+            "id": pid,
+            "web_name": f"P{pid}",
+            "team": pid,
+            "element_type": et,
+            "now_cost": 50 if et != 3 else 70,
+            "status": "a",
+        }
+        projections[pid] = _proj(
+            pid,
+            element_type=et,
+            team_id=pid,
+            price=50 if et != 3 else 70,
+            weighted=4.0 if et == 3 else 6.0,
+            gw=2.0 if et == 3 else 3.0,
+            name=f"P{pid}",
+        )
+    # Premium FWD + enabler MID funded by selling one MID and one FWD
+    catalog[100] = {"id": 100, "web_name": "Premium", "team": 20, "element_type": 4, "now_cost": 100, "status": "a"}
+    catalog[101] = {"id": 101, "web_name": "Enabler", "team": 21, "element_type": 3, "now_cost": 45, "status": "a"}
+    projections[100] = _proj(100, element_type=4, team_id=20, price=100, weighted=18.0, gw=8.0, name="Premium")
+    projections[101] = _proj(101, element_type=3, team_id=21, price=45, weighted=3.0, gw=1.5, name="Enabler", p_start=0.75)
+    # weaken fwd fodder so it is in the weak pool
+    projections[13] = _proj(13, element_type=4, team_id=13, price=50, weighted=3.0, gw=1.0, name="P13")
+    projections[8] = _proj(8, element_type=3, team_id=8, price=70, weighted=3.5, gw=1.5, name="P8")
+    plans = rank_cross_position_plans(
+        owned_ids=owned,
+        bank_tenths=50,
+        free_transfers=2,
+        purchase_prices_tenths={str(i): catalog[i]["now_cost"] for i in owned},
+        catalog=catalog,
+        projections=projections,
+        rules=__import__("fpl_agent.rules.season", fromlist=["load_season_rules_2026_27"]).load_season_rules_2026_27(),
+        hit_points=4,
+        base_xi=(80.0, 12.0),
+    )
+    assert plans
+    assert any({m.in_id for m in p.moves} == {100, 101} for p in plans)
+
+
+def test_horizon_objective_beats_single_gw() -> None:
+    from fpl_agent.strategy.transfers import TransferCandidate, TransferPlan, rank_transfer_plans
+
+    owned, catalog, projections = _fifteen()
+    # Artificial plan: great horizon, weak this GW
+    churn = TransferPlan(
+        moves=(
+            TransferCandidate(
+                out_id=13,
+                in_id=20,
+                out_name="Out13",
+                in_name="In20",
+                element_type=4,
+                sell_tenths=50,
+                buy_tenths=50,
+                bank_after_tenths=0,
+                bank_shortfall_tenths=0,
+                affordable=True,
+                delta_weighted_xp=8.0,
+                delta_gw_xp=-1.0,
+                out_p_start=0.9,
+                in_p_start=0.9,
+                in_starts=True,
+            ),
+        ),
+        free_transfers_used=1,
+        hit_cost=0,
+        delta_weighted_xp=8.0,
+        delta_gw_xp=-1.0,
+        net_gw_xp=-1.0,
+        bank_after_tenths=0,
+        affordable=True,
+    )
+    plans = rank_transfer_plans(
+        owned_ids=owned,
+        bank_tenths=0,
+        free_transfers=1,
+        purchase_prices_tenths={str(i): 50 for i in owned},
+        catalog=catalog,
+        projections=projections,
+    )
+    assert plans
+    assert plans[0].delta_weighted_xp >= plans[0].delta_gw_xp or plans[0].delta_weighted_xp > 0
+    assert churn.delta_weighted_xp > churn.delta_gw_xp

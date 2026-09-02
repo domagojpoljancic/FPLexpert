@@ -25,6 +25,7 @@ def build_weekly_plan(
     captain_id: int | None = None,
     vice_id: int | None = None,
     rules: SeasonRules | None = None,
+    transfer_path: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Lineup, captain, bench, and per-GW XI xP. Safe to embed in reports."""
     rules = rules or load_season_rules_2026_27()
@@ -74,4 +75,5 @@ def build_weekly_plan(
         "saved_captain_id": captain_id,
         "saved_vice_id": vice_id,
         "horizon": horizon,
+        "transfer_path": transfer_path or [],
     }
