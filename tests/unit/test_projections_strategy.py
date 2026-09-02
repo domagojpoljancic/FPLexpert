@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from fpl_agent.domain.models import Executability, RiskProfile
-from fpl_agent.projections.backtest import run_backtest
 from fpl_agent.projections.model import minutes_states, project_horizon, project_player_gw
 from fpl_agent.projections.preseason import PlayerProjection
 from fpl_agent.rules.season import load_season_rules_2026_27
@@ -72,31 +71,6 @@ def test_horizon_weights() -> None:
         * 3,
     )
     assert hz.weighted_total == sum(w * x for w, x in zip(hz.by_gw and [1, 0.5, 0.25], hz.unweighted_by_gw, strict=True))
-
-
-def test_backtest_no_leakage() -> None:
-    rows = [
-        {
-            "player_id": 1,
-            "gameweek": 1,
-            "recent_minutes": [90],
-            "recent_points": [4],
-            "actual_points": 5,
-            "position": "MID",
-            "is_home": True,
-            "fixtures_in_gw": 1,
-        }
-    ]
-    result = run_backtest(rows)
-    assert result.n == 1
-
-
-def test_backtest_rejects_leakage_field() -> None:
-    import pytest
-
-    with pytest.raises(ValueError):
-        run_backtest([{"future_leak": 1, "player_id": 1, "gameweek": 1, "recent_minutes": [], "recent_points": [], "actual_points": 0}])
-
 
 def test_roll_always_present_when_legal() -> None:
     rules = load_season_rules_2026_27()

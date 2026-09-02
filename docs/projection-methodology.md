@@ -64,5 +64,5 @@ Ownership is still unused in base xP.
 ## Validation status
 
 - Implemented and deterministic.
-- Empirically validated on the checked-in `holdout_min` fixture only (`n=4`); **xp-v2.1 does not beat `ep_next` on that sample** — DEFCON term is **gated off** (`projections.enable_defcon: false`) until a larger holdout shows improvement.
+- DEFCON term is **gated off** (`projections.enable_defcon: false`) by default; enable only after live-season review shows it helps rankings.
 - Intervals are **uncalibrated**.

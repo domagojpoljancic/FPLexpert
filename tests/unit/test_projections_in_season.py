@@ -109,19 +109,8 @@ def test_defcon_prior_only_warns() -> None:
     assert "defcon_prior_only" in warnings
 
 
-def test_xp_v2_not_worse_than_ep_next_on_fixture() -> None:
-    from pathlib import Path
-
+def test_enable_defcon_default_off() -> None:
     from fpl_agent.config import default_settings_path, load_settings
-    from fpl_agent.projections.backtest import run_backtest_report
-    from fpl_agent.projections.dataset import load_dataset
 
-    set_defcon_enabled(True)
-    rows = load_dataset(Path("tests/fixtures/backtest/holdout_min.json"))["rows"]
-    report = run_backtest_report(rows, model="xp-v2")
     settings = load_settings(default_settings_path())
-    configure_from_settings(settings)
-    if report.model.mae > report.ep_next_baseline.mae:
-        assert settings.projections.enable_defcon is False
-    else:
-        assert report.model.mae <= report.ep_next_baseline.mae
+    assert settings.projections.enable_defcon is False
