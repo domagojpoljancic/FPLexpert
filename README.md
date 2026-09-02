@@ -5,7 +5,7 @@ A read-only Fantasy Premier League assistant. It recommends transfers, captain, 
 <!-- recent-runs:start -->
 ## Latest results
 
-**Price watch** (GitHub, ~21:00 Zagreb — last 7 days)
+**Price watch** (GitHub, 20:00 Zagreb — last 7 days)
 - [01 Sep 23:40 CEST](reports/prices-gw3-20260901T214030Z.md) · GW3 · **NO ACTION** — No price action tonight.
 - [01 Sep 01:09 CEST](reports/prices-gw3-20260831T230954Z.md) · GW3 · **NO ACTION** — No price action tonight.
 - [30 Aug 23:52 CEST](reports/prices-gw3-20260830T215242Z.md) · GW3 · **NO ACTION** — No price action tonight.
@@ -15,6 +15,7 @@ A read-only Fantasy Premier League assistant. It recommends transfers, captain, 
 - [26 Aug 23:44 CEST](reports/prices-gw2-20260826T214423Z.md) · GW2 · **NO ACTION** — No price action tonight.
 
 **Squad news** (pre-deadline — last 7 days)
+- [02 Sep 14:55 CEST](reports/predeadline-gw3-20260902T125520Z.md) · GW3 · **REVISE** — This week
 - [02 Sep 14:34 CEST](reports/predeadline-gw3-20260902T123407Z.md) · GW3 · **REVISE** — Consider O'Nien to Egan with the free transfer: it fixes the clearest start-risk slot and…
 - [02 Sep 12:03 CEST](reports/predeadline-gw3-20260902T100329Z.md) · GW3 · **REVISE** — Use the free transfer on O'Nien to Egan, retain Bruno Fernandes as captain, and recheck T…
 - [28 Aug 06:55 CEST](reports/predeadline-gw2-20260828T045547Z.md) · GW2 · **REVISE** — Consider Gibbs-White to Cherki, then start João Pedro over Shaw and keep Bruno Fernandes…
@@ -62,4 +63,4 @@ Reports: `reports/prices-gw*.md` and `reports/predeadline-gw*.md`. JSON next to 
 
 Private squad files stay on your machine (`data/private-state/`). They are gitignored and never committed. The assistant never mutates your FPL team.
 
-Overnight price watch runs on GitHub (`fpl-prices.yml`, ~21:00 Zagreb). A second workflow (`fpl-prices-watchdog.yml`) comments if that job is more than 26 hours late.
+Overnight price watch runs on GitHub (`fpl-prices.yml`, 20:00 Zagreb). GitHub cron can still fire late; the job skips ticks before 20:00 local and skips if it already succeeded that day. A second workflow (`fpl-prices-watchdog.yml`) comments if that job is more than 26 hours late.
