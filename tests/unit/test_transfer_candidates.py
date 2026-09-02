@@ -423,3 +423,100 @@ def test_horizon_objective_beats_single_gw() -> None:
     assert plans
     assert plans[0].delta_weighted_xp >= plans[0].delta_gw_xp or plans[0].delta_weighted_xp > 0
     assert churn.delta_weighted_xp > churn.delta_gw_xp
+
+
+def test_single_move_hit_requires_horizon_ev() -> None:
+    from fpl_agent.strategy.transfers import TransferCandidate, TransferPlan, hit_clears_horizon_bar, rank_transfer_plans
+
+    owned, catalog, projections = _fifteen()
+    weak = TransferPlan(
+        moves=(
+            TransferCandidate(
+                out_id=13,
+                in_id=20,
+                out_name="Out",
+                in_name="In",
+                element_type=4,
+                sell_tenths=50,
+                buy_tenths=50,
+                bank_after_tenths=0,
+                bank_shortfall_tenths=0,
+                affordable=True,
+                delta_weighted_xp=1.0,
+                delta_gw_xp=3.0,
+                out_p_start=0.9,
+                in_p_start=0.9,
+                in_starts=True,
+            ),
+        ),
+        free_transfers_used=1,
+        hit_cost=4,
+        delta_weighted_xp=1.0,
+        delta_gw_xp=3.0,
+        net_gw_xp=-1.0,
+        bank_after_tenths=0,
+        affordable=True,
+    )
+    assert not hit_clears_horizon_bar(weak, margin=1.0)
+    plans = rank_transfer_plans(
+        owned_ids=owned,
+        bank_tenths=0,
+        free_transfers=1,
+        purchase_prices_tenths={str(i): 50 for i in owned},
+        catalog=catalog,
+        projections=projections,
+        hits_enabled=True,
+    )
+    assert all(p.hit_cost == 0 or hit_clears_horizon_bar(p, margin=1.0) for p in plans)
+
+
+def test_roll_preferred_when_no_move_clears_bar() -> None:
+    from fpl_agent.strategy.transfers import roll_recommendation_reason
+
+    reason = roll_recommendation_reason(free_transfers=1, best_plan=None, margin=1.0)
+    assert "bank" in reason.lower() or "roll" in reason.lower()
+
+
+def test_hit_bar_scales_with_risk_profile() -> None:
+    from fpl_agent.domain.models import RiskProfile
+    from fpl_agent.strategy.transfers import TransferPlan, hit_clears_horizon_bar, hit_horizon_margin
+
+    plan = TransferPlan(
+        moves=(),
+        free_transfers_used=0,
+        hit_cost=4,
+        delta_weighted_xp=6.0,
+        delta_gw_xp=2.0,
+        net_gw_xp=-2.0,
+        bank_after_tenths=0,
+        affordable=True,
+    )
+    assert hit_clears_horizon_bar(plan, margin=hit_horizon_margin(risk_profile=RiskProfile.AGGRESSIVE))
+    assert not hit_clears_horizon_bar(plan, margin=hit_horizon_margin(risk_profile=RiskProfile.CONSERVATIVE))
+
+
+def test_ft_cap_enforced() -> None:
+    from fpl_agent.strategy.transfers import MAX_BANKED_FTS
+
+    assert MAX_BANKED_FTS == 5
+
+
+def test_early_season_bar_moderately_stricter() -> None:
+    from fpl_agent.domain.models import RiskProfile
+    from fpl_agent.strategy.transfers import TransferPlan, hit_clears_horizon_bar, hit_horizon_margin
+
+    plan = TransferPlan(
+        moves=(),
+        free_transfers_used=0,
+        hit_cost=4,
+        delta_weighted_xp=5.0,
+        delta_gw_xp=2.0,
+        net_gw_xp=-2.0,
+        bank_after_tenths=0,
+        affordable=True,
+    )
+    gw2 = hit_horizon_margin(risk_profile=RiskProfile.MODERATE, gameweek=2, early_season_boost=1.0)
+    gw10 = hit_horizon_margin(risk_profile=RiskProfile.MODERATE, gameweek=10, early_season_boost=1.0)
+    assert gw2 > gw10
+    assert hit_clears_horizon_bar(plan, margin=gw10)
+    assert not hit_clears_horizon_bar(plan, margin=gw2)

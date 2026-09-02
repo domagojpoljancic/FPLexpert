@@ -59,7 +59,14 @@ CROSS_RESTRUCTURE_OUTS = 6
 CROSS_RESTRUCTURE_INS = 16
 HORIZON_TIE_EPSILON = 0.15
 PAIR_POOL = 8
-MIN_HIT_NET_GW = 0.5
+MIN_HIT_NET_GW = 0.5  # legacy single-GW floor; horizon gate supersedes for hits
+HIT_MARGIN_BY_RISK: dict[RiskProfile, float] = {
+    RiskProfile.CONSERVATIVE: 1.5,
+    RiskProfile.MODERATE: 1.0,
+    RiskProfile.AGGRESSIVE: 0.5,
+}
+MAX_BANKED_FTS = 5
+FT_BANK_OPTION_VALUE = 0.35
 MAX_TRANSFERS_IN_PLAN = 2
 
 
@@ -424,6 +431,48 @@ def _differential_tiebreak_key(
     return -ownership / 100.0
 
 
+def hit_horizon_margin(
+    *,
+    risk_profile: RiskProfile,
+    gameweek: int = 1,
+    early_season_gws: int = 4,
+    early_season_boost: float = 1.0,
+) -> float:
+    margin = HIT_MARGIN_BY_RISK.get(risk_profile, 1.0)
+    if gameweek <= early_season_gws:
+        margin += early_season_boost
+    return margin
+
+
+def hit_clears_horizon_bar(
+    plan: TransferPlan,
+    *,
+    margin: float,
+) -> bool:
+    """Horizon-weighted gain must exceed hit cost by a risk-scaled margin."""
+    if plan.hit_cost <= 0:
+        return True
+    net_horizon = plan.delta_weighted_xp - plan.hit_cost
+    required = (plan.hit_cost / 4.0) * margin
+    return net_horizon >= required
+
+
+def roll_recommendation_reason(
+    *,
+    free_transfers: int,
+    best_plan: TransferPlan | None,
+    margin: float,
+) -> str:
+    if best_plan is None:
+        return "No affordable move clears the horizon EV bar; banking FT preserves optionality."
+    if best_plan.hit_cost == 0 and best_plan.delta_weighted_xp < margin * 0.5:
+        return (
+            f"Marginal +{best_plan.delta_weighted_xp:.1f} horizon xP; roll to bank FT "
+            f"({free_transfers}/{MAX_BANKED_FTS} now)."
+        )
+    return "Top move clears bar."
+
+
 def rank_cross_position_plans(
     *,
     owned_ids: list[int],
@@ -569,6 +618,9 @@ def rank_transfer_plans(
     max_hit: int | None = None,
     risk_profile: RiskProfile = RiskProfile.MODERATE,
     catalog_for_tiebreak: dict[int, dict[str, Any]] | None = None,
+    gameweek: int = 1,
+    early_season_gws: int = 4,
+    early_season_hit_margin_boost: float = 1.0,
 ) -> list[TransferPlan]:
     """Rank 1- and 2-swap plans. Hits cost `hit_cost_points` per extra transfer."""
     rules = rules or load_season_rules_2026_27()
@@ -596,6 +648,16 @@ def rank_transfer_plans(
             hit_points=hit_points,
         )
         if plan is not None and plan.hit_cost <= cap:
+            if plan.hit_cost > 0 and not hit_clears_horizon_bar(
+                plan,
+                margin=hit_horizon_margin(
+                    risk_profile=risk_profile,
+                    gameweek=gameweek,
+                    early_season_gws=early_season_gws,
+                    early_season_boost=early_season_hit_margin_boost,
+                ),
+            ):
+                continue
             plans.append(plan)
 
     if MAX_TRANSFERS_IN_PLAN >= 2:
@@ -630,7 +692,9 @@ def rank_transfer_plans(
                 )
                 if plan is None or plan.hit_cost > cap:
                     continue
-                if plan.hit_cost > 0 and plan.net_gw_xp < MIN_HIT_NET_GW:
+                if plan.hit_cost > 0 and not hit_clears_horizon_bar(
+                    plan, margin=hit_horizon_margin(risk_profile=risk_profile, gameweek=gameweek)
+                ):
                     continue
                 plans.append(plan)
 
@@ -645,6 +709,13 @@ def rank_transfer_plans(
         hit_points=hit_points,
         base_xi=base_xi,
     )
+    hit_margin = hit_horizon_margin(
+        risk_profile=risk_profile,
+        gameweek=gameweek,
+        early_season_gws=early_season_gws,
+        early_season_boost=early_season_hit_margin_boost,
+    )
+    cross = [p for p in cross if hit_clears_horizon_bar(p, margin=hit_margin) or p.hit_cost == 0]
     plans.extend(cross)
 
     def sort_key(p: TransferPlan) -> tuple[float, float, float, float, int]:
