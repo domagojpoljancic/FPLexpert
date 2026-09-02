@@ -548,6 +548,85 @@ def scorecard_cmd(
     _exit(ExitCode.SUCCESS)
 
 
+@app.command("backtest")
+def backtest_cmd(
+    rows: Path = typer.Option(..., "--rows", help="Leakage-free holdout JSON"),
+    model: str = typer.Option("xp-v2", "--model", help="xp-v2 | baseline-v1"),
+    season: str | None = typer.Option(None, "--season", help="Rules season label (e.g. 2026-27)"),
+    source: Path | None = typer.Option(None, "--source", help="Optional external season dump JSON"),
+    reports_dir: Path = typer.Option(Path("reports"), "--reports"),
+) -> None:
+    """Run leakage-free projection backtest vs ep_next naive baseline."""
+    from datetime import UTC, datetime
+
+    from fpl_agent.projections.backtest import (
+        format_report_markdown,
+        report_to_dict,
+        run_backtest_report,
+    )
+    from fpl_agent.projections.dataset import load_dataset
+
+    if model not in {"xp-v2", "baseline-v1"}:
+        typer.echo(f"unsupported model: {model}", err=True)
+        _exit(ExitCode.INVALID_CONFIG)
+
+    try:
+        dataset = load_dataset(rows, source=source)
+    except (ValueError, OSError, json.JSONDecodeError) as exc:
+        typer.echo(f"FAILED: {exc}", err=True)
+        _exit(ExitCode.INVALID_CONFIG)
+
+    report = run_backtest_report(
+        dataset["rows"],
+        model=model,  # type: ignore[arg-type]
+        season=season,
+        dataset_season=dataset.get("season"),
+        blocked=dataset.get("blocked"),
+        blocked_reason=dataset.get("blocked_reason"),
+    )
+    payload = report_to_dict(report)
+    payload["selected_model"] = model
+
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    json_path = reports_dir / f"backtest-{stamp}.json"
+    md_path = reports_dir / f"backtest-{stamp}.md"
+    json_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    md_path.write_text(format_report_markdown(report, model_name=model), encoding="utf-8")
+
+    typer.echo(f"model={model} n={report.model.n} MAE={report.model.mae:.3f} bias={report.model.bias:+.3f}")
+    typer.echo(
+        f"ep_next n={report.ep_next_baseline.n} MAE={report.ep_next_baseline.mae:.3f} "
+        f"bias={report.ep_next_baseline.bias:+.3f}"
+    )
+    if report.rules_mismatch:
+        typer.echo("rules_mismatch=true (dataset season lacks verified scoring rules)")
+    if report.blocked:
+        typer.echo(f"blocked={report.blocked}: {report.blocked_reason}")
+    for pos, stats in sorted(report.model.by_position.items()):
+        typer.echo(f"  {model} {pos}: n={int(stats['n'])} MAE={stats['mae']:.3f}")
+    for pos, stats in sorted(report.ep_next_baseline.by_position.items()):
+        typer.echo(f"  ep_next {pos}: n={int(stats['n'])} MAE={stats['mae']:.3f}")
+    typer.echo(f"Saved {json_path}")
+    typer.echo(f"Saved {md_path}")
+    _exit(ExitCode.SUCCESS)
+
+
+@app.command("prices-schedule-gate")
+def prices_schedule_gate(
+    last_success: Path = typer.Option(
+        Path("data/snapshots/prices/last-success.json"),
+        "--last-success",
+    ),
+) -> None:
+    """Print whether GitHub should run prices (20:00 Europe/Zagreb, once per day)."""
+    from fpl_agent.monitoring.liveness import evaluate_schedule_gate_file
+
+    result = evaluate_schedule_gate_file(last_success)
+    typer.echo(json.dumps(result.as_payload(), indent=2))
+    _exit(ExitCode.SUCCESS)
+
+
 @app.command("prices-watchdog")
 def prices_watchdog(
     last_success: Path = typer.Option(
