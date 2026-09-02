@@ -10,6 +10,7 @@ from fpl_agent.rules.engine import available_chip_instances, chip_half_for_event
 from fpl_agent.rules.season import SeasonRules, load_season_rules_2026_27
 
 TC_MIN_XP = 8.0
+TC_MIN_CEILING_HAUL = 0.25
 TC_VS_NEXT_BEST = 1.35
 TC_MIN_P_START = 0.85
 BB_MIN_BENCH_XP = 8.0
@@ -144,21 +145,29 @@ def _triple_captain(
 ) -> ChipAdvice:
     xp = float(captain.get("xp_next") or captain.get("captain_xp") or 0.0)
     p_start = float(captain.get("p_start") or 0.0)
+    rationale = captain.get("captain_rationale") or captain
+    haul = float(rationale.get("haul_proxy") or rationale.get("ceiling", xp) / max(xp, 0.01) - 1.0)
+    ceiling = float(rationale.get("ceiling") or xp * (1.0 + haul))
     others = [
         float(row.get("captain_xp") or 0.0)
         for row in horizon
         if int(row.get("gw") or 0) != gameweek
     ]
     next_best = max(others) if others else 0.0
-    metric = xp / next_best if next_best > 0 else xp
-    if xp >= TC_MIN_XP and p_start >= TC_MIN_P_START and (not others or xp >= TC_VS_NEXT_BEST * next_best):
+    metric = ceiling / next_best if next_best > 0 else ceiling
+    if (
+        xp >= TC_MIN_XP
+        and p_start >= TC_MIN_P_START
+        and haul >= TC_MIN_CEILING_HAUL
+        and (not others or xp >= TC_VS_NEXT_BEST * next_best)
+    ):
         return ChipAdvice(
             kind=ChipKind.TRIPLE_CAPTAIN.value,
             action="play",
             available=True,
             reason=(
-                f"Captain xP {xp:.2f} with {p_start:.0%} start is an outlier vs the rest of the "
-                f"horizon (next-best captain week {next_best:.2f})."
+                f"Captain ceiling {ceiling:.2f} (haul proxy {haul:.2f}) with {p_start:.0%} start "
+                f"is an outlier vs next-best week {next_best:.2f}."
             ),
             metric=metric,
         )
@@ -166,8 +175,8 @@ def _triple_captain(
         kind=ChipKind.TRIPLE_CAPTAIN.value,
         action="hold",
         reason=(
-            f"Captain xP {xp:.2f} / {p_start:.0%} start is not a clear Triple Captain week "
-            f"(need ≥{TC_MIN_XP:.0f} xP, ≥{TC_MIN_P_START:.0%} start, and {TC_VS_NEXT_BEST:.2f}× next-best week)."
+            f"Captain mean xP {xp:.2f} lacks ceiling for TC (haul proxy {haul:.2f}, need ≥{TC_MIN_CEILING_HAUL:.2f}); "
+            f"hold until a genuine haul week (DGW detection pending)."
         ),
         available=True,
         metric=metric,

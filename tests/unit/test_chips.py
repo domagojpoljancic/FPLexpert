@@ -30,7 +30,9 @@ def _plan(*, captain_xp: float, bench_xp: float, this_xi: float, other_xi: float
 
 
 def test_triple_captain_play_on_outlier_week() -> None:
-    rows = recommend_chips(gameweek=5, weekly_plan=_plan(captain_xp=12.0, bench_xp=4.0, this_xi=48.0, other_xi=46.0))
+    plan = _plan(captain_xp=12.0, bench_xp=4.0, this_xi=48.0, other_xi=46.0)
+    plan["model_captain"]["captain_rationale"] = {"haul_proxy": 0.45, "ceiling": 16.0}
+    rows = recommend_chips(gameweek=5, weekly_plan=plan)
     by_kind = {r.kind: r for r in rows}
     assert by_kind["3xc"].action == "play"
     assert by_kind["bboost"].action == "hold"
