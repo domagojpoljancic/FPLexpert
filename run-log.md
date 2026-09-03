@@ -21,3 +21,4 @@ Overnight GitHub job (`fpl-prices`). Email is sent only on act-now; every run ad
 | 2026-09-01 01:09 CEST | 2026-08-31T23:09Z | 3 | NO ACTION | No price action tonight. |
 | 2026-09-01 23:40 CEST | 2026-09-01T21:40Z | 3 | NO ACTION | No price action tonight. |
 | 2026-09-02 23:41 CEST | 2026-09-02T21:41Z | 3 | WATCH | Watch list only — do not churn for £0.1m. |
+| 2026-09-03 23:36 CEST | 2026-09-03T21:36Z | 3 | WATCH | Watch list only — do not churn for £0.1m. |

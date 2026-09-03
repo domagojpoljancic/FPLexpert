@@ -19,13 +19,13 @@ Overnight **price watch** runs on GitHub (20:00 Zagreb). **Squad news** runs whe
 ## Latest results
 
 **Price watch** (GitHub, 20:00 Zagreb — last 7 days)
+- [03 Sep 23:36 CEST](reports/prices-gw3-20260903T213651Z.md) · GW3 · **WATCH** — Watch list only — do not churn for £0.1m.
 - [02 Sep 23:41 CEST](reports/prices-gw3-20260902T214102Z.md) · GW3 · **WATCH** — Watch list only — do not churn for £0.1m.
 - [01 Sep 23:40 CEST](reports/prices-gw3-20260901T214030Z.md) · GW3 · **NO ACTION** — No price action tonight.
 - [01 Sep 01:09 CEST](reports/prices-gw3-20260831T230954Z.md) · GW3 · **NO ACTION** — No price action tonight.
 - [30 Aug 23:52 CEST](reports/prices-gw3-20260830T215242Z.md) · GW3 · **NO ACTION** — No price action tonight.
 - [29 Aug 23:36 CEST](reports/prices-gw3-20260829T213616Z.md) · GW3 · **NO ACTION** — No price action tonight.
 - [29 Aug 04:02 CEST](reports/prices-gw3-20260829T020207Z.md) · GW3 · **NO ACTION** — No price action tonight.
-- [28 Aug 05:31 CEST](reports/prices-gw2-20260828T033149Z.md) · GW2 · **NO ACTION** — No price action tonight.
 
 **Squad news** (pre-deadline — last 7 days)
 - [02 Sep 21:49 CEST](reports/predeadline-gw3-20260902T194928Z.md) · GW3 · **REVISE** — Consider Virgil to De Cuyper, keep Bruno Fernandes captain, and do not spend a chip.
