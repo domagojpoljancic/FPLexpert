@@ -28,13 +28,13 @@ Overnight **price watch** runs on GitHub (20:00 Zagreb). **Squad news** runs whe
 - [29 Aug 04:02 CEST](reports/prices-gw3-20260829T020207Z.md) · GW3 · **NO ACTION** — No price action tonight.
 
 **Squad news** (pre-deadline — last 7 days)
+- [04 Sep 16:55 CEST](reports/predeadline-gw3-20260904T145522Z.md) · GW3 · **REVISE** — Sell O'Nien for Egan, start Egan (bench Virgil), and captain B.Fernandes.
 - [04 Sep 16:13 CEST](reports/predeadline-gw3-20260904T141311Z.md) · GW3 · **REVISE** — Sell O'Nien for Egan, start Egan (bench Virgil), and captain B.Fernandes.
 - [04 Sep 15:59 CEST](reports/predeadline-gw3-20260904T135930Z.md) · GW3 · **REVISE** — Sell O'Nien for Egan, start Egan over Tzolis and captain Bruno Fernandes.
 - [04 Sep 15:24 CEST](reports/predeadline-gw3-20260904T132444Z.md) · GW3 · **REVISE** — Consider O'Nien to Egan, captain B.Fernandes, and keep every chip unused.
 - [04 Sep 15:10 CEST](reports/predeadline-gw3-20260904T131049Z.md) · GW3 · **REVISE** — Sell O'Nien for Egan, captain Bruno Fernandes, and keep every chip unused.
 - [02 Sep 21:49 CEST](reports/predeadline-gw3-20260902T194928Z.md) · GW3 · **REVISE** — Consider Virgil to De Cuyper, keep Bruno Fernandes captain, and do not spend a chip.
 - [02 Sep 21:20 CEST](reports/predeadline-gw3-20260902T192018Z.md) · GW3 · **REVISE** — Consider Virgil to Ajayi with the free transfer, keep Bruno Fernandes captain, and wait f…
-- [02 Sep 19:44 CEST](reports/predeadline-gw3-20260902T174456Z.md) · GW3 · **REVISE** — Consider Virgil to Ajayi, start Ajayi, and captain Bruno Fernandes, but check late team n…
 <!-- recent-runs:end -->
 
 ---
