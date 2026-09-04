@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -477,6 +478,7 @@ def run_predeadline(
         weights=weights,
         season_rules=season_rules,
     )
+    advice = align_advice_to_after_transfer(advice, weekly_plan)
 
     if private.applies_before_gameweek != gw:
         advice.warnings.append(
@@ -586,11 +588,14 @@ def apply_transfer_pick_to_weekly_plan(
     affordable_transfers: list[TransferCandidate],
 ) -> None:
     """Attach best_affordable / also_considered / after_transfer / horizon_impact for one pick."""
+    from dataclasses import replace
+
     from fpl_agent.strategy.plan import build_weekly_plan
     from fpl_agent.strategy.transfers import (
         explain_vs_pick,
         horizon_transfer_impact,
         same_position_shortlist,
+        xi_drop_name_for_swap,
     )
 
     weekly_plan["best_affordable"] = pick.as_payload() if pick is not None else None
@@ -600,16 +605,14 @@ def apply_transfer_pick_to_weekly_plan(
     if pick is None:
         return
 
-    considered: list[dict[str, Any]] = []
-    for cand in same_position_shortlist(pick, affordable_transfers, limit=3):
-        row = cand.as_payload()
-        row["picked"] = cand.in_id == pick.in_id
-        if not row["picked"]:
-            row["reason"] = explain_vs_pick(cand, pick)
-        considered.append(row)
-    weekly_plan["also_considered"] = considered
-
     after_ids = [pick.in_id if pid == pick.out_id else pid for pid in owned_ids]
+    hold_plan = build_weekly_plan(
+        owned_ids=owned_ids,
+        projections=projections,
+        gameweeks=gameweeks,
+        captain_id=captain_id,
+        vice_id=vice_id,
+    )
     after_plan = build_weekly_plan(
         owned_ids=after_ids,
         projections=projections,
@@ -617,13 +620,63 @@ def apply_transfer_pick_to_weekly_plan(
         captain_id=(captain_id if captain_id != pick.out_id else pick.in_id),
         vice_id=vice_id if vice_id != pick.out_id else None,
     )
+    # Source of truth for "who drops" is the GW0 after XI, not horizon-weighted ranking.
+    gw0_drop = xi_drop_name_for_swap(
+        owned_ids=owned_ids,
+        out_id=pick.out_id,
+        in_id=pick.in_id,
+        projections=projections,
+        rules=season_rules,
+        gameweek_index=0,
+    )
+    if hold_plan.get("ok") and after_plan.get("ok"):
+        hold_xi = {
+            int(row["player_id"]): str(row["web_name"])
+            for row in (hold_plan.get("xi") or [])
+            if row.get("player_id") is not None
+        }
+        after_xi_ids = {
+            int(row["player_id"]) for row in (after_plan.get("xi") or []) if row.get("player_id") is not None
+        }
+        for pid, name in hold_xi.items():
+            if pid not in after_xi_ids and pid != pick.out_id:
+                gw0_drop = name
+                break
+        else:
+            if pick.out_id in hold_xi and pick.out_id not in after_xi_ids:
+                gw0_drop = hold_xi[pick.out_id]
+
+    aligned_pick = replace(pick, xi_drop_name=gw0_drop) if gw0_drop != pick.xi_drop_name else pick
+    weekly_plan["best_affordable"] = aligned_pick.as_payload()
+
+    considered: list[dict[str, Any]] = []
+    for cand in same_position_shortlist(aligned_pick, affordable_transfers, limit=3):
+        if cand.in_id == aligned_pick.in_id and cand.out_id == aligned_pick.out_id:
+            row_cand = aligned_pick
+        else:
+            alt_drop = xi_drop_name_for_swap(
+                owned_ids=owned_ids,
+                out_id=cand.out_id,
+                in_id=cand.in_id,
+                projections=projections,
+                rules=season_rules,
+                gameweek_index=0,
+            )
+            row_cand = replace(cand, xi_drop_name=alt_drop) if alt_drop != cand.xi_drop_name else cand
+        row = row_cand.as_payload()
+        row["picked"] = cand.in_id == aligned_pick.in_id and cand.out_id == aligned_pick.out_id
+        if not row["picked"]:
+            row["reason"] = explain_vs_pick(row_cand, aligned_pick)
+        considered.append(row)
+    weekly_plan["also_considered"] = considered
+
     if after_plan.get("ok"):
         weekly_plan["after_transfer"] = {
-            "out_id": pick.out_id,
-            "in_id": pick.in_id,
-            "out_name": pick.out_name,
-            "in_name": pick.in_name,
-            "xi_drop_name": pick.xi_drop_name,
+            "out_id": aligned_pick.out_id,
+            "in_id": aligned_pick.in_id,
+            "out_name": aligned_pick.out_name,
+            "in_name": aligned_pick.in_name,
+            "xi_drop_name": aligned_pick.xi_drop_name,
             "formation": after_plan.get("formation"),
             "xi": after_plan.get("xi"),
             "bench": after_plan.get("bench"),
@@ -828,6 +881,138 @@ def reconcile_transfer_advice(
         affordable_transfers=affordable_transfers,
     )
     return advice
+
+
+def _scrub_false_bench_claims(text: str, xi_names: set[str]) -> str:
+    """Remove 'X drops to the bench' clauses when X is still in the after XI."""
+    out = text
+    for name in sorted(xi_names, key=len, reverse=True):
+        if not name:
+            continue
+        escaped = re.escape(name)
+        out = re.sub(
+            rf";?\s*{escaped}\s+drops(?:\s+out)?\s+(?:of\s+the\s+XI|to\s+the\s+bench)",
+            "",
+            out,
+            flags=re.IGNORECASE,
+        )
+        out = re.sub(
+            rf"(?:,?\s*)?(?:and\s+)?bench\s+{escaped}\b",
+            "",
+            out,
+            flags=re.IGNORECASE,
+        )
+        out = re.sub(
+            rf"\bover\s+{escaped}\b",
+            "",
+            out,
+            flags=re.IGNORECASE,
+        )
+    out = re.sub(r"\s{2,}", " ", out).strip(" ;,")
+    out = re.sub(r"\s+\.", ".", out)
+    return out
+
+
+def align_advice_to_after_transfer(advice: DailyAdvice, weekly_plan: dict[str, Any]) -> DailyAdvice:
+    """Force Do this lineup / why / detail to match after_transfer XI and bench."""
+    after = weekly_plan.get("after_transfer") or {}
+    xi_rows = [row for row in (after.get("xi") or []) if isinstance(row, dict)]
+    bench_rows = [row for row in (after.get("bench") or []) if isinstance(row, dict)]
+    if not xi_rows:
+        return advice
+
+    xi_names = {str(row.get("web_name") or "") for row in xi_rows} - {""}
+    bench_names = {str(row.get("web_name") or "") for row in bench_rows} - {""}
+    in_name = str(after.get("in_name") or "")
+    drop = after.get("xi_drop_name")
+    if drop and drop in xi_names:
+        drop = None
+    if drop and drop not in bench_names:
+        # Prefer an actual after-bench player who left the hold path, else omit.
+        drop = None
+
+    best_reason = str((weekly_plan.get("best_affordable") or {}).get("reason") or "").strip()
+    warnings = list(advice.warnings)
+    new_moves: list[DailyMove] = []
+    saw_transfer = False
+    for move in advice.suggested_moves:
+        if move.move_type == MoveType.LINEUP:
+            continue
+        if move.move_type == MoveType.TRANSFER:
+            saw_transfer = True
+            why = best_reason or _scrub_false_bench_claims(move.why, xi_names)
+            new_moves.append(move.model_copy(update={"why": why}))
+            continue
+        if move.move_type == MoveType.CAPTAIN:
+            cap = after.get("model_captain") or {}
+            cap_name = str(cap.get("web_name") or "")
+            if cap_name and cap_name not in move.summary:
+                new_moves.append(
+                    move.model_copy(
+                        update={
+                            "summary": f"Captain {cap_name}",
+                            "why": (
+                                f"{cap_name} is the modelled captain after the transfer "
+                                f"({float(cap.get('xp_next') or 0):.1f} xP)."
+                            ),
+                            "player_ids": [int(cap["player_id"])] if cap.get("player_id") else move.player_ids,
+                        }
+                    )
+                )
+                continue
+        new_moves.append(move)
+
+    if saw_transfer and in_name:
+        if in_name in xi_names:
+            summary = f"Start {in_name}"
+            why = f"{in_name} enters the modelled XI after the transfer."
+            if drop and drop in bench_names:
+                summary += f" and bench {drop}"
+                why = (
+                    f"{in_name} enters the modelled XI; {drop} is the player who drops to the bench."
+                )
+            new_moves.append(
+                DailyMove(
+                    move_type=MoveType.LINEUP,
+                    summary=summary,
+                    why=why,
+                    urgency="medium",
+                )
+            )
+        elif in_name in bench_names:
+            new_moves.append(
+                DailyMove(
+                    move_type=MoveType.LINEUP,
+                    summary=f"Do not force-start {in_name}; modelled XI keeps them on the bench",
+                    why=f"{in_name} is in the squad after the transfer but does not make this week's XI.",
+                    urgency="medium",
+                )
+            )
+
+    detail = _scrub_false_bench_claims(advice.detail, xi_names)
+    headline = _scrub_false_bench_claims(advice.headline, xi_names)
+    if drop and drop in bench_names and in_name:
+        # Prefer a clean headline when we know the GW0 drop.
+        if "→" in headline or " to " in headline.lower() or "for " in headline.lower():
+            headline = (
+                f"Sell {after.get('out_name')} for {in_name}, "
+                f"start {in_name} (bench {drop}), and captain "
+                f"{(after.get('model_captain') or {}).get('web_name') or 'the modelled pick'}."
+            )
+    tldr = [_scrub_false_bench_claims(item, xi_names) for item in advice.tldr]
+    if any("false bench" in w or "aligned_lineup" in w for w in warnings):
+        pass
+    else:
+        warnings.append("aligned_lineup_to_after_transfer")
+    return advice.model_copy(
+        update={
+            "suggested_moves": new_moves,
+            "detail": detail,
+            "headline": headline,
+            "tldr": tldr,
+            "warnings": warnings,
+        }
+    )
 
 
 def _unique_texts(items: list[str]) -> list[str]:

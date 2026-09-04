@@ -27,11 +27,14 @@ def _starter_ids(
     owned_ids: list[int],
     projections: dict[int, PlayerProjection],
     rules: SeasonRules,
+    *,
+    gameweek_index: int | None = 0,
 ) -> set[int] | None:
+    """Starter ids for lineup claims. Default GW0 so this-week drops match reports."""
     players = [projections[pid] for pid in owned_ids if pid in projections]
     if len(players) != len(owned_ids) or len(players) != rules.squad_size:
         return None
-    xi, _bench, _formation = select_best_xi(players, rules)
+    xi, _bench, _formation = select_best_xi(players, rules, gameweek_index=gameweek_index)
     return {p.player_id for p in xi}
 
 
@@ -40,13 +43,48 @@ def _xi_objective(
     projections: dict[int, PlayerProjection],
     rules: SeasonRules,
 ) -> tuple[float, float] | None:
+    """Return (horizon weighted XI objective, this-GW XI points).
+
+    Horizon and this-week formations can differ. Keep them separate so
+    ``xi_drop_name`` / ``delta_gw_xp`` match the GW0 XI shown in reports.
+    """
     players = [projections[pid] for pid in owned_ids if pid in projections]
     if len(players) != len(owned_ids) or len(players) != rules.squad_size:
         return None
-    xi, bench, _ = select_best_xi(players, rules)
-    weighted = sum(p.weighted_xp for p in xi) + BENCH_WEIGHT * sum(p.weighted_xp for p in bench)
-    gw = sum((p.xp_by_gw[0] if p.xp_by_gw else 0.0) for p in xi)
+    xi_horizon, bench_horizon, _ = select_best_xi(players, rules, gameweek_index=None)
+    weighted = sum(p.weighted_xp for p in xi_horizon) + BENCH_WEIGHT * sum(
+        p.weighted_xp for p in bench_horizon
+    )
+    xi_gw, _, _ = select_best_xi(players, rules, gameweek_index=0)
+    gw = sum((p.xp_by_gw[0] if p.xp_by_gw else 0.0) for p in xi_gw)
     return weighted, gw
+
+
+def xi_drop_name_for_swap(
+    *,
+    owned_ids: list[int],
+    out_id: int,
+    in_id: int,
+    projections: dict[int, PlayerProjection],
+    rules: SeasonRules,
+    gameweek_index: int | None = 0,
+) -> str | None:
+    """Name of the first player who leaves the modelled XI after the swap."""
+    old_starters = _starter_ids(owned_ids, projections, rules, gameweek_index=gameweek_index)
+    if old_starters is None:
+        return None
+    new_ids = [in_id if pid == out_id else pid for pid in owned_ids]
+    new_starters = _starter_ids(new_ids, projections, rules, gameweek_index=gameweek_index)
+    if new_starters is None:
+        return None
+    for pid in owned_ids:
+        if pid == out_id:
+            continue
+        if pid in old_starters and pid not in new_starters and pid in projections:
+            return projections[pid].web_name
+    if out_id in old_starters and out_id not in new_starters and out_id in projections:
+        return projections[out_id].web_name
+    return None
 
 
 DEFAULT_LIMIT = 12
@@ -346,15 +384,15 @@ def rank_transfer_candidates(
                     continue
                 delta_w = new_xi[0] - base_xi[0]
                 delta_gw = new_xi[1] - base_xi[1]
-                old_starters = _starter_ids(owned_ids, projections, rules) or set()
                 new_starters = _starter_ids(new_ids, projections, rules) or set()
                 in_starts = inn.player_id in new_starters
-                dropped = [
-                    projections[pid].web_name
-                    for pid in old_starters
-                    if pid not in new_starters and pid in projections
-                ]
-                xi_drop_name = dropped[0] if dropped else None
+                xi_drop_name = xi_drop_name_for_swap(
+                    owned_ids=owned_ids,
+                    out_id=out_id,
+                    in_id=inn.player_id,
+                    projections=projections,
+                    rules=rules,
+                )
             else:
                 delta_w = inn.weighted_xp - out_proj.weighted_xp
                 out_gw = out_proj.xp_by_gw[0] if out_proj.xp_by_gw else 0.0

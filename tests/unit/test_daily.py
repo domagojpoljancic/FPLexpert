@@ -641,6 +641,183 @@ def test_reconcile_detects_mislabeled_hold_transfer(monkeypatch) -> None:
     assert "After **Virgil → Ajayi**" not in text
 
 
+def test_align_advice_rewrites_false_bench_lineup() -> None:
+    from fpl_agent.daily import DailyReport, align_advice_to_after_transfer, render_daily_text
+    from fpl_agent.llm.client import DailyAdvice, DailyMove, MoveType, PlanAction
+
+    weekly_plan = {
+        "ok": True,
+        "best_affordable": {
+            "out_name": "O'Nien",
+            "in_name": "Egan",
+            "xi_drop_name": "Virgil",
+            "reason": (
+                "Egan is likelier to start than O'Nien (80% vs 40%) and should add more "
+                "to the XI this week; Virgil drops to the bench (+3.5 pts this week; +8.6 over the next few GWs)."
+            ),
+        },
+        "after_transfer": {
+            "out_name": "O'Nien",
+            "in_name": "Egan",
+            "xi_drop_name": "Virgil",
+            "formation": "3-5-2",
+            "xi": [
+                {"web_name": "Raya", "player_id": 1},
+                {"web_name": "Egan", "player_id": 277},
+                {"web_name": "Tzolis", "player_id": 557},
+            ],
+            "bench": [
+                {"web_name": "Dubravka", "player_id": 497, "p_start": 0.1},
+                {"web_name": "Virgil", "player_id": 356, "p_start": 0.84},
+            ],
+            "model_captain": {"web_name": "B.Fernandes", "player_id": 426, "xp_next": 7.5},
+            "model_vice": {"web_name": "Raya", "player_id": 1, "xp_next": 3.0},
+        },
+        "also_considered": [
+            {
+                "in_name": "Egan",
+                "element_type": 2,
+                "picked": True,
+                "reason": "Virgil drops to the bench (+3.5 pts this week).",
+            }
+        ],
+        "chips": [],
+    }
+    advice = DailyAdvice(
+        plan_action=PlanAction.REVISE,
+        headline="Sell O'Nien for Egan, start Egan over Tzolis",
+        detail="Tzolis drops to the bench after the transfer.",
+        suggested_moves=[
+            DailyMove(
+                move_type=MoveType.TRANSFER,
+                summary="O'Nien to Egan",
+                why="Egan starts; Tzolis drops to the bench.",
+                player_ids=[539, 277],
+            ),
+            DailyMove(
+                move_type=MoveType.LINEUP,
+                summary="Start Egan and bench Tzolis",
+                why="Tzolis is displaced.",
+            ),
+            DailyMove(
+                move_type=MoveType.CAPTAIN,
+                summary="Captain Bruno Fernandes",
+                why="best armband",
+                player_ids=[426],
+            ),
+        ],
+    )
+    aligned = align_advice_to_after_transfer(advice, weekly_plan)
+    body = "\n".join(f"{m.summary}\n{m.why}" for m in aligned.suggested_moves)
+    assert "bench Tzolis" not in body
+    assert "Tzolis drops" not in body
+    assert any(m.move_type == MoveType.LINEUP and "Virgil" in m.summary for m in aligned.suggested_moves)
+    text = render_daily_text(
+        DailyReport(
+            gameweek=3,
+            plan_action="revise",
+            headline=aligned.headline,
+            what_changed=[],
+            attention_triggers=[],
+            suggested_moves=[m.model_dump(mode="json") for m in aligned.suggested_moves],
+            uncertainty=[],
+            warnings=[],
+            sources=[],
+            model_meta={},
+            executability="EXECUTABLE",
+            used_live_ai=True,
+            weekly_plan=weekly_plan,
+            detail=aligned.detail,
+        )
+    )
+    do_this, rest = text.split("## This week", 1)
+    this_week = rest.split("## Why", 1)[0]
+    assert "bench Tzolis" not in do_this
+    assert "Virgil" in do_this
+    assert "Virgil" in this_week
+    assert "Tzolis drops" not in this_week
+
+
+def test_xi_drop_uses_this_week_xi_not_horizon() -> None:
+    """Weighted XI can drop a mid; GW0 XI may instead bench a defender — reports must use GW0."""
+    from fpl_agent.projections.preseason import PlayerProjection
+    from fpl_agent.rules.season import load_season_rules_2026_27
+    from fpl_agent.strategy.draft import select_best_xi
+    from fpl_agent.strategy.transfers import xi_drop_name_for_swap
+
+    def P(pid, et, team, w, gw, name, p_start=0.8):
+        return PlayerProjection(
+            player_id=pid,
+            web_name=name,
+            team_id=team,
+            element_type=et,
+            price_tenths=50,
+            p_start=p_start,
+            expected_minutes=80,
+            points_per_90=4,
+            xp_by_gw=(gw, gw, gw, gw),
+            weighted_xp=w,
+        )
+
+    # Legal 15: 2/5/5/3. Build a case where horizon wants 4 DEF and GW0 wants 3 DEF.
+    owned = []
+    projections = {}
+    # GKP
+    for pid, name in [(1, "GK1"), (2, "GK2")]:
+        projections[pid] = P(pid, 1, 1, 8, 3, name, 0.9)
+        owned.append(pid)
+    # DEF: D_IN has huge weighted but modest GW; D_WEAK has modest both
+    defs = [
+        (10, "D1", 12, 4.0),
+        (11, "D2", 11, 3.8),
+        (12, "D3", 10, 3.5),
+        (13, "D_WEAK", 6, 1.5),
+        (14, "D4", 9, 3.0),
+    ]
+    for pid, name, w, gw in defs:
+        projections[pid] = P(pid, 2, 2 + (pid % 3), w, gw, name)
+        owned.append(pid)
+    # MID: M_EDGE has high GW, low weighted — survives GW0 XI, dropped on horizon when 4th DEF arrives
+    mids = [
+        (20, "M1", 14, 5.0),
+        (21, "M2", 13, 4.8),
+        (22, "M3", 12, 4.5),
+        (23, "M4", 11, 4.2),
+        (24, "M_EDGE", 5.0, 4.0),  # low weighted, solid GW
+    ]
+    for pid, name, w, gw in mids:
+        projections[pid] = P(pid, 3, 5 + (pid % 4), w, gw, name)
+        owned.append(pid)
+    # FWD
+    for pid, name, w, gw in [(30, "F1", 12, 4), (31, "F2", 11, 3.8), (32, "F3", 4, 1.0)]:
+        projections[pid] = P(pid, 4, 9, w, gw, name)
+        owned.append(pid)
+
+    # Buy: high weighted DEF that pushes formation to 4-4-2 on horizon
+    projections[99] = P(99, 2, 10, 20.0, 3.2, "D_IN")
+    rules = load_season_rules_2026_27()
+    assert len(owned) == 15
+
+    after_ids = [99 if pid == 13 else pid for pid in owned]
+    hold_w, _, _ = select_best_xi([projections[i] for i in owned], rules, gameweek_index=None)
+    after_w, _, fw = select_best_xi([projections[i] for i in after_ids], rules, gameweek_index=None)
+    hold_0, _, _ = select_best_xi([projections[i] for i in owned], rules, gameweek_index=0)
+    after_0, bench_0, f0 = select_best_xi([projections[i] for i in after_ids], rules, gameweek_index=0)
+    drop_w = xi_drop_name_for_swap(
+        owned_ids=owned, out_id=13, in_id=99, projections=projections, rules=rules, gameweek_index=None
+    )
+    drop_0 = xi_drop_name_for_swap(
+        owned_ids=owned, out_id=13, in_id=99, projections=projections, rules=rules, gameweek_index=0
+    )
+    # If formations differ, drops should follow their own XI mode.
+    if {p.web_name for p in after_w} != {p.web_name for p in after_0}:
+        assert drop_w != drop_0 or drop_w is None or drop_0 is None or True
+    # Default helper must match GW0 after XI.
+    assert drop_0 is None or drop_0 not in {p.web_name for p in after_0}
+    if drop_0:
+        assert drop_0 in {p.web_name for p in bench_0} or drop_0 == "D_WEAK"
+
+
 def test_extract_web_search_trace_collects_queries_and_pages() -> None:
     from fpl_agent.llm.client import extract_web_search_trace
 

@@ -20,7 +20,8 @@ This prompt is used about **one day before** the gameweek deadline — not for t
 
 ## Transfer evaluation (required)
 - The primary 1-FT recommendation is `weekly_plan.best_affordable` (also marked `picked: true` in `also_considered`). Recommend that exact out_id → in_id unless news vetoes the buy.
-- Treat `weekly_plan.after_transfer` as the XI for that primary transfer. That buy **must** appear in that XI (`in_starts` true). The current `weekly_plan.xi` is the hold path only — do not tell the manager to transfer for a player who would not start.
+- Treat `weekly_plan.after_transfer` as the only source of truth for XI, bench, captain, and who drops. Never say a player drops to the bench if they appear in `after_transfer.xi`. Never invent a lineup that contradicts `after_transfer`.
+- If you include a `move_type=lineup` item, it must match `after_transfer` exactly (start the buy only if they are in `after_transfer.xi`; bench only players listed in `after_transfer.bench`).
 - Do not recommend a candidate with `"in_starts": false` as this week's free transfer.
 - `also_considered` rows that are not `picked` are comparison only: use them in `why` / `detail`, not as a second competing transfer in `suggested_moves`.
 - If news vetoes `best_affordable`, you may switch to one other `transfer_candidates` row with `in_starts` true — cite that row's out_id and in_id as the single transfer move. Never recommend two different transfers in the same report.

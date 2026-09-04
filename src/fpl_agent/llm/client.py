@@ -17,7 +17,7 @@ from fpl_agent.config import load_dotenv_files
 from fpl_agent.errors import AgentError, AgentErrorCode, ExitCode
 from fpl_agent.observability import redact_value
 
-PROMPT_VERSION = "predeadline-v5"
+PROMPT_VERSION = "predeadline-v6"
 SCHEMA_VERSION = "daily-advice-1.1.0"
 
 # Preferred domains for FPL-relevant search (omit scheme; includes subdomains).
@@ -594,7 +594,9 @@ class ResponsesOpenAIClient:
             "Use supplied price_actions if present. Do not invent price likelihoods. "
             "Do not upgrade ignore/watch price actions into transfers for price reasons. "
             "Evaluate transfer_candidates and stretch_transfer_candidates; buy IDs must come from those lists only. "
-            "Treat weekly_plan.after_transfer as the XI / captain / bench for best_affordable. "
+            "Treat weekly_plan.after_transfer as the only XI / captain / bench source of truth. "
+            "Never claim a player drops to the bench if they appear in after_transfer.xi. "
+            "Any lineup move must match after_transfer exactly. "
             "Do not recommend a transfer whose in_starts is false. "
             "Treat weekly_plan (current squad) as the hold-path XI. "
             "Use transfer_plans (including 2-FT and hits) when present; buy IDs must still come from those moves. "
