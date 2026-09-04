@@ -333,3 +333,108 @@ def test_extract_web_search_trace_collects_queries_and_pages() -> None:
         "https://www.bbc.com/sport/football/fantasy-football",
     ]
     assert sources[0]["title"] == "Fantasy News"
+
+
+def test_report_reconciles_llm_vice_to_model_vice() -> None:
+    from fpl_agent.daily import DailyReport, REPORT_BLOCK_MISMATCH_FIXED, render_daily_text
+
+    report = DailyReport(
+        gameweek=3,
+        plan_action="revise",
+        headline="Transfer O'Nien to Egan",
+        what_changed=[],
+        attention_triggers=[],
+        suggested_moves=[
+            {
+                "move_type": "transfer",
+                "summary": "Transfer O'Nien (539) to Egan (277).",
+                "why": "Locked primary",
+                "player_ids": [539, 277],
+            },
+            {
+                "move_type": "vice",
+                "summary": "Vice-captain João Pedro.",
+                "why": "LLM taste",
+                "player_ids": [427],
+            },
+        ],
+        uncertainty=[],
+        warnings=[],
+        sources=[],
+        model_meta={},
+        executability="EXECUTABLE",
+        used_live_ai=False,
+        weekly_plan={
+            "ok": True,
+            "formation": "3-5-2",
+            "primary_move": {
+                "action": "transfer",
+                "out_id": 539,
+                "in_id": 277,
+                "out_name": "O'Nien",
+                "in_name": "Egan",
+                "reason": "Locked primary",
+            },
+            "best_affordable": {"out_name": "O'Nien", "in_name": "Egan", "in_id": 277},
+            "model_captain": {"web_name": "B.Fernandes", "xp_next": 7.3, "player_id": 426},
+            "model_vice": {"web_name": "Raya", "xp_next": 3.8, "player_id": 1},
+            "xi": [{"web_name": "Raya"}, {"web_name": "B.Fernandes"}],
+            "bench": [],
+        },
+    )
+    text = render_daily_text(report)
+    assert "Vice-captain Raya" in text
+    assert "João Pedro" not in text.split("## This week")[0]  # not in Do this
+    assert "Vice: **Raya**" in text
+    assert REPORT_BLOCK_MISMATCH_FIXED in text
+    assert render_daily_text(report) == text
+
+
+def test_report_snapped_transfer_shows_primary_not_discarded() -> None:
+    from fpl_agent.daily import DailyReport, render_daily_text
+
+    report = DailyReport(
+        gameweek=3,
+        plan_action="revise",
+        headline="Confirm Egan",
+        what_changed=[],
+        attention_triggers=[],
+        suggested_moves=[
+            {
+                "move_type": "transfer",
+                "summary": "Transfer Virgil (356) to Ajayi (279).",
+                "why": "LLM re-rank",
+                "player_ids": [356, 279],
+            }
+        ],
+        uncertainty=[],
+        warnings=["model_reranked_without_veto"],
+        sources=[],
+        model_meta={},
+        executability="EXECUTABLE",
+        used_live_ai=True,
+        weekly_plan={
+            "ok": True,
+            "primary_move": {
+                "action": "transfer",
+                "out_id": 539,
+                "in_id": 277,
+                "out_name": "O'Nien",
+                "in_name": "Egan",
+                "reason": "Locked primary",
+            },
+            "best_affordable": {"out_name": "O'Nien", "in_name": "Egan"},
+            "model_captain": {"web_name": "B.Fernandes", "xp_next": 7.3},
+            "model_vice": {"web_name": "Raya", "xp_next": 3.8},
+            "xi": [{"web_name": "Raya"}],
+            "bench": [],
+            "also_considered": [
+                {"in_name": "Ajayi", "picked": False, "reason": "close this GW"},
+            ],
+        },
+    )
+    text = render_daily_text(report)
+    do_this = text.split("## This week")[0]
+    assert "Egan" in do_this
+    assert "Ajayi" not in do_this or "also" in text.lower()
+    assert "Transfer O'Nien" in do_this or "Egan (277)" in do_this

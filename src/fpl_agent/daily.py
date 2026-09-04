@@ -897,6 +897,61 @@ def _weekly_plan_section(report: DailyReport) -> list[str]:
     return lines
 
 
+REPORT_BLOCK_MISMATCH_FIXED = "report_block_mismatch_fixed"
+
+
+def _canonical_cap_vice(plan: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    after = plan.get("after_transfer") or {}
+    using = after if after.get("xi") else plan
+    cap = using.get("model_captain") or plan.get("model_captain") or {}
+    vice = using.get("model_vice") or plan.get("model_vice") or {}
+    return (cap if isinstance(cap, dict) else {}, vice if isinstance(vice, dict) else {})
+
+
+def _reconcile_do_this_moves(
+    moves: list[dict[str, Any]],
+    plan: dict[str, Any],
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Force Do-this transfer/captain/vice to match the locked weekly_plan."""
+    warnings: list[str] = []
+    primary = plan.get("primary_move") if isinstance(plan.get("primary_move"), dict) else {}
+    cap, vice = _canonical_cap_vice(plan)
+    out: list[dict[str, Any]] = []
+    for move in moves:
+        row = dict(move)
+        mtype = str(row.get("move_type") or "")
+        if mtype == "transfer" and str(primary.get("action") or "") == "transfer":
+            in_id = primary.get("in_id")
+            out_id = primary.get("out_id")
+            ids = [int(x) for x in (row.get("player_ids") or []) if x is not None]
+            if in_id is not None and (not ids or ids[-1] != int(in_id)):
+                row["summary"] = (
+                    f"Transfer {primary.get('out_name')} ({out_id}) to "
+                    f"{primary.get('in_name')} ({in_id})."
+                )
+                row["why"] = str(primary.get("reason") or row.get("why") or "")
+                row["player_ids"] = [pid for pid in (out_id, in_id) if pid is not None]
+                warnings.append(REPORT_BLOCK_MISMATCH_FIXED)
+        elif mtype == "captain" and cap.get("web_name"):
+            name = str(cap["web_name"])
+            if name.lower() not in str(row.get("summary") or "").lower():
+                row["summary"] = f"Captain {name}."
+                row["why"] = f"Deterministic model captain ({cap.get('xp_next')} xP)."
+                if cap.get("player_id") is not None:
+                    row["player_ids"] = [int(cap["player_id"])]
+                warnings.append(REPORT_BLOCK_MISMATCH_FIXED)
+        elif mtype == "vice" and vice.get("web_name"):
+            name = str(vice["web_name"])
+            if name.lower() not in str(row.get("summary") or "").lower():
+                row["summary"] = f"Vice-captain {name}."
+                row["why"] = f"Deterministic model vice ({vice.get('xp_next')} xP)."
+                if vice.get("player_id") is not None:
+                    row["player_ids"] = [int(vice["player_id"])]
+                warnings.append(REPORT_BLOCK_MISMATCH_FIXED)
+        out.append(row)
+    return out, _unique_texts(warnings)
+
+
 def render_daily_text(report: DailyReport) -> str:
     if report.skipped:
         lines = [
@@ -918,6 +973,8 @@ def render_daily_text(report: DailyReport) -> str:
 
     hide = {"private squad stale", "notify_dry_run", "news_search_empty"}
     warnings = [w for w in _unique_texts(report.warnings) if w not in hide]
+    moves, mismatch = _reconcile_do_this_moves(list(report.suggested_moves or []), report.weekly_plan or {})
+    warnings = _unique_texts(warnings + mismatch)
     tldr = [item for item in report.tldr if item][:5] or ([report.headline] if report.headline else [])
     lines = [
         f"# Pre-deadline FPL review — Gameweek {report.gameweek}",
@@ -928,8 +985,8 @@ def render_daily_text(report: DailyReport) -> str:
     if report.price_status and report.price_status not in {"NO ACTION", "no action"}:
         lines.append(f"Price: **{report.price_status}**")
     lines += ["", "## Do this", ""]
-    if report.suggested_moves:
-        for move in report.suggested_moves:
+    if moves:
+        for move in moves:
             lines.append(f"- {move.get('move_type')}: {move.get('summary')}")
             why = str(move.get("why") or "").strip()
             if why:
@@ -946,6 +1003,10 @@ def render_daily_text(report: DailyReport) -> str:
     if plan_lines:
         lines += ["", *plan_lines]
     detail = report.detail.strip() or report.headline
+    # Drop LLM prose that claims weekly_plan fields were missing — lock is renderer-owned.
+    if "weekly-plan" in detail.lower() or "weekly_plan" in detail.lower():
+        if "not supplied" in detail.lower() or "cannot be reconstructed" in detail.lower():
+            detail = report.headline
     lines += ["", "## Why", "", detail]
     watch = _unique_texts(
         list(report.attention_triggers[:4])
