@@ -26,6 +26,7 @@ reports/**
 !reports/.gitkeep
 !reports/prices-gw*.md
 !reports/predeadline-gw*.md
+!reports/plan-gw*.md
 *.log
 
 # Python

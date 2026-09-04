@@ -378,20 +378,14 @@ def run_predeadline(
     )
     weekly_plan["transfer_decision"] = transfer_decision.as_payload()
     weekly_plan["chips"] = [c.as_payload() for c in chip_advice]
-    from fpl_agent.strategy.fixtures_calendar import calendar_for_horizon
+    from fpl_agent.strategy.fixtures_calendar import attach_priors, calendar_for_horizon
 
     all_clubs = {int(t["id"]) for t in (bootstrap.get("teams") or []) if t.get("id") is not None}
-    weekly_plan["fixture_calendar"] = [
-        {
-            "gameweek": row.gameweek,
-            "clubs_with_fixtures": row.clubs_with_fixtures,
-            "double_clubs": list(row.double_clubs),
-            "blank_clubs": list(row.blank_clubs),
-            "is_double_gw": row.is_double_gw,
-            "is_blank_gw": row.is_blank_gw,
-        }
-        for row in calendar_for_horizon(fixtures or [], gameweeks, all_clubs=all_clubs or None)
-    ]
+    confirmed_cal = calendar_for_horizon(fixtures or [], gameweeks, all_clubs=all_clubs or None)
+    # No default invented priors — only explicitly labelled ones (empty until configured).
+    cal_rows, prior_rows = attach_priors(confirmed_cal, priors=[])
+    weekly_plan["fixture_calendar"] = cal_rows
+    weekly_plan["fixture_priors"] = prior_rows
     try:
         from fpl_agent.evaluation.scorecard import build_previous_scorecard
 
@@ -1340,6 +1334,13 @@ def _weekly_plan_section(report: DailyReport) -> list[str]:
         lines.append(f"- Confirmed DGW/BGW (fixtures feed): {bits}")
     elif calendar:
         lines.append("- Confirmed DGW/BGW (fixtures feed): none in horizon")
+    priors = sorted(
+        [row for row in (plan.get("fixture_priors") or []) if isinstance(row, dict)],
+        key=lambda row: (int(row.get("gameweek") or 0), str(row.get("kind") or "")),
+    )
+    if priors:
+        bits = " · ".join(str(row.get("label") or f"PRIOR GW{row.get('gameweek')}") for row in priors)
+        lines.append(f"- DGW/BGW priors (not confirmed): {bits}")
     lines.append(f"- Season plan (charts): [reports/plan-gw{report.gameweek}.md](plan-gw{report.gameweek}.md)")
     return lines
 

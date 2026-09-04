@@ -62,6 +62,10 @@ def render_plan_doc(report: DailyReport) -> str:
         key=lambda c: str(c.get("kind") or ""),
     )
     calendar = _sorted_calendar(list(plan.get("fixture_calendar") or []))
+    priors = sorted(
+        [p for p in (plan.get("fixture_priors") or []) if isinstance(p, dict)],
+        key=lambda p: (int(p.get("gameweek") or 0), str(p.get("kind") or "")),
+    )
 
     lines: list[str] = [
         f"# Season plan — Gameweek {report.gameweek}",
@@ -91,6 +95,10 @@ def render_plan_doc(report: DailyReport) -> str:
         _para_calendar(calendar),
         "",
         _mermaid_calendar(calendar),
+        "",
+        "## DGW / BGW priors (not confirmed)",
+        "",
+        _para_priors(priors),
         "",
         "## Chip timing",
         "",
@@ -231,6 +239,22 @@ def _para_calendar(calendar: list[dict[str, Any]]) -> str:
     if blanks:
         bits.append("BGW " + ", ".join(f"GW{c['gameweek']}" for c in blanks))
     return "Confirmed from fixtures feed: " + "; ".join(bits) + "."
+
+
+def _para_priors(priors: list[dict[str, Any]]) -> str:
+    if not priors:
+        return "No labelled DGW/BGW priors on this report (none invented by default)."
+    parts = []
+    for row in priors:
+        label = str(row.get("label") or "").strip()
+        rationale = str(row.get("rationale") or "").strip()
+        bit = label or f"PRIOR {row.get('kind')} GW{row.get('gameweek')}"
+        if rationale:
+            bit += f" — {rationale}"
+        if row.get("is_confirmed") is True:
+            bit += " [invalid: prior marked confirmed]"
+        parts.append(bit)
+    return " ".join(parts)
 
 
 def _para_chips(chips: list[dict[str, Any]]) -> str:

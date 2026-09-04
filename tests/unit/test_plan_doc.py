@@ -117,6 +117,7 @@ def test_render_plan_doc_matches_locked_primary_and_has_mermaid() -> None:
     assert "## Spend now vs bank the free transfer" in text
     assert "## Bank and value after the move" in text
     assert "## Confirmed DGW / BGW in the horizon" in text
+    assert "## DGW / BGW priors (not confirmed)" in text
     assert "## Chip timing" in text
     assert "Bank vs spend verdict" in text
     # Unsorted by_gw input must render GW3 before GW5.

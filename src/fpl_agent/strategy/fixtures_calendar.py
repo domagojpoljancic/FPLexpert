@@ -1,9 +1,9 @@
-"""Double/blank gameweek detection from fixtures."""
+"""Double/blank gameweek detection from fixtures (+ labelled priors beyond the feed)."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 
 @dataclass(frozen=True)
@@ -14,6 +14,38 @@ class GameweekFixtureSummary:
     blank_clubs: tuple[int, ...]
     is_double_gw: bool
     is_blank_gw: bool
+
+
+PriorKind = Literal["dgw", "bgw"]
+
+
+@dataclass(frozen=True)
+class GameweekFixturePrior:
+    """Likely-but-unscheduled DGW/BGW. Never treated as a confirmed fixture."""
+
+    gameweek: int
+    kind: PriorKind
+    confidence: float
+    rationale: str = ""
+
+    def __post_init__(self) -> None:
+        if not 0.0 <= float(self.confidence) <= 1.0:
+            raise ValueError("prior confidence must be in [0, 1]")
+        if self.kind not in {"dgw", "bgw"}:
+            raise ValueError(f"prior kind must be dgw|bgw, got {self.kind!r}")
+
+    def as_payload(self) -> dict[str, Any]:
+        conf = round(float(self.confidence), 3)
+        label = f"PRIOR {self.kind.upper()} GW{self.gameweek} (confidence {conf:.2f})"
+        return {
+            "gameweek": int(self.gameweek),
+            "kind": self.kind,
+            "confidence": conf,
+            "status": "prior",
+            "label": label,
+            "rationale": self.rationale,
+            "is_confirmed": False,
+        }
 
 
 def fixture_counts_by_club_gw(fixtures: list[dict[str, Any]]) -> dict[int, dict[int, int]]:
@@ -68,3 +100,42 @@ def calendar_for_horizon(
 ) -> list[GameweekFixtureSummary]:
     counts = fixture_counts_by_club_gw(fixtures)
     return [summarize_gameweek(gw, counts, all_clubs=all_clubs) for gw in gameweeks]
+
+
+def confirmed_payload(row: GameweekFixtureSummary) -> dict[str, Any]:
+    return {
+        "gameweek": row.gameweek,
+        "clubs_with_fixtures": row.clubs_with_fixtures,
+        "double_clubs": list(row.double_clubs),
+        "blank_clubs": list(row.blank_clubs),
+        "is_double_gw": row.is_double_gw,
+        "is_blank_gw": row.is_blank_gw,
+        "status": "confirmed",
+        "is_confirmed": True,
+    }
+
+
+def attach_priors(
+    confirmed: list[GameweekFixtureSummary],
+    priors: list[GameweekFixturePrior],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Split confirmed feed rows from labelled priors.
+
+    Priors never override a feed-confirmed DGW/BGW on the same gameweek/kind.
+    """
+    confirmed_rows = [confirmed_payload(row) for row in sorted(confirmed, key=lambda r: r.gameweek)]
+    flagged = {
+        (row.gameweek, "dgw")
+        for row in confirmed
+        if row.is_double_gw
+    } | {
+        (row.gameweek, "bgw")
+        for row in confirmed
+        if row.is_blank_gw
+    }
+    prior_rows: list[dict[str, Any]] = []
+    for prior in sorted(priors, key=lambda p: (p.gameweek, p.kind)):
+        if (prior.gameweek, prior.kind) in flagged:
+            continue
+        prior_rows.append(prior.as_payload())
+    return confirmed_rows, prior_rows
