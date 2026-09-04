@@ -649,11 +649,126 @@ def _load_instructions() -> str:
     )
 
 
-def _compact_payload(payload: dict[str, Any], *, max_chars: int = 24_000) -> str:
-    raw = json.dumps(payload, sort_keys=True, default=str)
+PAYLOAD_CORE_TOO_LARGE = "payload_core_too_large"
+PAYLOAD_LOCK_MISSING = "payload_lock_missing"
+
+_WEEKLY_PLAN_LOCK_KEYS = (
+    "primary_move",
+    "best_affordable",
+    "best_plan",
+    "alternatives",
+    "veto_watchlist",
+    "model_captain",
+    "model_vice",
+    "after_transfer",
+    "also_considered",
+    "ok",
+    "formation",
+    "chips",
+)
+
+_ELASTIC_TOP_KEYS = (
+    "squad",
+    "sources",
+    "stretch_transfer_candidates",
+    "transfer_plans",
+    "transfer_candidates",
+    "suggested_source_hubs",
+    "what_changed",
+    "attention_triggers",
+    "search_request",
+    "chip_advice",
+)
+
+
+def _dump(obj: Any) -> str:
+    return json.dumps(obj, sort_keys=True, default=str)
+
+
+def _lock_intact(payload: dict[str, Any]) -> bool:
+    weekly = payload.get("weekly_plan")
+    if not isinstance(weekly, dict):
+        return False
+    primary = weekly.get("primary_move")
+    if not isinstance(primary, dict):
+        return False
+    action = str(primary.get("action") or "")
+    if action == "hold":
+        return True
+    if action == "transfer":
+        return primary.get("in_id") is not None and primary.get("out_id") is not None
+    return False
+
+
+def _compact_payload(payload: dict[str, Any], *, max_chars: int = 24_000) -> tuple[str, list[str]]:
+    """Serialize payload for the model; trim elastic lists, never corrupt the lock.
+
+    Returns (json_text, warnings). Always valid JSON — never a mid-string slice.
+    """
+    warnings: list[str] = []
+    raw = _dump(payload)
     if len(raw) <= max_chars:
-        return raw
-    return raw[: max_chars - 20] + '..."}'
+        if not _lock_intact(payload) and "weekly_plan" in payload:
+            warnings.append(PAYLOAD_LOCK_MISSING)
+        return raw, warnings
+
+    trimmed: dict[str, Any] = dict(payload)
+    # Shrink elastic lists until we fit, keeping weekly_plan lock fields intact.
+    for key in _ELASTIC_TOP_KEYS:
+        if len(_dump(trimmed)) <= max_chars:
+            break
+        value = trimmed.get(key)
+        if isinstance(value, list) and value:
+            # Halve repeatedly; leave at least an empty list.
+            keep = max(0, len(value) // 2)
+            trimmed[key] = value[:keep]
+
+    weekly = trimmed.get("weekly_plan")
+    if isinstance(weekly, dict):
+        locked = {k: weekly[k] for k in _WEEKLY_PLAN_LOCK_KEYS if k in weekly}
+        # Keep a short XI/bench for context if present.
+        for soft in ("xi", "bench", "horizon"):
+            if soft in weekly:
+                locked[soft] = list(weekly[soft] or [])[:11]
+        trimmed["weekly_plan"] = locked
+
+    core = _dump(trimmed)
+    if len(core) <= max_chars:
+        if not _lock_intact(trimmed):
+            warnings.append(PAYLOAD_LOCK_MISSING)
+        return core, warnings
+
+    # Core still too large: keep only the lock skeleton (still valid JSON).
+    warnings.append(PAYLOAD_CORE_TOO_LARGE)
+    weekly = trimmed.get("weekly_plan") if isinstance(trimmed.get("weekly_plan"), dict) else {}
+    skeleton = {
+        "mode": trimmed.get("mode"),
+        "gameweek": trimmed.get("gameweek"),
+        "bank_tenths": trimmed.get("bank_tenths"),
+        "free_transfers": trimmed.get("free_transfers"),
+        "price_actions": trimmed.get("price_actions") or [],
+        "policy": trimmed.get("policy") or {},
+        "weekly_plan": {k: weekly[k] for k in _WEEKLY_PLAN_LOCK_KEYS if k in weekly},
+        "veto_watchlist": (weekly.get("veto_watchlist") if isinstance(weekly, dict) else None)
+        or trimmed.get("veto_watchlist")
+        or [],
+        "transfer_market_note": trimmed.get("transfer_market_note"),
+        "_compact_warning": PAYLOAD_CORE_TOO_LARGE,
+    }
+    skeleton_raw = _dump(skeleton)
+    if len(skeleton_raw) > max_chars:
+        # Absolute last resort: primary_move alone (still valid JSON).
+        tiny = {
+            "weekly_plan": {
+                "primary_move": weekly.get("primary_move") if isinstance(weekly, dict) else None,
+                "model_vice": weekly.get("model_vice") if isinstance(weekly, dict) else None,
+            },
+            "_compact_warning": PAYLOAD_CORE_TOO_LARGE,
+        }
+        return _dump(tiny), warnings
+    if not _lock_intact(skeleton):
+        warnings.append(PAYLOAD_LOCK_MISSING)
+    return skeleton_raw, warnings
 
 
 @dataclass
@@ -747,7 +862,11 @@ class ResponsesOpenAIClient:
         )
         if hub_lines:
             user_input += f" Suggested hubs: {hub_lines}."
-        user_input += "\n\n" + _compact_payload(payload)
+        compact_json, compact_warnings = _compact_payload(payload)
+        user_input += "\n\n" + compact_json
+        if compact_warnings:
+            # Surface structure warnings in CallMetadata via a transient attribute on payload.
+            payload.setdefault("_compact_warnings", compact_warnings)
 
         started = time.perf_counter()
         try:
