@@ -1,0 +1,172 @@
+{
+  "gameweek": 3,
+  "plan_action": "revise",
+  "weekly_plan": {
+    "ok": true,
+    "primary_move": {
+      "action": "transfer",
+      "out_id": 356,
+      "in_id": 279,
+      "out_name": "Virgil",
+      "in_name": "Ajayi",
+      "reason": "frozen GW3 primary"
+    },
+    "best_affordable": {
+      "out_id": 356,
+      "in_id": 279,
+      "out_name": "Virgil",
+      "in_name": "Ajayi",
+      "element_type": 2,
+      "sell_tenths": 65,
+      "buy_tenths": 41,
+      "bank_after_tenths": 24,
+      "bank_shortfall_tenths": 0,
+      "affordable": true,
+      "delta_weighted_xp": 1.335,
+      "delta_gw_xp": 3.508,
+      "out_p_start": 0.844,
+      "in_p_start": 0.8,
+      "in_starts": true,
+      "xi_drop_name": "Virgil",
+      "reason": "Ajayi is projected to outscore Virgil this week while still starting (80% start chance) (+3.5 pts this week; +1.3 over the next few GWs)."
+    },
+    "best_plan": {
+      "moves": [
+        {
+          "out_id": 356,
+          "in_id": 279,
+          "out_name": "Virgil",
+          "in_name": "Ajayi",
+          "element_type": 2,
+          "sell_tenths": 65,
+          "buy_tenths": 41,
+          "bank_after_tenths": 24,
+          "bank_shortfall_tenths": 0,
+          "affordable": true,
+          "delta_weighted_xp": 1.335,
+          "delta_gw_xp": 3.508,
+          "out_p_start": 0.844,
+          "in_p_start": 0.8,
+          "in_starts": true,
+          "xi_drop_name": "Virgil",
+          "reason": "Ajayi is projected to outscore Virgil this week while still starting (80% start chance) (+3.5 pts this week; +1.3 over the next few GWs)."
+        }
+      ],
+      "n_transfers": 1,
+      "free_transfers_used": 1,
+      "hit_cost": 0,
+      "delta_weighted_xp": 1.335,
+      "delta_gw_xp": 3.508,
+      "net_gw_xp": 3.508,
+      "bank_after_tenths": 24,
+      "affordable": true,
+      "summary": "Virgil\u2192Ajayi (+3.5 pts this week)"
+    },
+    "model_captain": {
+      "player_id": 426,
+      "web_name": "B.Fernandes",
+      "position": "MID",
+      "p_start": 0.9,
+      "xp_next": 7.3,
+      "weighted_xp": 17.8
+    },
+    "model_vice": {
+      "player_id": 1,
+      "web_name": "Raya",
+      "position": "GKP",
+      "p_start": 0.95,
+      "xp_next": 3.79,
+      "weighted_xp": 11.16
+    },
+    "also_considered": [
+      {
+        "out_id": 356,
+        "in_id": 279,
+        "out_name": "Virgil",
+        "in_name": "Ajayi",
+        "element_type": 2,
+        "sell_tenths": 65,
+        "buy_tenths": 41,
+        "bank_after_tenths": 24,
+        "bank_shortfall_tenths": 0,
+        "affordable": true,
+        "delta_weighted_xp": 1.335,
+        "delta_gw_xp": 3.508,
+        "out_p_start": 0.844,
+        "in_p_start": 0.8,
+        "in_starts": true,
+        "xi_drop_name": "Virgil",
+        "reason": "Ajayi is projected to outscore Virgil this week while still starting (80% start chance) (+3.5 pts this week; +1.3 over the next few GWs).",
+        "picked": true
+      },
+      {
+        "out_id": 356,
+        "in_id": 115,
+        "out_name": "Virgil",
+        "in_name": "De Cuyper",
+        "element_type": 2,
+        "sell_tenths": 65,
+        "buy_tenths": 47,
+        "bank_after_tenths": 18,
+        "bank_shortfall_tenths": 0,
+        "affordable": true,
+        "delta_weighted_xp": 3.533,
+        "delta_gw_xp": 3.378,
+        "out_p_start": 0.844,
+        "in_p_start": 0.8,
+        "in_starts": true,
+        "xi_drop_name": "Virgil",
+        "reason": "is close to Ajayi this week and looks stronger over the next few gameweeks. (+3.4 pts this week; +3.5 over the next few GWs).",
+        "picked": false
+      },
+      {
+        "out_id": 539,
+        "in_id": 277,
+        "out_name": "O'Nien",
+        "in_name": "Egan",
+        "element_type": 2,
+        "sell_tenths": 40,
+        "buy_tenths": 40,
+        "bank_after_tenths": 0,
+        "bank_shortfall_tenths": 0,
+        "affordable": true,
+        "delta_weighted_xp": 4.563,
+        "delta_gw_xp": 2.83,
+        "out_p_start": 0.4,
+        "in_p_start": 0.8,
+        "in_starts": true,
+        "xi_drop_name": "Tzolis",
+        "reason": "adds less this week than Ajayi and looks stronger over the next few gameweeks. It would sell O'Nien instead of Virgil. (+2.8 pts this week; +4.6 over the next few GWs).",
+        "picked": false
+      }
+    ],
+    "alternatives": [
+      {
+        "action": "hold"
+      }
+    ]
+  },
+  "suggested_moves": [
+    {
+      "move_type": "transfer",
+      "summary": "Consider Virgil to Ajayi with the free transfer.",
+      "why": "Ajayi is expected to start and is projected to offer more this week than Virgil. He narrowly beats De Cuyper for immediate upside and leaves \u00a32.4m in the bank, although De Cuyper has the stronger longer-term projection (+3.5 pts this GW; +1.3 over the next few GWs).",
+      "player_ids": [
+        356,
+        279
+      ],
+      "urgency": "medium",
+      "cited_source_ids": []
+    },
+    {
+      "move_type": "captain",
+      "summary": "Captain Bruno Fernandes.",
+      "why": "Fernandes is the squad's strongest supplied captain option and has a high projected chance of starting; this is not strong enough to justify Triple Captain (7.3 xP; 90% start).",
+      "player_ids": [
+        426
+      ],
+      "urgency": "low",
+      "cited_source_ids": []
+    }
+  ]
+}
