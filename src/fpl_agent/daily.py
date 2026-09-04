@@ -1015,18 +1015,20 @@ def align_advice_to_after_transfer(advice: DailyAdvice, weekly_plan: dict[str, A
 
     detail = _scrub_false_bench_claims(advice.detail, xi_names)
     headline = _scrub_false_bench_claims(advice.headline, xi_names)
-    if drop and drop in bench_names and in_name:
-        # Prefer a clean headline when we know the GW0 drop.
-        if "→" in headline or " to " in headline.lower() or "for " in headline.lower():
-            headline = (
-                f"Sell {after.get('out_name')} for {in_name}, "
-                f"start {in_name} (bench {drop}), and captain "
-                f"{(after.get('model_captain') or {}).get('web_name') or 'the modelled pick'}."
-            )
+    from fpl_agent.llm.client import PlanAction
+
+    plan_action = advice.plan_action
+    if saw_transfer and after.get("out_name") and after.get("in_name"):
+        plan_action = PlanAction.REVISE
+        drop_bit = f", start {in_name} (bench {drop})" if drop and drop in bench_names else f", start {in_name}"
+        cap_name = str((after.get("model_captain") or {}).get("web_name") or "")
+        cap_bit = f", and captain {cap_name}" if cap_name else ""
+        headline = (
+            f"Sell {after.get('out_name')} for {after.get('in_name')}"
+            f"{drop_bit}{cap_bit}."
+        )
     tldr = [_scrub_false_bench_claims(item, xi_names) for item in advice.tldr]
-    if any("false bench" in w or "aligned_lineup" in w for w in warnings):
-        pass
-    else:
+    if "aligned_lineup_to_after_transfer" not in warnings:
         warnings.append("aligned_lineup_to_after_transfer")
     return advice.model_copy(
         update={
@@ -1035,6 +1037,7 @@ def align_advice_to_after_transfer(advice: DailyAdvice, weekly_plan: dict[str, A
             "headline": headline,
             "tldr": tldr,
             "warnings": warnings,
+            "plan_action": plan_action,
         }
     )
 
