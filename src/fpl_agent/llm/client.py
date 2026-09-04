@@ -17,7 +17,7 @@ from fpl_agent.config import load_dotenv_files
 from fpl_agent.errors import AgentError, AgentErrorCode, ExitCode
 from fpl_agent.observability import redact_value
 
-PROMPT_VERSION = "predeadline-v4"
+PROMPT_VERSION = "predeadline-v5"
 SCHEMA_VERSION = "daily-advice-1.1.0"
 
 # Preferred domains for FPL-relevant search (omit scheme; includes subdomains).
@@ -587,16 +587,19 @@ class ResponsesOpenAIClient:
             "Every suggested_moves item must include a non-empty why explaining that move. "
             "Use weekly_plan.also_considered to say why the recommended IN beat the other same-position options; "
             "do not invent names. "
+            "The single transfer in suggested_moves must be weekly_plan.best_affordable "
+            "(picked:true in also_considered) unless news vetoes that buy; "
+            "do not recommend a different also_considered row as a second competing transfer. "
             "headline must be one sentence of advice, never a section title such as 'This week'. "
             "Use supplied price_actions if present. Do not invent price likelihoods. "
             "Do not upgrade ignore/watch price actions into transfers for price reasons. "
             "Evaluate transfer_candidates and stretch_transfer_candidates; buy IDs must come from those lists only. "
-            "Treat weekly_plan.after_transfer as the XI / captain / bench if you recommend that transfer. "
+            "Treat weekly_plan.after_transfer as the XI / captain / bench for best_affordable. "
             "Do not recommend a transfer whose in_starts is false. "
             "Treat weekly_plan (current squad) as the hold-path XI. "
             "Use transfer_plans (including 2-FT and hits) when present; buy IDs must still come from those moves. "
             "If news_search_empty is already in the JSON, do not invent presser or injury outcomes. "
-            "If affordable candidates exist and news does not veto them, prefer revise with a concrete transfer. "
+            "If affordable candidates exist and news does not veto them, prefer revise with best_affordable. "
             "If only stretch candidates exist, say the FT is blocked by bank and name the best stretch target. "
             "Do not invent player IDs. Do not recommend a transfer merely because this run happened."
         )

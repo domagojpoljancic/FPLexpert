@@ -309,6 +309,219 @@ def test_report_flags_empty_news_search() -> None:
     assert "no pages" in text.lower()
 
 
+def test_reconcile_aligns_weekly_plan_to_llm_transfer(monkeypatch) -> None:
+    """LLM may pick another starter candidate; This week must follow Do this."""
+    from fpl_agent import daily as daily_mod
+    from fpl_agent.daily import DailyReport, reconcile_transfer_advice, render_daily_text
+    from fpl_agent.llm.client import DailyAdvice, DailyMove, MoveType, PlanAction
+    from fpl_agent.rules.season import load_season_rules_2026_27
+    from fpl_agent.strategy.transfers import TransferCandidate
+
+    ajayi = TransferCandidate(
+        out_id=356,
+        in_id=279,
+        out_name="Virgil",
+        in_name="Ajayi",
+        element_type=2,
+        sell_tenths=65,
+        buy_tenths=41,
+        bank_after_tenths=29,
+        bank_shortfall_tenths=0,
+        affordable=True,
+        delta_weighted_xp=1.3,
+        delta_gw_xp=3.5,
+        out_p_start=0.84,
+        in_p_start=0.8,
+        in_starts=True,
+        xi_drop_name="Virgil",
+    )
+    egan = TransferCandidate(
+        out_id=539,
+        in_id=277,
+        out_name="O'Nien",
+        in_name="Egan",
+        element_type=2,
+        sell_tenths=40,
+        buy_tenths=40,
+        bank_after_tenths=5,
+        bank_shortfall_tenths=0,
+        affordable=True,
+        delta_weighted_xp=4.6,
+        delta_gw_xp=2.8,
+        out_p_start=0.4,
+        in_p_start=0.8,
+        in_starts=True,
+        xi_drop_name="Tzolis",
+    )
+    weekly_plan = {
+        "ok": True,
+        "formation": "3-5-2",
+        "best_affordable": ajayi.as_payload(),
+        "after_transfer": {
+            "out_id": 356,
+            "in_id": 279,
+            "out_name": "Virgil",
+            "in_name": "Ajayi",
+            "xi_drop_name": "Virgil",
+            "formation": "3-5-2",
+            "xi": [{"web_name": "Ajayi"}],
+            "bench": [],
+            "model_captain": {"web_name": "B.Fernandes", "xp_next": 7.5},
+            "model_vice": {"web_name": "Raya", "xp_next": 3.0},
+        },
+        "also_considered": [
+            {**ajayi.as_payload(), "picked": True},
+            {**egan.as_payload(), "picked": False, "reason": "also looked at"},
+        ],
+        "xi": [{"web_name": "Virgil"}],
+        "bench": [],
+        "chips": [],
+    }
+    advice = DailyAdvice(
+        plan_action=PlanAction.REVISE,
+        headline="Sell O'Nien for Egan",
+        suggested_moves=[
+            DailyMove(
+                move_type=MoveType.TRANSFER,
+                summary="O'Nien to Egan",
+                why="Egan starts more often.",
+                player_ids=[539, 277],
+            )
+        ],
+    )
+    seen: list[TransferCandidate] = []
+
+    def _fake_apply(plan, pick, **_kwargs):
+        seen.append(pick)
+        assert pick is not None
+        plan["best_affordable"] = pick.as_payload()
+        plan["after_transfer"] = {
+            "out_id": pick.out_id,
+            "in_id": pick.in_id,
+            "out_name": pick.out_name,
+            "in_name": pick.in_name,
+            "xi_drop_name": pick.xi_drop_name,
+            "formation": "3-5-2",
+            "xi": [{"web_name": pick.in_name}],
+            "bench": [{"web_name": "Shaw", "p_start": 0.8}],
+            "model_captain": {"web_name": "B.Fernandes", "xp_next": 7.5},
+            "model_vice": {"web_name": "Raya", "xp_next": 3.0},
+        }
+        plan["also_considered"] = [
+            {**pick.as_payload(), "picked": True},
+            {**ajayi.as_payload(), "picked": False, "reason": "also looked at"},
+        ]
+
+    monkeypatch.setattr(daily_mod, "apply_transfer_pick_to_weekly_plan", _fake_apply)
+    out = reconcile_transfer_advice(
+        advice,
+        weekly_plan,
+        affordable_transfers=[ajayi, egan],
+        owned_ids=[1] * 15,
+        captain_id=1,
+        vice_id=1,
+        projections={},
+        gameweeks=[3, 4, 5],
+        weights=[1.0, 0.8, 0.6],
+        season_rules=load_season_rules_2026_27(),
+    )
+    assert out.suggested_moves[0].player_ids == [539, 277]
+    assert seen and seen[0].in_name == "Egan"
+    assert weekly_plan["best_affordable"]["in_name"] == "Egan"
+    assert weekly_plan["after_transfer"]["out_name"] == "O'Nien"
+
+    report = DailyReport(
+        gameweek=3,
+        plan_action="revise",
+        headline=out.headline,
+        what_changed=[],
+        attention_triggers=[],
+        suggested_moves=[m.model_dump(mode="json") for m in out.suggested_moves],
+        uncertainty=[],
+        warnings=[],
+        sources=[],
+        model_meta={},
+        executability="EXECUTABLE",
+        used_live_ai=True,
+        weekly_plan=weekly_plan,
+    )
+    text = render_daily_text(report)
+    assert "O'Nien to Egan" in text
+    assert "After **O'Nien → Egan**" in text
+    assert "After **Virgil → Ajayi**" not in text
+
+
+def test_reconcile_snaps_invalid_transfer_to_best_affordable(monkeypatch) -> None:
+    from fpl_agent import daily as daily_mod
+    from fpl_agent.daily import reconcile_transfer_advice
+    from fpl_agent.llm.client import DailyAdvice, DailyMove, MoveType, PlanAction
+    from fpl_agent.rules.season import load_season_rules_2026_27
+    from fpl_agent.strategy.transfers import TransferCandidate
+
+    ajayi = TransferCandidate(
+        out_id=356,
+        in_id=279,
+        out_name="Virgil",
+        in_name="Ajayi",
+        element_type=2,
+        sell_tenths=65,
+        buy_tenths=41,
+        bank_after_tenths=29,
+        bank_shortfall_tenths=0,
+        affordable=True,
+        delta_weighted_xp=1.3,
+        delta_gw_xp=3.5,
+        out_p_start=0.84,
+        in_p_start=0.8,
+        in_starts=True,
+        xi_drop_name="Virgil",
+    )
+    weekly_plan = {
+        "ok": True,
+        "best_affordable": ajayi.as_payload(),
+        "after_transfer": {
+            "out_id": 356,
+            "in_id": 279,
+            "out_name": "Virgil",
+            "in_name": "Ajayi",
+            "xi": [{"web_name": "Ajayi"}],
+        },
+        "also_considered": [],
+    }
+    advice = DailyAdvice(
+        plan_action=PlanAction.REVISE,
+        headline="Sell nobody for ghost",
+        suggested_moves=[
+            DailyMove(
+                move_type=MoveType.TRANSFER,
+                summary="Ghost transfer",
+                why="invented",
+                player_ids=[999, 998],
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        daily_mod,
+        "apply_transfer_pick_to_weekly_plan",
+        lambda plan, pick, **_k: plan.update({"best_affordable": pick.as_payload() if pick else None}),
+    )
+    out = reconcile_transfer_advice(
+        advice,
+        weekly_plan,
+        affordable_transfers=[ajayi],
+        owned_ids=[1] * 15,
+        captain_id=1,
+        vice_id=1,
+        projections={},
+        gameweeks=[3, 4, 5],
+        weights=[1.0, 0.8, 0.6],
+        season_rules=load_season_rules_2026_27(),
+    )
+    assert out.suggested_moves[0].player_ids == [356, 279]
+    assert "Virgil to Ajayi" in out.suggested_moves[0].summary
+    assert any("aligned_transfer_to_best_affordable" in w for w in out.warnings)
+
+
 def test_extract_web_search_trace_collects_queries_and_pages() -> None:
     from fpl_agent.llm.client import extract_web_search_trace
 

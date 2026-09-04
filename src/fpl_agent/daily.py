@@ -20,13 +20,16 @@ from fpl_agent.evidence.news import (
 )
 from fpl_agent.llm.client import (
     DailyAdvice,
+    DailyMove,
+    MoveType,
     apply_news_fail_closed,
     build_client,
     validate_daily_advice,
 )
-from fpl_agent.projections.preseason import project_all
+from fpl_agent.projections.preseason import PlayerProjection, project_all
+from fpl_agent.rules.season import SeasonRules
 from fpl_agent.suggest import load_public_data
-from fpl_agent.strategy.transfers import POSITION_LABEL
+from fpl_agent.strategy.transfers import POSITION_LABEL, TransferCandidate
 from fpl_agent.team_state.private import load_and_validate_private_state
 from fpl_agent.team_state.resolve import resolve_team_state
 
@@ -267,12 +270,9 @@ def run_predeadline(
     from fpl_agent.strategy.transfers import (
         compare_roll_vs_transfer,
         deferred_double_transfer_upside,
-        explain_vs_pick,
         hit_horizon_margin,
-        horizon_transfer_impact,
         rank_transfer_candidates,
         rank_transfer_plans,
-        same_position_shortlist,
         this_week_upgrade,
     )
 
@@ -310,54 +310,26 @@ def run_predeadline(
         chip_instances=private.chip_instances,
     )
     this_week = this_week_upgrade(affordable_transfers)
-    weekly_plan["best_affordable"] = this_week.as_payload() if this_week else None
-    weekly_plan["also_considered"] = []
-    if this_week is not None:
-        considered: list[dict[str, Any]] = []
-        for cand in same_position_shortlist(this_week, affordable_transfers, limit=3):
-            row = cand.as_payload()
-            row["picked"] = cand.in_id == this_week.in_id
-            if not row["picked"]:
-                row["reason"] = explain_vs_pick(cand, this_week)
-            considered.append(row)
-        weekly_plan["also_considered"] = considered
     weekly_plan["best_stretch"] = stretch_transfers[0].as_payload() if stretch_transfers else None
-    weekly_plan["after_transfer"] = None
-    if this_week is not None:
-        after_ids = [
-            this_week.in_id if pid == this_week.out_id else pid for pid in private.player_ids
-        ]
-        after_plan = build_weekly_plan(
-            owned_ids=after_ids,
-            projections=proj_by_id,
-            gameweeks=gameweeks,
-            captain_id=(
-                private.captain_id
-                if private.captain_id != this_week.out_id
-                else this_week.in_id
-            ),
-            vice_id=private.vice_id if private.vice_id != this_week.out_id else None,
-        )
-        if after_plan.get("ok"):
-            weekly_plan["after_transfer"] = {
-                "out_id": this_week.out_id,
-                "in_id": this_week.in_id,
-                "out_name": this_week.out_name,
-                "in_name": this_week.in_name,
-                "xi_drop_name": this_week.xi_drop_name,
-                "formation": after_plan.get("formation"),
-                "xi": after_plan.get("xi"),
-                "bench": after_plan.get("bench"),
-                "model_captain": after_plan.get("model_captain"),
-                "model_vice": after_plan.get("model_vice"),
-            }
+    season_rules = load_season_rules_2026_27()
+    apply_transfer_pick_to_weekly_plan(
+        weekly_plan,
+        this_week,
+        owned_ids=private.player_ids,
+        captain_id=private.captain_id,
+        vice_id=private.vice_id,
+        projections=proj_by_id,
+        gameweeks=gameweeks,
+        weights=weights,
+        season_rules=season_rules,
+        affordable_transfers=affordable_transfers,
+    )
     weekly_plan["best_plan"] = transfer_plans[0].as_payload() if transfer_plans else None
     hit_plans = [p for p in transfer_plans if p.hit_cost > 0]
     weekly_plan["best_hit"] = hit_plans[0].as_payload() if hit_plans else None
 
     free_hit_plans = [p for p in transfer_plans if p.hit_cost == 0]
     best_plan_obj = free_hit_plans[0] if free_hit_plans else None
-    season_rules = load_season_rules_2026_27()
     hit_margin = hit_horizon_margin(
         risk_profile=settings.manager.risk_profile,
         gameweek=gw,
@@ -385,19 +357,6 @@ def run_predeadline(
         deferred_upside=deferred_upside,
     )
     weekly_plan["transfer_decision"] = transfer_decision.as_payload()
-    weekly_plan["horizon_impact"] = None
-    if this_week is not None:
-        after_ids = [
-            this_week.in_id if pid == this_week.out_id else pid for pid in private.player_ids
-        ]
-        weekly_plan["horizon_impact"] = horizon_transfer_impact(
-            owned_ids=private.player_ids,
-            after_ids=after_ids,
-            projections=proj_by_id,
-            rules=season_rules,
-            gameweeks=gameweeks,
-            weights=weights,
-        )
     weekly_plan["chips"] = [c.as_payload() for c in chip_advice]
     try:
         from fpl_agent.evaluation.scorecard import build_previous_scorecard
@@ -506,6 +465,18 @@ def run_predeadline(
         web_search_calls=int(meta.web_search_calls),
         page_count=len(meta.sources),
     )
+    advice = reconcile_transfer_advice(
+        advice,
+        weekly_plan,
+        affordable_transfers=affordable_transfers,
+        owned_ids=private.player_ids,
+        captain_id=private.captain_id,
+        vice_id=private.vice_id,
+        projections=proj_by_id,
+        gameweeks=gameweeks,
+        weights=weights,
+        season_rules=season_rules,
+    )
 
     if private.applies_before_gameweek != gw:
         advice.warnings.append(
@@ -599,6 +570,213 @@ def _llm_weekly_plan(plan: dict[str, Any]) -> dict[str, Any]:
     out = {key: plan[key] for key in keys if key in plan}
     out["horizon"] = list(plan.get("horizon") or [])[:3]
     return out
+
+
+def apply_transfer_pick_to_weekly_plan(
+    weekly_plan: dict[str, Any],
+    pick: TransferCandidate | None,
+    *,
+    owned_ids: list[int],
+    captain_id: int | None,
+    vice_id: int | None,
+    projections: dict[int, PlayerProjection],
+    gameweeks: list[int],
+    weights: list[float],
+    season_rules: SeasonRules,
+    affordable_transfers: list[TransferCandidate],
+) -> None:
+    """Attach best_affordable / also_considered / after_transfer / horizon_impact for one pick."""
+    from fpl_agent.strategy.plan import build_weekly_plan
+    from fpl_agent.strategy.transfers import (
+        explain_vs_pick,
+        horizon_transfer_impact,
+        same_position_shortlist,
+    )
+
+    weekly_plan["best_affordable"] = pick.as_payload() if pick is not None else None
+    weekly_plan["also_considered"] = []
+    weekly_plan["after_transfer"] = None
+    weekly_plan["horizon_impact"] = None
+    if pick is None:
+        return
+
+    considered: list[dict[str, Any]] = []
+    for cand in same_position_shortlist(pick, affordable_transfers, limit=3):
+        row = cand.as_payload()
+        row["picked"] = cand.in_id == pick.in_id
+        if not row["picked"]:
+            row["reason"] = explain_vs_pick(cand, pick)
+        considered.append(row)
+    weekly_plan["also_considered"] = considered
+
+    after_ids = [pick.in_id if pid == pick.out_id else pid for pid in owned_ids]
+    after_plan = build_weekly_plan(
+        owned_ids=after_ids,
+        projections=projections,
+        gameweeks=gameweeks,
+        captain_id=(captain_id if captain_id != pick.out_id else pick.in_id),
+        vice_id=vice_id if vice_id != pick.out_id else None,
+    )
+    if after_plan.get("ok"):
+        weekly_plan["after_transfer"] = {
+            "out_id": pick.out_id,
+            "in_id": pick.in_id,
+            "out_name": pick.out_name,
+            "in_name": pick.in_name,
+            "xi_drop_name": pick.xi_drop_name,
+            "formation": after_plan.get("formation"),
+            "xi": after_plan.get("xi"),
+            "bench": after_plan.get("bench"),
+            "model_captain": after_plan.get("model_captain"),
+            "model_vice": after_plan.get("model_vice"),
+        }
+    weekly_plan["horizon_impact"] = horizon_transfer_impact(
+        owned_ids=owned_ids,
+        after_ids=after_ids,
+        projections=projections,
+        rules=season_rules,
+        gameweeks=gameweeks,
+        weights=weights,
+    )
+
+
+def _starter_candidate(
+    candidates: list[TransferCandidate],
+    *,
+    out_id: int,
+    in_id: int,
+) -> TransferCandidate | None:
+    for cand in candidates:
+        if cand.out_id == out_id and cand.in_id == in_id and cand.affordable and cand.in_starts:
+            return cand
+    return None
+
+
+def _advice_transfer_pair(advice: DailyAdvice) -> tuple[int, int] | None:
+    for move in advice.suggested_moves:
+        if move.move_type == MoveType.TRANSFER and len(move.player_ids) >= 2:
+            return int(move.player_ids[0]), int(move.player_ids[1])
+    return None
+
+
+def _snap_advice_to_pick(advice: DailyAdvice, pick: TransferCandidate) -> DailyAdvice:
+    """Rewrite the first transfer move onto the engine pick so Do this matches This week."""
+    payload = pick.as_payload()
+    summary = f"{pick.out_name} to {pick.in_name}"
+    why = str(payload.get("reason") or "").strip() or (
+        f"{pick.in_name} is the supplied this-week upgrade over {pick.out_name} "
+        f"({pick.delta_gw_xp:+.1f} pts this GW)."
+    )
+    headline = (
+        f"Sell {pick.out_name} for {pick.in_name}, keep the rest of the plan, "
+        "and recheck late team news."
+    )
+    new_moves: list[DailyMove] = []
+    replaced = False
+    for move in advice.suggested_moves:
+        if move.move_type == MoveType.TRANSFER and not replaced:
+            new_moves.append(
+                move.model_copy(
+                    update={
+                        "summary": summary,
+                        "why": why,
+                        "player_ids": [pick.out_id, pick.in_id],
+                    }
+                )
+            )
+            replaced = True
+            continue
+        new_moves.append(move)
+    if not replaced:
+        new_moves.insert(
+            0,
+            DailyMove(
+                move_type=MoveType.TRANSFER,
+                summary=summary,
+                why=why,
+                player_ids=[pick.out_id, pick.in_id],
+                urgency="high",
+            ),
+        )
+    warnings = list(advice.warnings)
+    warnings.append(f"aligned_transfer_to_best_affordable:{pick.out_name}->{pick.in_name}")
+    return advice.model_copy(
+        update={
+            "suggested_moves": new_moves,
+            "headline": headline if advice.plan_action.value == "revise" else advice.headline,
+            "warnings": warnings,
+        }
+    )
+
+
+def reconcile_transfer_advice(
+    advice: DailyAdvice,
+    weekly_plan: dict[str, Any],
+    *,
+    affordable_transfers: list[TransferCandidate],
+    owned_ids: list[int],
+    captain_id: int | None,
+    vice_id: int | None,
+    projections: dict[int, PlayerProjection],
+    gameweeks: list[int],
+    weights: list[float],
+    season_rules: SeasonRules,
+) -> DailyAdvice:
+    """Keep Do this and This week on the same transfer.
+
+    Live models may prefer another starter buy from transfer_candidates. When that
+    pick is legal, rebuild after_transfer / also_considered around it. When it is
+    not, snap advice back to best_affordable so the report cannot name two moves.
+    """
+    engine_raw = weekly_plan.get("best_affordable") or {}
+    engine_pick: TransferCandidate | None = None
+    if engine_raw.get("out_id") is not None and engine_raw.get("in_id") is not None:
+        engine_pick = _starter_candidate(
+            affordable_transfers,
+            out_id=int(engine_raw["out_id"]),
+            in_id=int(engine_raw["in_id"]),
+        )
+
+    pair = _advice_transfer_pair(advice)
+    if pair is None:
+        return advice
+
+    out_id, in_id = pair
+    chosen = _starter_candidate(affordable_transfers, out_id=out_id, in_id=in_id)
+    if chosen is None:
+        if engine_pick is None:
+            return advice
+        advice = _snap_advice_to_pick(advice, engine_pick)
+        apply_transfer_pick_to_weekly_plan(
+            weekly_plan,
+            engine_pick,
+            owned_ids=owned_ids,
+            captain_id=captain_id,
+            vice_id=vice_id,
+            projections=projections,
+            gameweeks=gameweeks,
+            weights=weights,
+            season_rules=season_rules,
+            affordable_transfers=affordable_transfers,
+        )
+        return advice
+
+    if engine_pick is not None and chosen.in_id == engine_pick.in_id and chosen.out_id == engine_pick.out_id:
+        return advice
+
+    apply_transfer_pick_to_weekly_plan(
+        weekly_plan,
+        chosen,
+        owned_ids=owned_ids,
+        captain_id=captain_id,
+        vice_id=vice_id,
+        projections=projections,
+        gameweeks=gameweeks,
+        weights=weights,
+        season_rules=season_rules,
+        affordable_transfers=affordable_transfers,
+    )
+    return advice
 
 
 def _unique_texts(items: list[str]) -> list[str]:
@@ -727,12 +905,14 @@ def _weekly_plan_section(report: DailyReport) -> list[str]:
     bench = using.get("bench") or []
     lines = ["## This week", ""]
     best = plan.get("best_affordable")
-    if after.get("xi") and best:
-        drop = after.get("xi_drop_name") or best.get("xi_drop_name")
-        drop_bit = f"; {drop} drops out of the XI" if drop and drop != best.get("out_name") else ""
+    # Prefer after_transfer labels so Do this / This week cannot name different swaps.
+    label = after if after.get("out_name") and after.get("in_name") else best
+    if after.get("xi") and label:
+        drop = after.get("xi_drop_name") or (best or {}).get("xi_drop_name")
+        drop_bit = f"; {drop} drops out of the XI" if drop and drop != label.get("out_name") else ""
         lines.append(
-            f"After **{best.get('out_name')} → {best.get('in_name')}** "
-            f"({best.get('in_name')} starts{drop_bit}):"
+            f"After **{label.get('out_name')} → {label.get('in_name')}** "
+            f"({label.get('in_name')} starts{drop_bit}):"
         )
         lines.append("")
     elif best is None and plan.get("best_stretch"):
@@ -791,8 +971,8 @@ def _weekly_plan_section(report: DailyReport) -> list[str]:
     decision_reason = str(decision.get("reason") or "").strip()
     if decision_reason:
         action = str(decision.get("action") or "").lower()
-        label = "Spend FT now" if action == "transfer" else "Bank FT"
-        lines.append(f"- FT timing ({label}): {decision_reason}")
+        label_ft = "Spend FT now" if action == "transfer" else "Bank FT"
+        lines.append(f"- FT timing ({label_ft}): {decision_reason}")
     return lines
 
 

@@ -19,15 +19,18 @@ This prompt is used about **one day before** the gameweek deadline — not for t
 - If `news_search_empty` is set or web search returned no pages, do **not** invent injuries, pressers, or predicted XIs. Say news was not retrieved. Captain/transfer advice may still use supplied xP.
 
 ## Transfer evaluation (required)
-- Treat `weekly_plan.after_transfer` as the XI if you recommend `best_affordable`. That buy **must** appear in that XI (`in_starts` true). The current `weekly_plan.xi` is the hold path only — do not tell the manager to transfer for a player who would not start.
+- The primary 1-FT recommendation is `weekly_plan.best_affordable` (also marked `picked: true` in `also_considered`). Recommend that exact out_id → in_id unless news vetoes the buy.
+- Treat `weekly_plan.after_transfer` as the XI for that primary transfer. That buy **must** appear in that XI (`in_starts` true). The current `weekly_plan.xi` is the hold path only — do not tell the manager to transfer for a player who would not start.
 - Do not recommend a candidate with `"in_starts": false` as this week's free transfer.
+- `also_considered` rows that are not `picked` are comparison only: use them in `why` / `detail`, not as a second competing transfer in `suggested_moves`.
+- If news vetoes `best_affordable`, you may switch to one other `transfer_candidates` row with `in_starts` true — cite that row's out_id and in_id as the single transfer move. Never recommend two different transfers in the same report.
 - Always inspect `transfer_candidates` (legal, affordable improving 1-FT swaps), `stretch_transfer_candidates` (improving swaps that need more bank), and `transfer_plans` (1- or 2-swap plans with hit cost already subtracted).
 - Use `weekly_plan.horizon_impact` to explain how the recommended transfer affects this GW and later GWs (per-GW XI delta and the supplied `reason`).
 - Use `weekly_plan.transfer_decision` for FT timing: when `action` is `roll`, recommend holding the FT even if a marginal swap exists; when `action` is `transfer`, the horizon edge clears the FT-banking penalty. Cite `free_transfers_if_roll` vs `free_transfers_if_transfer` and `net_value_after_ft_penalty` when close.
 - If `transfer_decision.deferred_upside` is set, mention whether banking to 2 FT unlocks a stronger no-hit double move next week.
 - If a `transfer_plans` row has `hit_cost > 0` and positive `net_gw_xp`, you may recommend the hit only when that net edge is clear. Never invent a -4 that is not in `transfer_plans`.
 - If `chip_advice` says hold, do not recommend playing that chip this week. If it says play, you may surface it as `move_type=chip` with the supplied reason.
-- If `transfer_candidates` is non-empty and news does not veto the buy, prefer `plan_action=revise` with one concrete `move_type=transfer` citing both out_id and in_id.
+- If `transfer_candidates` is non-empty and news does not veto the buy, prefer `plan_action=revise` with one concrete `move_type=transfer` citing both out_id and in_id from `best_affordable` (or the news-replacement candidate).
 - If `transfer_candidates` is empty but stretch targets exist, do **not** pretend a transfer is executable. Say the FT should be held for bank reasons, name the best stretch target and shortfall, and still give captain/vice/lineup advice. Prefer `watch` or `keep` unless news forces a different change.
 - If both lists are empty, say so explicitly — do not hide behind a vague "hold the squad".
 - Thin injury news is not a reason to skip naming the best supplied candidate when the projection edge is clear.
