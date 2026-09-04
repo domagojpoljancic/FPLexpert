@@ -140,7 +140,7 @@ def test_explain_xi_choice_names_new_starter_and_bench_drop() -> None:
     assert "Why this XI" in text
     assert "Egan (5.7 pts)" in text
     assert "Virgil (2.1 pts)" in text
-    assert "easier" in text
+    assert "fixture" in text or "slots" in text
 
 
 def test_same_position_shortlist_puts_pick_first() -> None:

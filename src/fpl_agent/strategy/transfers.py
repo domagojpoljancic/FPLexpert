@@ -323,7 +323,8 @@ def explain_xi_choice(
                 return (
                     f"Why this XI: ranked by projected points{formation_bit}. "
                     f"Start {in_name} ({in_pts} pts) and bench {drop_name} ({drop_pts} pts) — "
-                    f"even if {drop_name}'s fixture looks easier, the points projection is lower."
+                    f"only so many slots fit; an easier-looking fixture for {drop_name} does not "
+                    f"beat a higher points projection."
                 )
             return (
                 f"Why this XI: ranked by projected points{formation_bit}. "

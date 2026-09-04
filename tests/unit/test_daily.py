@@ -669,8 +669,8 @@ def test_align_advice_rewrites_false_bench_lineup() -> None:
                 {"web_name": "Tzolis", "player_id": 557},
             ],
             "bench": [
-                {"web_name": "Dubravka", "player_id": 497, "p_start": 0.1},
-                {"web_name": "Virgil", "player_id": 356, "p_start": 0.84},
+                {"web_name": "Dubravka", "player_id": 497, "p_start": 0.1, "xp_next": 0.3},
+                {"web_name": "Virgil", "player_id": 356, "p_start": 0.84, "xp_next": 1.8},
             ],
             "model_captain": {"web_name": "B.Fernandes", "player_id": 426, "xp_next": 7.5},
             "model_vice": {"web_name": "Raya", "player_id": 1, "xp_next": 3.0},
@@ -738,6 +738,91 @@ def test_align_advice_rewrites_false_bench_lineup() -> None:
     assert "Virgil" in do_this
     assert "Virgil" in this_week
     assert "Tzolis drops" not in this_week
+    assert "Virgil (1.8 pts)" in this_week
+    assert "84%" not in this_week
+    assert aligned.plan_action == PlanAction.REVISE
+    assert "Sell O'Nien for Egan" in aligned.headline
+
+
+def test_align_rewrites_watch_headline_and_missing_plan_detail() -> None:
+    from fpl_agent.daily import align_advice_to_after_transfer
+    from fpl_agent.llm.client import DailyAdvice, DailyMove, MoveType, PlanAction
+
+    weekly_plan = {
+        "ok": True,
+        "best_affordable": {
+            "out_name": "O'Nien",
+            "in_name": "Ajayi",
+            "xi_drop_name": "Virgil",
+            "reason": (
+                "Sell O'Nien for Ajayi to raise projected points this week "
+                "(5.3 vs 0.5 pts). Then start Ajayi (5.3 pts) ahead of Virgil (1.8 pts)."
+            ),
+        },
+        "after_transfer": {
+            "out_name": "O'Nien",
+            "in_name": "Ajayi",
+            "xi_drop_name": "Virgil",
+            "formation": "3-5-2",
+            "xi": [{"web_name": "Ajayi", "xp_next": 5.3}],
+            "bench": [{"web_name": "Virgil", "xp_next": 1.8}],
+            "model_captain": {"web_name": "B.Fernandes", "xp_next": 7.5},
+        },
+    }
+    advice = DailyAdvice(
+        plan_action=PlanAction.WATCH,
+        headline="Pause because weekly_plan.best_affordable is missing.",
+        detail="The payload omits weekly_plan.best_affordable so I cannot safely confirm who starts.",
+        suggested_moves=[
+            DailyMove(
+                move_type=MoveType.TRANSFER,
+                summary="Recheck the missing weekly plan before making the transfer",
+                why="guessing",
+                player_ids=[539, 100],
+            ),
+        ],
+    )
+    aligned = align_advice_to_after_transfer(advice, weekly_plan)
+    assert aligned.plan_action == PlanAction.REVISE
+    assert "missing" not in aligned.headline.lower()
+    assert "Sell O'Nien for Ajayi" in aligned.headline
+    assert "bench Virgil" in aligned.headline
+    assert "weekly_plan" not in aligned.detail.lower()
+    assert "Ajayi" in aligned.detail
+    transfer = next(m for m in aligned.suggested_moves if m.move_type == MoveType.TRANSFER)
+    assert transfer.summary == "Sell O'Nien for Ajayi"
+    assert "5.3" in transfer.why
+
+
+def test_compact_payload_keeps_best_affordable_when_over_budget() -> None:
+    import json
+
+    from fpl_agent.llm.client import _compact_payload
+
+    payload = {
+        "gameweek": 3,
+        "sources": [{"url": f"https://example.com/{i}", "title": "x" * 200} for i in range(80)],
+        "transfer_plans": [{"moves": [{"out": i, "in": i + 1}], "note": "y" * 400} for i in range(40)],
+        "stretch_transfer_candidates": [{"in_name": f"P{i}", "blurb": "z" * 300} for i in range(40)],
+        "weekly_plan": {
+            "ok": True,
+            "best_affordable": {"out_name": "O'Nien", "in_name": "Ajayi", "reason": "points"},
+            "after_transfer": {
+                "out_name": "O'Nien",
+                "in_name": "Ajayi",
+                "xi_drop_name": "Virgil",
+                "xi": [{"web_name": "Ajayi"}],
+                "bench": [{"web_name": "Virgil"}],
+            },
+            "also_considered": [{"in_name": f"Alt{i}", "reason": "r" * 80} for i in range(10)],
+        },
+    }
+    raw = _compact_payload(payload, max_chars=8_000)
+    assert "...\"}" not in raw
+    parsed = json.loads(raw)
+    plan = parsed["weekly_plan"]
+    assert plan["best_affordable"]["in_name"] == "Ajayi"
+    assert plan["after_transfer"]["xi_drop_name"] == "Virgil"
 
 
 def test_xi_drop_uses_this_week_xi_not_horizon() -> None:

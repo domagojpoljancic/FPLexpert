@@ -106,8 +106,12 @@ def _deterministic_triggers(rows: list[dict[str, Any]]) -> tuple[list[str], list
             triggers.append(f"{name}: {chance}% chance of playing")
         if news:
             changed.append(f"{name}: {news}")
-        if row.get("p_start") is not None and float(row["p_start"]) < 0.35:
-            triggers.append(f"{name}: low projected start probability ({row['p_start']:.0%})")
+        gw_xp = row.get("gw1_xp")
+        if gw_xp is not None and float(gw_xp) < 1.0 and row.get("position") not in {1}:
+            # Low projected points matters more than start% for outfield squad holes.
+            triggers.append(f"{name}: only {float(gw_xp):.1f} projected points this week")
+        elif row.get("p_start") is not None and float(row["p_start"]) < 0.35:
+            triggers.append(f"{name}: unlikely to start ({row['p_start']:.0%} projected)")
     # de-dupe preserve order
     def uniq(items: list[str]) -> list[str]:
         seen: set[str] = set()
@@ -947,7 +951,12 @@ def align_advice_to_after_transfer(advice: DailyAdvice, weekly_plan: dict[str, A
         if move.move_type == MoveType.TRANSFER:
             saw_transfer = True
             why = best_reason or _scrub_false_bench_claims(move.why, xi_names)
-            new_moves.append(move.model_copy(update={"why": why}))
+            summary = move.summary
+            out_n = str(after.get("out_name") or "")
+            in_n = str(after.get("in_name") or "")
+            if out_n and in_n:
+                summary = f"Sell {out_n} for {in_n}"
+            new_moves.append(move.model_copy(update={"why": why, "summary": summary}))
             continue
         if move.move_type == MoveType.CAPTAIN:
             cap = after.get("model_captain") or {}
@@ -1027,6 +1036,14 @@ def align_advice_to_after_transfer(advice: DailyAdvice, weekly_plan: dict[str, A
             f"Sell {after.get('out_name')} for {after.get('in_name')}"
             f"{drop_bit}{cap_bit}."
         )
+        # Replace truncated-payload WATCH essays with the engine reason.
+        if best_reason and (
+            "weekly_plan" in detail.lower()
+            or "missing" in detail.lower()
+            or "cannot safely" in detail.lower()
+            or "omits" in detail.lower()
+        ):
+            detail = best_reason
     tldr = [_scrub_false_bench_claims(item, xi_names) for item in advice.tldr]
     if "aligned_lineup_to_after_transfer" not in warnings:
         warnings.append("aligned_lineup_to_after_transfer")
@@ -1145,12 +1162,13 @@ def _sources_section(report: DailyReport) -> list[str]:
     return lines
 
 
-def _player_names(rows: list[Any], *, with_start: bool = False) -> str:
+def _player_names(rows: list[Any], *, with_points: bool = False) -> str:
+    """Format player list; optional projected points so reports do not lead with start%."""
     names: list[str] = []
     for player in rows:
         name = str(player.get("web_name") or player.get("player_id") or "?")
-        if with_start:
-            names.append(f"{name} ({float(player.get('p_start') or 0):.0%})")
+        if with_points and player.get("xp_next") is not None:
+            names.append(f"{name} ({float(player['xp_next']):.1f} pts)")
         else:
             names.append(name)
     return ", ".join(names)
@@ -1196,9 +1214,12 @@ def _weekly_plan_section(report: DailyReport) -> list[str]:
         )
         lines.append("")
     if xi:
-        lines.append(f"- XI ({using.get('formation') or plan.get('formation')}): {_player_names(xi)}")
+        lines.append(
+            f"- XI ({using.get('formation') or plan.get('formation')}): "
+            f"{_player_names(xi, with_points=True)}"
+        )
     if bench:
-        lines.append(f"- Bench: {_player_names(bench, with_start=True)}")
+        lines.append(f"- Bench: {_player_names(bench, with_points=True)}")
     xi_why = explain_xi_choice(
         xi=[row for row in xi if isinstance(row, dict)],
         bench=[row for row in bench if isinstance(row, dict)],

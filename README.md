@@ -28,13 +28,13 @@ Overnight **price watch** runs on GitHub (20:00 Zagreb). **Squad news** runs whe
 - [29 Aug 04:02 CEST](reports/prices-gw3-20260829T020207Z.md) · GW3 · **NO ACTION** — No price action tonight.
 
 **Squad news** (pre-deadline — last 7 days)
+- [04 Sep 17:04 CEST](reports/predeadline-gw3-20260904T150413Z.md) · GW3 · **WATCH** — Pause the transfer decision because the payload omits weekly_plan.best_affordable and aft…
 - [04 Sep 16:55 CEST](reports/predeadline-gw3-20260904T145522Z.md) · GW3 · **REVISE** — Sell O'Nien for Egan, start Egan (bench Virgil), and captain B.Fernandes.
 - [04 Sep 16:13 CEST](reports/predeadline-gw3-20260904T141311Z.md) · GW3 · **REVISE** — Sell O'Nien for Egan, start Egan (bench Virgil), and captain B.Fernandes.
 - [04 Sep 15:59 CEST](reports/predeadline-gw3-20260904T135930Z.md) · GW3 · **REVISE** — Sell O'Nien for Egan, start Egan over Tzolis and captain Bruno Fernandes.
 - [04 Sep 15:24 CEST](reports/predeadline-gw3-20260904T132444Z.md) · GW3 · **REVISE** — Consider O'Nien to Egan, captain B.Fernandes, and keep every chip unused.
 - [04 Sep 15:10 CEST](reports/predeadline-gw3-20260904T131049Z.md) · GW3 · **REVISE** — Sell O'Nien for Egan, captain Bruno Fernandes, and keep every chip unused.
 - [02 Sep 21:49 CEST](reports/predeadline-gw3-20260902T194928Z.md) · GW3 · **REVISE** — Consider Virgil to De Cuyper, keep Bruno Fernandes captain, and do not spend a chip.
-- [02 Sep 21:20 CEST](reports/predeadline-gw3-20260902T192018Z.md) · GW3 · **REVISE** — Consider Virgil to Ajayi with the free transfer, keep Bruno Fernandes captain, and wait f…
 <!-- recent-runs:end -->
 
 ---
@@ -49,7 +49,13 @@ Overnight **price watch** runs on GitHub (20:00 Zagreb). **Squad news** runs whe
 
 Numbers (xP, prices, legality) are computed in code. The LLM only explains **legal candidates we already generated** — it cannot invent players, prices, or injuries.
 
-**How to read the advice:** transfers and the XI are ranked by **projected points**, not by fixture difficulty or kit. Start% only matters as a supporting note when someone is unlikely to play. Example: Virgil may face an easier club than Egan, but if Egan projects ~5.7 pts and Virgil ~2.1, the model starts Egan and benches Virgil.
+**How to read the advice**
+
+1. **Projected points decide the XI and transfers** — not “who has the easier fixture” and not start%. The model picks the 11 highest projected scores that fit a legal formation (e.g. only 3 defenders start in a 3-5-2).
+2. **Start% is a footnote** — used when someone is unlikely to play (rotation / injury risk). It is not why a high-start% player gets benched.
+3. **Easier club ≠ more points** — clean sheets and attacking returns are already baked into the points projection. Example: after buying Ajayi/Egan (~5 pts), Virgil (~2 pts) can sit even vs an easier opponent because there are only three defender slots and the new buy outscores him.
+
+Fixtures still matter as colour in the Why text; they do not override the points ranking.
 
 ### From your phone
 

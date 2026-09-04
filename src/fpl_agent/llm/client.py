@@ -507,10 +507,83 @@ def _load_instructions() -> str:
 
 
 def _compact_payload(payload: dict[str, Any], *, max_chars: int = 24_000) -> str:
+    """Serialize payload for the model without mid-JSON cuts that drop weekly_plan keys.
+
+    Hard truncation previously chopped ``best_affordable`` / ``after_transfer``, so the
+    model invented WATCH headlines about a "missing" plan even when code had the move.
+    Prefer dropping bulky optional lists while keeping the transfer plan intact.
+    """
     raw = json.dumps(payload, sort_keys=True, default=str)
     if len(raw) <= max_chars:
         return raw
-    return raw[: max_chars - 20] + '..."}'
+
+    trimmed: dict[str, Any] = dict(payload)
+    # Drop heaviest / least-critical blobs first.
+    drop_order = (
+        "sources",
+        "suggested_source_hubs",
+        "search_queries",
+        "transfer_plans",
+        "stretch_transfer_candidates",
+        "price_actions",
+        "chip_advice",
+        "transfer_candidates",
+    )
+    for key in drop_order:
+        if key not in trimmed:
+            continue
+        trimmed.pop(key, None)
+        raw = json.dumps(trimmed, sort_keys=True, default=str)
+        if len(raw) <= max_chars:
+            return raw
+
+    # Shrink also_considered / horizon lists inside weekly_plan, never the pick itself.
+    plan = trimmed.get("weekly_plan")
+    if isinstance(plan, dict):
+        plan = dict(plan)
+        also = plan.get("also_considered")
+        if isinstance(also, list) and len(also) > 3:
+            plan["also_considered"] = also[:3]
+        horizon = plan.get("horizon")
+        if isinstance(horizon, list) and len(horizon) > 3:
+            plan["horizon"] = horizon[:3]
+        # Keep only essential after_transfer fields if still huge.
+        after = plan.get("after_transfer")
+        if isinstance(after, dict):
+            keep_after = {
+                k: after[k]
+                for k in (
+                    "out_name",
+                    "in_name",
+                    "out_id",
+                    "in_id",
+                    "xi_drop_name",
+                    "formation",
+                    "xi",
+                    "bench",
+                    "model_captain",
+                    "model_vice",
+                )
+                if k in after
+            }
+            plan["after_transfer"] = keep_after
+        trimmed["weekly_plan"] = plan
+        raw = json.dumps(trimmed, sort_keys=True, default=str)
+        if len(raw) <= max_chars:
+            return raw
+
+    # Last resort: still never slice mid-JSON — emit a minimal critical subset.
+    minimal = {
+        "gameweek": trimmed.get("gameweek"),
+        "team": trimmed.get("team"),
+        "weekly_plan": trimmed.get("weekly_plan"),
+        "news_search_empty": trimmed.get("news_search_empty"),
+    }
+    raw = json.dumps(minimal, sort_keys=True, default=str)
+    if len(raw) <= max_chars:
+        return raw
+    # Absolute fallback (should be rare): keep weekly_plan alone.
+    return json.dumps({"weekly_plan": trimmed.get("weekly_plan")}, sort_keys=True, default=str)
 
 
 @dataclass
