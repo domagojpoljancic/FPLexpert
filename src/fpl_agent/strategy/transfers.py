@@ -410,6 +410,19 @@ def near_tie_same_out(a: TransferCandidate, b: TransferCandidate) -> bool:
     return abs(a.delta_gw_xp - b.delta_gw_xp) <= NEAR_TIE_GW_XP
 
 
+def near_tie_starter_upgrades(a: TransferCandidate, b: TransferCandidate) -> bool:
+    """True when two starter buys are the same position and this-week uplift is a near tie.
+
+    Used to stop the LLM flipping the named FT between close defender upgrades
+    that sell different squad players (e.g. O'Nien→Egan vs Shaw→De Cuyper).
+    """
+    if a.element_type != b.element_type:
+        return False
+    if not (a.in_starts and b.in_starts and a.affordable and b.affordable):
+        return False
+    return abs(a.delta_gw_xp - b.delta_gw_xp) <= NEAR_TIE_GW_XP
+
+
 def _transfer_sort_key(cand: TransferCandidate, *, out_group_boost: dict[tuple[int, int], tuple[float, float]]) -> tuple:
     """Sort key: starters first; same-OUT near-ties prefer horizon; else this-week then horizon."""
     boost = out_group_boost.get((cand.out_id, cand.in_id))

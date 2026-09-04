@@ -539,6 +539,90 @@ def test_reconcile_snaps_near_tie_same_out_to_engine(monkeypatch) -> None:
     assert "Egan" in out.suggested_moves[0].summary
 
 
+def test_reconcile_snaps_near_tie_different_out_to_engine(monkeypatch) -> None:
+    """LLM must not flip to Shaw→De Cuyper when it is a near tie with engine O'Nien→Egan."""
+    from fpl_agent import daily as daily_mod
+    from fpl_agent.daily import reconcile_transfer_advice
+    from fpl_agent.llm.client import DailyAdvice, DailyMove, MoveType, PlanAction
+    from fpl_agent.rules.season import load_season_rules_2026_27
+    from fpl_agent.strategy.transfers import TransferCandidate
+
+    egan = TransferCandidate(
+        out_id=539,
+        in_id=277,
+        out_name="O'Nien",
+        in_name="Egan",
+        element_type=2,
+        sell_tenths=40,
+        buy_tenths=40,
+        bank_after_tenths=5,
+        bank_shortfall_tenths=0,
+        affordable=True,
+        delta_weighted_xp=4.6,
+        delta_gw_xp=3.1,
+        out_p_start=0.4,
+        in_p_start=0.8,
+        in_starts=True,
+    )
+    de_cuyper = TransferCandidate(
+        out_id=300,
+        in_id=200,
+        out_name="Shaw",
+        in_name="De Cuyper",
+        element_type=2,
+        sell_tenths=45,
+        buy_tenths=47,
+        bank_after_tenths=3,
+        bank_shortfall_tenths=0,
+        affordable=True,
+        delta_weighted_xp=5.6,
+        delta_gw_xp=3.4,
+        out_p_start=0.8,
+        in_p_start=0.8,
+        in_starts=True,
+    )
+    weekly_plan = {
+        "ok": True,
+        "best_affordable": egan.as_payload(),
+        "after_transfer": {"out_name": "O'Nien", "in_name": "Egan"},
+        "also_considered": [],
+    }
+    advice = DailyAdvice(
+        plan_action=PlanAction.REVISE,
+        headline="Sell Shaw for De Cuyper",
+        suggested_moves=[
+            DailyMove(
+                move_type=MoveType.TRANSFER,
+                summary="Shaw to De Cuyper",
+                why="better horizon",
+                player_ids=[300, 200],
+            )
+        ],
+    )
+    seen: list[str] = []
+
+    def _fake_apply(plan, pick, **_kwargs):
+        assert pick is not None
+        seen.append(pick.in_name)
+        plan["best_affordable"] = pick.as_payload()
+
+    monkeypatch.setattr(daily_mod, "apply_transfer_pick_to_weekly_plan", _fake_apply)
+    out = reconcile_transfer_advice(
+        advice,
+        weekly_plan,
+        affordable_transfers=[egan, de_cuyper],
+        owned_ids=[1] * 15,
+        captain_id=1,
+        vice_id=1,
+        projections={},
+        gameweeks=[3, 4, 5],
+        weights=[1.0, 0.8, 0.6],
+        season_rules=load_season_rules_2026_27(),
+    )
+    assert seen == ["Egan"]
+    assert out.suggested_moves[0].player_ids == [539, 277]
+
+
 def test_reconcile_snaps_invalid_transfer_to_best_affordable(monkeypatch) -> None:
     from fpl_agent import daily as daily_mod
     from fpl_agent.daily import reconcile_transfer_advice
