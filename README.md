@@ -54,7 +54,7 @@ Numbers (xP, prices, legality) are computed in code. The LLM only explains **leg
 2. **Start% is a footnote** — used when someone is unlikely to play (rotation / injury risk). It is not why a high-start% player gets benched.
 3. **Easier club ≠ more points** — clean sheets and attacking returns are already baked into the points projection. Example: after buying Ajayi/Egan (~5 pts), Virgil (~2 pts) can sit even vs an easier opponent because there are only three defender slots and the new buy outscores him.
 
-Fixtures still matter as colour in the Why text; they do not override the points ranking.
+Fixtures still matter as colour in the Why text; they do not override the points ranking. When two buys for the same sale are within ~0.5 pts this week, the report prefers the better outlook over the next few gameweeks so the named transfer does not flip between reruns.
 
 ### From your phone
 

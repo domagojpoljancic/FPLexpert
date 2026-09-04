@@ -90,6 +90,40 @@ def test_this_week_upgrade_requires_buy_to_start() -> None:
     assert pick.in_id == 11
 
 
+def test_dedupe_top_prefers_horizon_on_same_out_near_tie() -> None:
+    from fpl_agent.strategy.transfers import TransferCandidate, _dedupe_top, near_tie_same_out
+
+    def cand(*, in_id: int, in_name: str, gw: float, weighted: float, out_id: int = 539) -> TransferCandidate:
+        return TransferCandidate(
+            out_id=out_id,
+            in_id=in_id,
+            out_name="O'Nien" if out_id == 539 else "Shaw",
+            in_name=in_name,
+            element_type=2,
+            sell_tenths=40,
+            buy_tenths=45,
+            bank_after_tenths=4,
+            bank_shortfall_tenths=0,
+            affordable=True,
+            delta_weighted_xp=weighted,
+            delta_gw_xp=gw,
+            out_p_start=0.4,
+            in_p_start=0.8,
+            in_starts=True,
+        )
+
+    ajayi = cand(in_id=100, in_name="Ajayi", gw=3.5, weighted=3.8)
+    egan = cand(in_id=277, in_name="Egan", gw=3.1, weighted=4.6)
+    de_cuyper = cand(in_id=200, in_name="De Cuyper", gw=3.4, weighted=5.6, out_id=300)
+    assert near_tie_same_out(ajayi, egan)
+    assert not near_tie_same_out(ajayi, de_cuyper)
+
+    # Pure this-week sort would pick Ajayi; near-tie lock prefers Egan's horizon.
+    top = _dedupe_top([ajayi, egan, de_cuyper], limit=5)
+    assert top[0].in_name == "Egan"
+    assert [c.in_name for c in top[:3]] == ["Egan", "Ajayi", "De Cuyper"]
+
+
 def test_explain_transfer_puts_numbers_in_brackets() -> None:
     from fpl_agent.strategy.transfers import TransferCandidate, explain_transfer
 

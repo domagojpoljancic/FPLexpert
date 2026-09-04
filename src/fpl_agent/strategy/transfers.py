@@ -21,6 +21,9 @@ from fpl_agent.rules.season import SeasonRules, load_season_rules_2026_27
 from fpl_agent.strategy.draft import BENCH_WEIGHT, select_best_xi
 
 MIN_IN_P_START = 0.40
+# When two starter buys for the same OUT are within this many this-week XI pts,
+# prefer the better horizon score so the named buy does not flip between runs.
+NEAR_TIE_GW_XP = 0.5
 
 
 def _starter_ids(
@@ -398,11 +401,54 @@ def _club_ok(
     return counts.get(in_team_id, 0) + 1 <= club_limit
 
 
-def _dedupe_top(candidates: list[TransferCandidate], *, limit: int) -> list[TransferCandidate]:
-    candidates = sorted(
-        candidates,
-        key=lambda c: (-int(c.in_starts), -c.delta_gw_xp, -c.delta_weighted_xp, c.out_id, c.in_id),
+def near_tie_same_out(a: TransferCandidate, b: TransferCandidate) -> bool:
+    """True when two starter buys share an OUT and this-week XI uplift is a near tie."""
+    if a.out_id != b.out_id:
+        return False
+    if not (a.in_starts and b.in_starts):
+        return False
+    return abs(a.delta_gw_xp - b.delta_gw_xp) <= NEAR_TIE_GW_XP
+
+
+def _transfer_sort_key(cand: TransferCandidate, *, out_group_boost: dict[tuple[int, int], tuple[float, float]]) -> tuple:
+    """Sort key: starters first; same-OUT near-ties prefer horizon; else this-week then horizon."""
+    boost = out_group_boost.get((cand.out_id, cand.in_id))
+    if boost is not None:
+        band_gw, weighted = boost
+        return (-int(cand.in_starts), -band_gw, -weighted, -cand.delta_gw_xp, cand.out_id, cand.in_id)
+    return (
+        -int(cand.in_starts),
+        -cand.delta_gw_xp,
+        -cand.delta_weighted_xp,
+        cand.out_id,
+        cand.in_id,
     )
+
+
+def _same_out_near_tie_boost(candidates: list[TransferCandidate]) -> dict[tuple[int, int], tuple[float, float]]:
+    """For each OUT with multiple near-tied starter buys, boost them onto the best this-week
+    band and let horizon break the tie (stable pick across reruns)."""
+    by_out: dict[int, list[TransferCandidate]] = {}
+    for cand in candidates:
+        if cand.in_starts:
+            by_out.setdefault(cand.out_id, []).append(cand)
+
+    boost: dict[tuple[int, int], tuple[float, float]] = {}
+    for group in by_out.values():
+        if len(group) < 2:
+            continue
+        max_gw = max(c.delta_gw_xp for c in group)
+        near = [c for c in group if max_gw - c.delta_gw_xp <= NEAR_TIE_GW_XP]
+        if len(near) < 2:
+            continue
+        for cand in near:
+            boost[(cand.out_id, cand.in_id)] = (max_gw, cand.delta_weighted_xp)
+    return boost
+
+
+def _dedupe_top(candidates: list[TransferCandidate], *, limit: int) -> list[TransferCandidate]:
+    boost = _same_out_near_tie_boost(candidates)
+    candidates = sorted(candidates, key=lambda c: _transfer_sort_key(c, out_group_boost=boost))
     per_out: dict[int, int] = {}
     selected: list[TransferCandidate] = []
     for cand in candidates:

@@ -30,7 +30,7 @@ from fpl_agent.llm.client import (
 from fpl_agent.projections.preseason import PlayerProjection, project_all
 from fpl_agent.rules.season import SeasonRules
 from fpl_agent.suggest import load_public_data
-from fpl_agent.strategy.transfers import POSITION_LABEL, TransferCandidate, explain_xi_choice
+from fpl_agent.strategy.transfers import POSITION_LABEL, TransferCandidate, explain_xi_choice, near_tie_same_out
 from fpl_agent.team_state.private import load_and_validate_private_state
 from fpl_agent.team_state.resolve import resolve_team_state
 
@@ -876,6 +876,23 @@ def reconcile_transfer_advice(
         return advice
 
     if engine_pick is not None and chosen.in_id == engine_pick.in_id and chosen.out_id == engine_pick.out_id:
+        return advice
+
+    # Same OUT, near-tied this week → keep the engine pick so Ajayi/Egan-style flips stop.
+    if engine_pick is not None and near_tie_same_out(chosen, engine_pick):
+        advice = _snap_advice_to_pick(advice, engine_pick)
+        apply_transfer_pick_to_weekly_plan(
+            weekly_plan,
+            engine_pick,
+            owned_ids=owned_ids,
+            captain_id=captain_id,
+            vice_id=vice_id,
+            projections=projections,
+            gameweeks=gameweeks,
+            weights=weights,
+            season_rules=season_rules,
+            affordable_transfers=affordable_transfers,
+        )
         return advice
 
     apply_transfer_pick_to_weekly_plan(
