@@ -31,7 +31,9 @@ def test_rules_diff() -> None:
     assert result.exit_code == 0
 
 
-def test_predeadline_skips_when_far_from_deadline() -> None:
+def test_predeadline_skips_when_far_from_deadline(monkeypatch) -> None:
+    # Freeze far-from-deadline so the gate skips without needing live OpenAI/network.
+    monkeypatch.setattr("fpl_agent.daily.hours_until", lambda _deadline: 200.0)
     result = runner.invoke(app, ["predeadline", "--offline", "--no-save"])
     assert result.exit_code == 0
     assert "SKIPPED" in result.stdout or "keep" in result.stdout.lower() or "more than a day" in result.stdout.lower()
