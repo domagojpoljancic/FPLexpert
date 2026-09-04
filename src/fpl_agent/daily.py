@@ -1345,6 +1345,9 @@ def write_daily_artifact(report: DailyReport, root: Path = Path("reports")) -> P
     path.write_text(render_daily_text(report), encoding="utf-8")
     json_path = path.with_suffix(".json")
     json_path.write_text(json.dumps(asdict(report), indent=2, default=str), encoding="utf-8")
+    from fpl_agent.reporting.plan_doc import write_plan_doc
+
+    write_plan_doc(report, root=root)
     _write_decision_ledger(report)
     return path
 
