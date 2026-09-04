@@ -261,6 +261,7 @@ def run_predeadline(
     except AgentError as exc:
         price_block = {"price_error": str(exc)}
 
+    from fpl_agent.domain.models import RiskProfile
     from fpl_agent.strategy.chips import recommend_chips
     from fpl_agent.strategy.plan import build_weekly_plan
     from fpl_agent.strategy.transfers import (
@@ -268,6 +269,7 @@ def run_predeadline(
         rank_transfer_candidates,
         rank_transfer_plans,
         same_position_shortlist,
+        select_primary_move,
         this_week_upgrade,
     )
 
@@ -286,6 +288,7 @@ def run_predeadline(
         catalog=catalog,
         projections=proj_by_id,
     )
+    risk = RiskProfile(settings.manager.risk_profile)
     transfer_plans = rank_transfer_plans(
         owned_ids=private.player_ids,
         bank_tenths=private.bank_tenths,
@@ -294,29 +297,61 @@ def run_predeadline(
         catalog=catalog,
         projections=proj_by_id,
         hits_enabled=True,
+        risk_profile=risk,
+        gameweek=gw,
+        early_season_gws=settings.planning.early_season_gws,
+        early_season_hit_margin_boost=settings.planning.early_season_hit_margin_boost,
+    )
+    primary = select_primary_move(
+        owned_ids=private.player_ids,
+        bank_tenths=private.bank_tenths,
+        free_transfers=int(private.free_transfers),
+        purchase_prices_tenths=private.purchase_prices_tenths,
+        catalog=catalog,
+        projections=proj_by_id,
+        risk_profile=risk,
+        gameweek=gw,
+        early_season_gws=settings.planning.early_season_gws,
+        early_season_hit_margin_boost=settings.planning.early_season_hit_margin_boost,
+        hits_enabled=True,
+        plans=transfer_plans,
     )
     chip_advice = recommend_chips(
         gameweek=gw,
         weekly_plan=weekly_plan,
         chip_instances=private.chip_instances,
     )
-    this_week = this_week_upgrade(affordable_transfers)
-    weekly_plan["best_affordable"] = this_week.as_payload() if this_week else None
+    # Display-only this-GW upgrade; does not feed best_affordable anymore.
+    this_gw_display = this_week_upgrade(affordable_transfers)
+    weekly_plan["best_this_gw"] = this_gw_display.as_payload() if this_gw_display else None
+
+    primary_move = primary.plan.moves[-1] if primary.plan and primary.plan.moves else None
+    if primary.action == "transfer" and primary.plan is not None and len(primary.plan.moves) == 1:
+        weekly_plan["best_affordable"] = primary_move.as_payload() if primary_move else None
+    elif primary.action == "transfer" and primary.plan is not None:
+        # Multi-swap / hit primary: headline is the plan; no single 1-FT best_affordable.
+        weekly_plan["best_affordable"] = None
+    else:
+        weekly_plan["best_affordable"] = None
+
+    weekly_plan["best_plan"] = primary.plan.as_payload() if primary.plan else None
+    weekly_plan["primary_move"] = primary.as_payload()
+
     weekly_plan["also_considered"] = []
-    if this_week is not None:
+    if primary_move is not None and len(primary.plan.moves) == 1:
         considered: list[dict[str, Any]] = []
-        for cand in same_position_shortlist(this_week, affordable_transfers, limit=3):
+        for cand in same_position_shortlist(primary_move, affordable_transfers, limit=3):
             row = cand.as_payload()
-            row["picked"] = cand.in_id == this_week.in_id
+            row["picked"] = cand.in_id == primary_move.in_id
             if not row["picked"]:
-                row["reason"] = explain_vs_pick(cand, this_week)
+                row["reason"] = explain_vs_pick(cand, primary_move)
             considered.append(row)
         weekly_plan["also_considered"] = considered
     weekly_plan["best_stretch"] = stretch_transfers[0].as_payload() if stretch_transfers else None
     weekly_plan["after_transfer"] = None
-    if this_week is not None:
+    if primary.action == "transfer" and primary.plan is not None and len(primary.plan.moves) == 1 and primary_move:
         after_ids = [
-            this_week.in_id if pid == this_week.out_id else pid for pid in private.player_ids
+            primary_move.in_id if pid == primary_move.out_id else pid for pid in private.player_ids
         ]
         after_plan = build_weekly_plan(
             owned_ids=after_ids,
@@ -324,25 +359,24 @@ def run_predeadline(
             gameweeks=gameweeks,
             captain_id=(
                 private.captain_id
-                if private.captain_id != this_week.out_id
-                else this_week.in_id
+                if private.captain_id != primary_move.out_id
+                else primary_move.in_id
             ),
-            vice_id=private.vice_id if private.vice_id != this_week.out_id else None,
+            vice_id=private.vice_id if private.vice_id != primary_move.out_id else None,
         )
         if after_plan.get("ok"):
             weekly_plan["after_transfer"] = {
-                "out_id": this_week.out_id,
-                "in_id": this_week.in_id,
-                "out_name": this_week.out_name,
-                "in_name": this_week.in_name,
-                "xi_drop_name": this_week.xi_drop_name,
+                "out_id": primary_move.out_id,
+                "in_id": primary_move.in_id,
+                "out_name": primary_move.out_name,
+                "in_name": primary_move.in_name,
+                "xi_drop_name": primary_move.xi_drop_name,
                 "formation": after_plan.get("formation"),
                 "xi": after_plan.get("xi"),
                 "bench": after_plan.get("bench"),
                 "model_captain": after_plan.get("model_captain"),
                 "model_vice": after_plan.get("model_vice"),
             }
-    weekly_plan["best_plan"] = transfer_plans[0].as_payload() if transfer_plans else None
     hit_plans = [p for p in transfer_plans if p.hit_cost > 0]
     weekly_plan["best_hit"] = hit_plans[0].as_payload() if hit_plans else None
     weekly_plan["chips"] = [c.as_payload() for c in chip_advice]
@@ -361,10 +395,11 @@ def run_predeadline(
         if not affordable_transfers and stretch_transfers
         else (
             "No this-week FT: affordable upgrades do not start in the modelled XI."
-            if affordable_transfers and this_week is None
+            if affordable_transfers and primary.action == "hold" and this_gw_display is None
             else (
-                "Legal improving 1-FT upgrades that start this GW are listed in transfer_candidates."
-                if this_week
+                "Legal improving 1-FT upgrades that start this GW are listed in transfer_candidates; "
+                "primary_move is locked by weighted horizon."
+                if primary.action == "transfer"
                 else "No improving same-position 1-FT upgrades found in the projection set."
             )
         )
@@ -539,6 +574,8 @@ def _llm_weekly_plan(plan: dict[str, Any]) -> dict[str, Any]:
         "also_considered",
         "chips",
         "after_transfer",
+        "primary_move",
+        "best_plan",
     )
     out = {key: plan[key] for key in keys if key in plan}
     out["horizon"] = list(plan.get("horizon") or [])[:3]

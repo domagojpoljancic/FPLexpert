@@ -473,6 +473,157 @@ def roll_recommendation_reason(
     return "Top move clears bar."
 
 
+RANKING_KEY_WEIGHTED_HORIZON = "weighted_horizon_net_of_hits"
+
+
+@dataclass(frozen=True)
+class PrimaryRecommendation:
+    """Single locked primary move for the pre-deadline headline."""
+
+    action: str  # "transfer" | "hold"
+    plan: TransferPlan | None
+    ranking_key: str
+    runner_up: TransferPlan | None
+    reason: str
+
+    def as_payload(self) -> dict[str, Any]:
+        plan = self.plan
+        move = plan.moves[-1] if plan and plan.moves else None
+        return {
+            "action": self.action,
+            "ranking_key": self.ranking_key,
+            "reason": self.reason,
+            "out_id": move.out_id if move else None,
+            "in_id": move.in_id if move else None,
+            "out_name": move.out_name if move else None,
+            "in_name": move.in_name if move else None,
+            "hit_cost": plan.hit_cost if plan else 0,
+            "n_transfers": len(plan.moves) if plan else 0,
+            "delta_weighted_xp": round(plan.delta_weighted_xp, 3) if plan else None,
+            "delta_gw_xp": round(plan.delta_gw_xp, 3) if plan else None,
+            "plan": plan.as_payload() if plan else None,
+            "runner_up": self.runner_up.as_payload() if self.runner_up else None,
+        }
+
+
+def _plan_buy_ids(plan: TransferPlan) -> set[int]:
+    return {m.in_id for m in plan.moves}
+
+
+def _plan_eligible_for_primary(plan: TransferPlan) -> bool:
+    """1-FT primary must start this GW; multi-swap/hit plans already passed plan filters."""
+    if len(plan.moves) == 1:
+        return bool(plan.moves[0].in_starts) and plan.affordable
+    return plan.affordable
+
+
+def _net_horizon(plan: TransferPlan) -> float:
+    return plan.delta_weighted_xp - (plan.hit_cost / 4.0)
+
+
+def select_primary_move(
+    *,
+    owned_ids: list[int],
+    bank_tenths: int,
+    free_transfers: int,
+    purchase_prices_tenths: dict[str, int],
+    catalog: dict[int, dict[str, Any]],
+    projections: dict[int, PlayerProjection],
+    rules: SeasonRules | None = None,
+    risk_profile: RiskProfile = RiskProfile.MODERATE,
+    gameweek: int = 1,
+    early_season_gws: int = 4,
+    early_season_hit_margin_boost: float = 1.0,
+    hits_enabled: bool = True,
+    plans: list[TransferPlan] | None = None,
+) -> PrimaryRecommendation:
+    """Lock one primary recommendation from weighted-horizon-ranked plans.
+
+    Reuses ``rank_transfer_plans`` (no new scoring formula). A 1-FT plan is only
+    primary when the buy ``in_starts``. A hit plan is only primary when its
+    net-horizon edge over the best 0-hit plan is positive.
+    """
+    rules = rules or load_season_rules_2026_27()
+    margin = hit_horizon_margin(
+        risk_profile=risk_profile,
+        gameweek=gameweek,
+        early_season_gws=early_season_gws,
+        early_season_boost=early_season_hit_margin_boost,
+    )
+    ranked = plans if plans is not None else rank_transfer_plans(
+        owned_ids=owned_ids,
+        bank_tenths=bank_tenths,
+        free_transfers=free_transfers,
+        purchase_prices_tenths=purchase_prices_tenths,
+        catalog=catalog,
+        projections=projections,
+        rules=rules,
+        hits_enabled=hits_enabled,
+        risk_profile=risk_profile,
+        gameweek=gameweek,
+        early_season_gws=early_season_gws,
+        early_season_hit_margin_boost=early_season_hit_margin_boost,
+    )
+    eligible = [p for p in ranked if _plan_eligible_for_primary(p)]
+    zero_hit = [p for p in eligible if p.hit_cost == 0]
+    best_zero = zero_hit[0] if zero_hit else None
+    best_zero_net = _net_horizon(best_zero) if best_zero else float("-inf")
+
+    primary: TransferPlan | None = None
+    for plan in eligible:
+        if plan.hit_cost > 0:
+            if best_zero is None:
+                primary = plan
+                break
+            if _net_horizon(plan) > best_zero_net:
+                primary = plan
+                break
+            continue
+        primary = plan
+        break
+
+    if primary is None:
+        reason = roll_recommendation_reason(
+            free_transfers=free_transfers,
+            best_plan=ranked[0] if ranked else None,
+            margin=margin,
+        )
+        return PrimaryRecommendation(
+            action="hold",
+            plan=None,
+            ranking_key=RANKING_KEY_WEIGHTED_HORIZON,
+            runner_up=None,
+            reason=reason,
+        )
+
+    primary_buys = _plan_buy_ids(primary)
+    runner_up: TransferPlan | None = None
+    for plan in eligible:
+        if plan is primary:
+            continue
+        if _plan_buy_ids(plan) == primary_buys:
+            continue
+        if plan.hit_cost > 0 and best_zero is not None and _net_horizon(plan) <= best_zero_net:
+            continue
+        runner_up = plan
+        break
+
+    reason = (
+        f"Primary by {RANKING_KEY_WEIGHTED_HORIZON}: "
+        + ", ".join(f"{m.out_name}→{m.in_name}" for m in primary.moves)
+        + f" (+{primary.delta_weighted_xp:.1f} weighted"
+        + (f", {primary.hit_cost}-pt hit" if primary.hit_cost else "")
+        + ")."
+    )
+    return PrimaryRecommendation(
+        action="transfer",
+        plan=primary,
+        ranking_key=RANKING_KEY_WEIGHTED_HORIZON,
+        runner_up=runner_up,
+        reason=reason,
+    )
+
+
 def rank_cross_position_plans(
     *,
     owned_ids: list[int],
