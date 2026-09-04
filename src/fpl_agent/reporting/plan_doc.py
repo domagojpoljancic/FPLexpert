@@ -155,6 +155,10 @@ def _para_bank_vs_spend(decision: dict[str, Any], primary: dict[str, Any]) -> st
     penalty = decision.get("ft_banking_penalty")
     deferred = decision.get("deferred_upside")
     net = decision.get("net_value_after_ft_penalty")
+    seq_rec = decision.get("sequence_recommendation")
+    seq_act = decision.get("sequence_act_now_ev")
+    seq_roll = decision.get("sequence_roll_to_2ft_ev")
+    seq_hit = decision.get("sequence_hit_ev")
     verdict = "Spend the FT now" if action == "transfer" else "Bank the FT"
     parts = [f"**Bank vs spend verdict: {verdict}.**"]
     if reason:
@@ -162,7 +166,11 @@ def _para_bank_vs_spend(decision: dict[str, Any], primary: dict[str, Any]) -> st
     detail: list[str] = []
     if ft_now is not None and ft_roll is not None and ft_xfer is not None:
         detail.append(f"FT now {ft_now} → {ft_xfer} if you transfer, {ft_roll} if you roll")
-    if penalty is not None:
+    if seq_rec is not None:
+        detail.append(
+            f"sequence {seq_rec} (act-now {seq_act}, roll-to-2FT {seq_roll}, hit {seq_hit})"
+        )
+    elif penalty is not None:
         detail.append(f"flat FT-bank option cost ~{float(penalty):.2f}")
     if deferred is not None:
         detail.append(f"deferred dual-move upside {float(deferred):+.2f}")

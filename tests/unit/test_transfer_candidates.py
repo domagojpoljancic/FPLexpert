@@ -705,3 +705,104 @@ def test_compare_roll_vs_transfer_spends_clear_edge() -> None:
     )
     assert decision.action == "transfer"
     assert "spend" in decision.reason.lower()
+
+
+def _move(
+    *,
+    out_id: int,
+    in_id: int,
+    weighted: float,
+    gw: float,
+    name_out: str = "Out",
+    name_in: str = "In",
+) -> "TransferCandidate":
+    from fpl_agent.strategy.transfers import TransferCandidate
+
+    return TransferCandidate(
+        out_id=out_id,
+        in_id=in_id,
+        out_name=name_out,
+        in_name=name_in,
+        element_type=2,
+        sell_tenths=40,
+        buy_tenths=45,
+        bank_after_tenths=0,
+        bank_shortfall_tenths=0,
+        affordable=True,
+        delta_weighted_xp=weighted,
+        delta_gw_xp=gw,
+        out_p_start=0.5,
+        in_p_start=0.8,
+        in_starts=True,
+    )
+
+
+def test_sequence_ev_banks_when_dual_beats_marginal_single() -> None:
+    """Marginal 1-FT now vs strong no-hit dual next week → bank (sequence EV)."""
+    from fpl_agent.rules.season import load_season_rules_2026_27
+    from fpl_agent.strategy.transfers import (
+        TransferPlan,
+        compare_roll_vs_transfer,
+        evaluate_bank_vs_spend_sequence,
+    )
+
+    rules = load_season_rules_2026_27()
+    single = TransferPlan(
+        moves=(_move(out_id=1, in_id=10, weighted=1.2, gw=0.8, name_in="Marginal"),),
+        free_transfers_used=1,
+        hit_cost=0,
+        delta_weighted_xp=1.2,
+        delta_gw_xp=0.8,
+        net_gw_xp=0.8,
+        bank_after_tenths=0,
+        affordable=True,
+    )
+    dual = TransferPlan(
+        moves=(
+            _move(out_id=1, in_id=10, weighted=2.0, gw=1.0, name_in="A"),
+            _move(out_id=2, in_id=11, weighted=3.0, gw=1.5, name_in="B"),
+        ),
+        free_transfers_used=2,
+        hit_cost=0,
+        delta_weighted_xp=5.0,
+        delta_gw_xp=2.5,
+        net_gw_xp=2.5,
+        bank_after_tenths=0,
+        affordable=True,
+    )
+    hit = TransferPlan(
+        moves=(
+            _move(out_id=1, in_id=10, weighted=2.0, gw=1.0),
+            _move(out_id=2, in_id=11, weighted=2.0, gw=1.0),
+        ),
+        free_transfers_used=1,
+        hit_cost=4,
+        delta_weighted_xp=4.0,
+        delta_gw_xp=2.0,
+        net_gw_xp=-2.0,
+        bank_after_tenths=0,
+        affordable=True,
+    )
+    seq = evaluate_bank_vs_spend_sequence(
+        free_transfers=1,
+        act_now_plan=single,
+        roll_dual_plan=dual,
+        hit_plan=hit,
+    )
+    assert seq.recommendation == "bank_for_2ft"
+    assert seq.roll_to_2ft_ev == 5.0
+    assert seq.act_now_ev == 1.2
+    assert seq.hit_ev == 0.0  # 4.0 - 4 hit
+
+    decision = compare_roll_vs_transfer(
+        free_transfers=1,
+        best_plan=single,
+        margin=1.0,
+        rules=rules,
+        ft_bank_option_value=0.35,
+        roll_dual_plan=dual,
+        hit_plan=hit,
+    )
+    assert decision.action == "roll"
+    assert decision.sequence_recommendation == "bank_for_2ft"
+    assert "dual-move" in decision.reason.lower() or "bank for 2" in decision.reason.lower()

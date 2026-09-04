@@ -766,7 +766,7 @@ def horizon_transfer_impact(
     }
 
 
-def deferred_double_transfer_upside(
+def best_no_hit_dual_plan(
     *,
     owned_ids: list[int],
     bank_tenths: int,
@@ -774,13 +774,10 @@ def deferred_double_transfer_upside(
     catalog: dict[int, dict[str, Any]],
     projections: dict[int, PlayerProjection],
     rules: SeasonRules,
-    best_single: TransferPlan | None,
     risk_profile: RiskProfile = RiskProfile.MODERATE,
     gameweek: int = 1,
-) -> float | None:
-    """Extra horizon xP from a no-hit double move if the manager banks to 2 FT."""
-    if best_single is None or best_single.hit_cost > 0:
-        return None
+) -> TransferPlan | None:
+    """Best affordable no-hit 2-FT plan (for bank-vs-spend sequence EV)."""
     dual_plans = [
         plan
         for plan in rank_transfer_plans(
@@ -796,9 +793,36 @@ def deferred_double_transfer_upside(
         )
         if len(plan.moves) == 2 and plan.hit_cost == 0
     ]
-    if not dual_plans:
+    return dual_plans[0] if dual_plans else None
+
+
+def deferred_double_transfer_upside(
+    *,
+    owned_ids: list[int],
+    bank_tenths: int,
+    purchase_prices_tenths: dict[str, int],
+    catalog: dict[int, dict[str, Any]],
+    projections: dict[int, PlayerProjection],
+    rules: SeasonRules,
+    best_single: TransferPlan | None,
+    risk_profile: RiskProfile = RiskProfile.MODERATE,
+    gameweek: int = 1,
+) -> float | None:
+    """Extra horizon xP from a no-hit double move if the manager banks to 2 FT."""
+    if best_single is None or best_single.hit_cost > 0:
         return None
-    best_dual = dual_plans[0]
+    best_dual = best_no_hit_dual_plan(
+        owned_ids=owned_ids,
+        bank_tenths=bank_tenths,
+        purchase_prices_tenths=purchase_prices_tenths,
+        catalog=catalog,
+        projections=projections,
+        rules=rules,
+        risk_profile=risk_profile,
+        gameweek=gameweek,
+    )
+    if best_dual is None:
+        return None
     upside = best_dual.delta_weighted_xp - best_single.delta_weighted_xp
     return round(upside, 3) if upside > 0.25 else None
 
@@ -815,6 +839,10 @@ class TransferDecision:
     net_value_after_ft_penalty: float
     deferred_upside: float | None = None
     min_horizon_to_spend: float = 0.0
+    sequence_act_now_ev: float | None = None
+    sequence_roll_to_2ft_ev: float | None = None
+    sequence_hit_ev: float | None = None
+    sequence_recommendation: str | None = None
 
     def as_payload(self) -> dict[str, Any]:
         return {
@@ -828,7 +856,112 @@ class TransferDecision:
             "net_value_after_ft_penalty": round(self.net_value_after_ft_penalty, 3),
             "deferred_upside": self.deferred_upside,
             "min_horizon_to_spend": round(self.min_horizon_to_spend, 3),
+            "sequence_act_now_ev": (
+                None if self.sequence_act_now_ev is None else round(self.sequence_act_now_ev, 3)
+            ),
+            "sequence_roll_to_2ft_ev": (
+                None
+                if self.sequence_roll_to_2ft_ev is None
+                else round(self.sequence_roll_to_2ft_ev, 3)
+            ),
+            "sequence_hit_ev": (
+                None if self.sequence_hit_ev is None else round(self.sequence_hit_ev, 3)
+            ),
+            "sequence_recommendation": self.sequence_recommendation,
         }
+
+
+@dataclass(frozen=True)
+class BankVsSpendSequence:
+    """Act-now (1 FT) vs roll-to-2-FT dual vs taking a hit — weighted-horizon EVs."""
+
+    recommendation: str  # act_now | bank_for_2ft | take_hit
+    act_now_ev: float
+    roll_to_2ft_ev: float | None
+    hit_ev: float | None
+    delta_bank_minus_act: float | None
+    reason: str
+
+    def as_payload(self) -> dict[str, Any]:
+        return {
+            "recommendation": self.recommendation,
+            "act_now_ev": round(self.act_now_ev, 3),
+            "roll_to_2ft_ev": (
+                None if self.roll_to_2ft_ev is None else round(self.roll_to_2ft_ev, 3)
+            ),
+            "hit_ev": None if self.hit_ev is None else round(self.hit_ev, 3),
+            "delta_bank_minus_act": (
+                None
+                if self.delta_bank_minus_act is None
+                else round(self.delta_bank_minus_act, 3)
+            ),
+            "reason": self.reason,
+        }
+
+
+SEQUENCE_BANK_EPSILON = 0.25
+
+
+def evaluate_bank_vs_spend_sequence(
+    *,
+    free_transfers: int,
+    act_now_plan: TransferPlan | None,
+    roll_dual_plan: TransferPlan | None,
+    hit_plan: TransferPlan | None = None,
+) -> BankVsSpendSequence:
+    """Compare spending 1 FT now vs banking to 2 FT for a dual vs a −4 hit."""
+    act_now = 0.0
+    if act_now_plan is not None and act_now_plan.hit_cost == 0:
+        act_now = float(act_now_plan.delta_weighted_xp)
+    roll_ev: float | None = None
+    if roll_dual_plan is not None and roll_dual_plan.hit_cost == 0 and len(roll_dual_plan.moves) >= 2:
+        roll_ev = float(roll_dual_plan.delta_weighted_xp)
+    hit_ev: float | None = None
+    if hit_plan is not None and hit_plan.hit_cost > 0:
+        hit_ev = float(hit_plan.delta_weighted_xp) - float(hit_plan.hit_cost)
+
+    delta_bank = None if roll_ev is None else roll_ev - act_now
+    candidates: list[tuple[str, float]] = [("act_now", act_now)]
+    if roll_ev is not None and free_transfers < 2:
+        candidates.append(("bank_for_2ft", roll_ev))
+    if hit_ev is not None:
+        candidates.append(("take_hit", hit_ev))
+    # Deterministic: highest EV, then recommendation name.
+    best_label, best_ev = max(candidates, key=lambda item: (item[1], item[0]))
+    if (
+        roll_ev is not None
+        and free_transfers < 2
+        and roll_ev > act_now + SEQUENCE_BANK_EPSILON
+        and (hit_ev is None or roll_ev + SEQUENCE_BANK_EPSILON >= hit_ev)
+    ):
+        best_label, best_ev = "bank_for_2ft", roll_ev
+
+    if best_label == "bank_for_2ft":
+        reason = (
+            f"Bank for 2 FT: dual-move horizon EV {roll_ev:.1f} beats act-now "
+            f"{act_now:.1f} (delta {delta_bank:+.1f})."
+        )
+    elif best_label == "take_hit":
+        reason = (
+            f"Hit sequence EV {hit_ev:.1f} leads act-now {act_now:.1f}"
+            + (f" and bank-to-2FT {roll_ev:.1f}" if roll_ev is not None else "")
+            + "."
+        )
+    else:
+        reason = (
+            f"Act now: single-move horizon EV {act_now:.1f}"
+            + (f" beats bank-to-2FT {roll_ev:.1f}" if roll_ev is not None else "")
+            + (f" and hit {hit_ev:.1f}" if hit_ev is not None else "")
+            + "."
+        )
+    return BankVsSpendSequence(
+        recommendation=best_label,
+        act_now_ev=act_now,
+        roll_to_2ft_ev=roll_ev,
+        hit_ev=hit_ev,
+        delta_bank_minus_act=delta_bank,
+        reason=reason,
+    )
 
 
 def compare_roll_vs_transfer(
@@ -840,6 +973,8 @@ def compare_roll_vs_transfer(
     ft_bank_option_value: float = FT_BANK_OPTION_VALUE,
     min_horizon_delta_to_spend_ft: float = 0.0,
     deferred_upside: float | None = None,
+    roll_dual_plan: TransferPlan | None = None,
+    hit_plan: TransferPlan | None = None,
 ) -> TransferDecision:
     """Weigh spending the FT now vs rolling to bank an extra transfer for next GW."""
     ft_after_roll, _ = free_transfer_rollover(
@@ -855,6 +990,13 @@ def compare_roll_vs_transfer(
     horizon_delta = best_plan.delta_weighted_xp if best_plan else 0.0
     net_after_penalty = horizon_delta - ft_penalty
 
+    sequence = evaluate_bank_vs_spend_sequence(
+        free_transfers=free_transfers,
+        act_now_plan=best_plan if best_plan and best_plan.hit_cost == 0 else None,
+        roll_dual_plan=roll_dual_plan,
+        hit_plan=hit_plan,
+    )
+
     base = dict(
         free_transfers_now=free_transfers,
         free_transfers_if_roll=ft_after_roll,
@@ -864,6 +1006,10 @@ def compare_roll_vs_transfer(
         net_value_after_ft_penalty=net_after_penalty,
         deferred_upside=deferred_upside,
         min_horizon_to_spend=min_to_spend,
+        sequence_act_now_ev=sequence.act_now_ev,
+        sequence_roll_to_2ft_ev=sequence.roll_to_2ft_ev,
+        sequence_hit_ev=sequence.hit_ev,
+        sequence_recommendation=sequence.recommendation,
     )
 
     if best_plan is None:
@@ -891,17 +1037,20 @@ def compare_roll_vs_transfer(
             **base,
         )
 
+    # Sequence EV: strong dual next week beats a weaker single now (replaces flat-only banking).
     if (
-        deferred_upside is not None
-        and deferred_upside > best_plan.delta_weighted_xp
+        sequence.recommendation == "bank_for_2ft"
+        and sequence.roll_to_2ft_ev is not None
         and free_transfers < 2
     ):
-        reason = (
-            f"Bank the FT ({free_transfers}→{ft_after_roll} next GW). "
-            f"A no-hit double move later scores +{deferred_upside:.1f} more horizon xP "
-            f"than today's best single swap (+{best_plan.delta_weighted_xp:.1f})."
+        return TransferDecision(
+            action="roll",
+            reason=(
+                f"Bank the FT ({free_transfers}→{ft_after_roll} next GW). "
+                f"{sequence.reason}"
+            ),
+            **base,
         )
-        return TransferDecision(action="roll", reason=reason, **base)
 
     if best_plan.delta_weighted_xp < min_to_spend:
         reason = (
@@ -918,6 +1067,8 @@ def compare_roll_vs_transfer(
     )
     if extra_ft_from_rolling > 0:
         reason += f" Net after FT-banking cost (~{ft_penalty:.1f}): {net_after_penalty:+.1f}."
+    if sequence.roll_to_2ft_ev is not None:
+        reason += f" Sequence: {sequence.reason}"
     return TransferDecision(action="transfer", reason=reason, **base)
 
 

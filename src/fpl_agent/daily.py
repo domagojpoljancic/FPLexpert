@@ -273,6 +273,7 @@ def run_predeadline(
     from fpl_agent.strategy.chips import recommend_chips
     from fpl_agent.strategy.plan import build_weekly_plan
     from fpl_agent.strategy.transfers import (
+        best_no_hit_dual_plan,
         compare_roll_vs_transfer,
         deferred_double_transfer_upside,
         hit_horizon_margin,
@@ -354,6 +355,16 @@ def run_predeadline(
         risk_profile=settings.manager.risk_profile,
         gameweek=gw,
     )
+    roll_dual = best_no_hit_dual_plan(
+        owned_ids=private.player_ids,
+        bank_tenths=private.bank_tenths,
+        purchase_prices_tenths=private.purchase_prices_tenths,
+        catalog=catalog,
+        projections=proj_by_id,
+        rules=season_rules,
+        risk_profile=settings.manager.risk_profile,
+        gameweek=gw,
+    )
     transfer_decision = compare_roll_vs_transfer(
         free_transfers=int(private.free_transfers),
         best_plan=best_plan_obj,
@@ -362,6 +373,8 @@ def run_predeadline(
         ft_bank_option_value=settings.planning.ft_bank_option_value,
         min_horizon_delta_to_spend_ft=settings.planning.min_horizon_delta_to_spend_ft,
         deferred_upside=deferred_upside,
+        roll_dual_plan=roll_dual,
+        hit_plan=hit_plans[0] if hit_plans else None,
     )
     weekly_plan["transfer_decision"] = transfer_decision.as_payload()
     weekly_plan["chips"] = [c.as_payload() for c in chip_advice]
