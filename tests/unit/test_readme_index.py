@@ -158,6 +158,9 @@ def test_refresh_includes_season_plan_link(tmp_path: Path) -> None:
     text = readme.read_text(encoding="utf-8")
     assert "**Season plan** (horizon charts)" in text
     assert "[reports/plan-gw3.md](reports/plan-gw3.md)" in text
+
+
+def test_refresh_skips_readme_without_markers(tmp_path: Path) -> None:
     readme = tmp_path / "README.md"
     readme.write_text("# nope\n", encoding="utf-8")
     assert refresh_readme_recent_runs(readme, tmp_path / "reports") is False
