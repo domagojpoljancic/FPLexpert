@@ -652,11 +652,61 @@ def _starter_candidate(
     return None
 
 
-def _advice_transfer_pair(advice: DailyAdvice) -> tuple[int, int] | None:
+def _advice_transfer_pair(
+    advice: DailyAdvice,
+    candidates: list[TransferCandidate] | None = None,
+) -> tuple[int, int] | None:
+    """Return out/in ids for the advised transfer.
+
+    Live models sometimes mis-label the transfer as hold while still citing the
+    candidate player_ids — treat those as transfers when they match a starter buy.
+    """
     for move in advice.suggested_moves:
         if move.move_type == MoveType.TRANSFER and len(move.player_ids) >= 2:
             return int(move.player_ids[0]), int(move.player_ids[1])
+    if not candidates:
+        return None
+    for move in advice.suggested_moves:
+        if len(move.player_ids) < 2:
+            continue
+        out_id, in_id = int(move.player_ids[0]), int(move.player_ids[1])
+        if _starter_candidate(candidates, out_id=out_id, in_id=in_id) is not None:
+            return out_id, in_id
     return None
+
+
+def _coerce_mislabeled_transfer_moves(
+    advice: DailyAdvice,
+    *,
+    out_id: int,
+    in_id: int,
+) -> DailyAdvice:
+    """Force matching moves to move_type=transfer so Do this cannot say hold for a swap."""
+    from fpl_agent.llm.client import PlanAction
+
+    changed = False
+    new_moves: list[DailyMove] = []
+    for move in advice.suggested_moves:
+        ids = [int(x) for x in move.player_ids]
+        if (
+            len(ids) >= 2
+            and ids[0] == out_id
+            and ids[1] == in_id
+            and move.move_type != MoveType.TRANSFER
+        ):
+            new_moves.append(move.model_copy(update={"move_type": MoveType.TRANSFER}))
+            changed = True
+        else:
+            new_moves.append(move)
+    if not changed:
+        return advice
+    updates: dict[str, Any] = {"suggested_moves": new_moves}
+    if advice.plan_action == PlanAction.KEEP:
+        updates["plan_action"] = PlanAction.REVISE
+    warnings = list(advice.warnings)
+    warnings.append("coerced_hold_move_to_transfer")
+    updates["warnings"] = warnings
+    return advice.model_copy(update=updates)
 
 
 def _snap_advice_to_pick(advice: DailyAdvice, pick: TransferCandidate) -> DailyAdvice:
@@ -737,11 +787,12 @@ def reconcile_transfer_advice(
             in_id=int(engine_raw["in_id"]),
         )
 
-    pair = _advice_transfer_pair(advice)
+    pair = _advice_transfer_pair(advice, affordable_transfers)
     if pair is None:
         return advice
 
     out_id, in_id = pair
+    advice = _coerce_mislabeled_transfer_moves(advice, out_id=out_id, in_id=in_id)
     chosen = _starter_candidate(affordable_transfers, out_id=out_id, in_id=in_id)
     if chosen is None:
         if engine_pick is None:
@@ -909,7 +960,16 @@ def _weekly_plan_section(report: DailyReport) -> list[str]:
     label = after if after.get("out_name") and after.get("in_name") else best
     if after.get("xi") and label:
         drop = after.get("xi_drop_name") or (best or {}).get("xi_drop_name")
-        drop_bit = f"; {drop} drops out of the XI" if drop and drop != label.get("out_name") else ""
+        xi_names = {
+            str(player.get("web_name") or "")
+            for player in (after.get("xi") or [])
+            if isinstance(player, dict)
+        }
+        drop_bit = (
+            f"; {drop} drops out of the XI"
+            if drop and drop != label.get("out_name") and drop not in xi_names
+            else ""
+        )
         lines.append(
             f"After **{label.get('out_name')} → {label.get('in_name')}** "
             f"({label.get('in_name')} starts{drop_bit}):"

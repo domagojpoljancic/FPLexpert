@@ -522,6 +522,125 @@ def test_reconcile_snaps_invalid_transfer_to_best_affordable(monkeypatch) -> Non
     assert any("aligned_transfer_to_best_affordable" in w for w in out.warnings)
 
 
+def test_reconcile_detects_mislabeled_hold_transfer(monkeypatch) -> None:
+    """LLM sometimes tags the transfer as hold while still citing out/in ids."""
+    from fpl_agent import daily as daily_mod
+    from fpl_agent.daily import DailyReport, reconcile_transfer_advice, render_daily_text
+    from fpl_agent.llm.client import DailyAdvice, DailyMove, MoveType, PlanAction
+    from fpl_agent.rules.season import load_season_rules_2026_27
+    from fpl_agent.strategy.transfers import TransferCandidate
+
+    ajayi = TransferCandidate(
+        out_id=356,
+        in_id=279,
+        out_name="Virgil",
+        in_name="Ajayi",
+        element_type=2,
+        sell_tenths=65,
+        buy_tenths=41,
+        bank_after_tenths=29,
+        bank_shortfall_tenths=0,
+        affordable=True,
+        delta_weighted_xp=1.3,
+        delta_gw_xp=3.5,
+        out_p_start=0.84,
+        in_p_start=0.8,
+        in_starts=True,
+        xi_drop_name="Virgil",
+    )
+    egan = TransferCandidate(
+        out_id=539,
+        in_id=277,
+        out_name="O'Nien",
+        in_name="Egan",
+        element_type=2,
+        sell_tenths=40,
+        buy_tenths=40,
+        bank_after_tenths=5,
+        bank_shortfall_tenths=0,
+        affordable=True,
+        delta_weighted_xp=4.6,
+        delta_gw_xp=2.8,
+        out_p_start=0.4,
+        in_p_start=0.8,
+        in_starts=True,
+        xi_drop_name="Tzolis",
+    )
+    weekly_plan = {
+        "ok": True,
+        "best_affordable": ajayi.as_payload(),
+        "after_transfer": {
+            "out_name": "Virgil",
+            "in_name": "Ajayi",
+            "xi": [{"web_name": "Ajayi"}],
+            "model_captain": {"web_name": "B.Fernandes", "xp_next": 7.5},
+        },
+        "also_considered": [],
+        "chips": [],
+    }
+    advice = DailyAdvice(
+        plan_action=PlanAction.REVISE,
+        headline="Consider O'Nien to Egan",
+        suggested_moves=[
+            DailyMove(
+                move_type=MoveType.HOLD,
+                summary="Consider O'Nien → Egan",
+                why="Egan starts more often.",
+                player_ids=[539, 277],
+            )
+        ],
+    )
+
+    def _fake_apply(plan, pick, **_kwargs):
+        assert pick is not None
+        plan["best_affordable"] = pick.as_payload()
+        plan["after_transfer"] = {
+            "out_id": pick.out_id,
+            "in_id": pick.in_id,
+            "out_name": pick.out_name,
+            "in_name": pick.in_name,
+            "xi": [{"web_name": pick.in_name}],
+            "model_captain": {"web_name": "B.Fernandes", "xp_next": 7.5},
+        }
+        plan["also_considered"] = [{**pick.as_payload(), "picked": True}]
+
+    monkeypatch.setattr(daily_mod, "apply_transfer_pick_to_weekly_plan", _fake_apply)
+    out = reconcile_transfer_advice(
+        advice,
+        weekly_plan,
+        affordable_transfers=[ajayi, egan],
+        owned_ids=[1] * 15,
+        captain_id=1,
+        vice_id=1,
+        projections={},
+        gameweeks=[3],
+        weights=[1.0],
+        season_rules=load_season_rules_2026_27(),
+    )
+    assert out.suggested_moves[0].move_type == MoveType.TRANSFER
+    assert weekly_plan["after_transfer"]["out_name"] == "O'Nien"
+    text = render_daily_text(
+        DailyReport(
+            gameweek=3,
+            plan_action="revise",
+            headline=out.headline,
+            what_changed=[],
+            attention_triggers=[],
+            suggested_moves=[m.model_dump(mode="json") for m in out.suggested_moves],
+            uncertainty=[],
+            warnings=[],
+            sources=[],
+            model_meta={},
+            executability="EXECUTABLE",
+            used_live_ai=True,
+            weekly_plan=weekly_plan,
+        )
+    )
+    assert "transfer: Consider O'Nien" in text or "transfer: O'Nien" in text or "O'Nien → Egan" in text
+    assert "After **O'Nien → Egan**" in text
+    assert "After **Virgil → Ajayi**" not in text
+
+
 def test_extract_web_search_trace_collects_queries_and_pages() -> None:
     from fpl_agent.llm.client import extract_web_search_trace
 

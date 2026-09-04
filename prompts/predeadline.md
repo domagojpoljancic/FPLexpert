@@ -45,6 +45,7 @@ Use web_search. Spend the budget: first the `suggested_source_hubs` (Premier Lea
 - `detail`: 80–150 words. Why this transfer (or hold) in plain English: who is likelier to start, who drops from the XI, bank, **how later gameweeks change** (from `horizon_impact`), and **whether spending the FT now beats banking it** (from `transfer_decision`). Put model numbers in parentheses at the end (e.g. "+2.8 pts this week; +4.6 over the next few GWs"). Do not lead with "net GW xP" or "weighted xP".
 - `suggested_moves`: at most a few concrete, legal ideas referencing supplied player_ids only.
 - Every `suggested_moves` item **must** include a non-empty `why` that stands alone in the same plain-English-then-brackets style.
+- A concrete 1-FT recommendation **must** use `move_type=transfer` (never `hold`) with both out_id and in_id. Use `hold` only for banking the FT or keeping chips.
 - Use `weekly_plan.also_considered` (top same-position starter buys) to say why the recommended IN beat the next options. Do not invent names.
 - Focus on injuries, suspensions, rotation, pressers, fixture/news risk, the supplied transfer candidate lists, and the supplied price actions for this deadline.
 
