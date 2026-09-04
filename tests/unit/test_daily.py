@@ -312,7 +312,7 @@ def test_report_flags_empty_news_search() -> None:
 
 
 def test_reconcile_aligns_weekly_plan_to_llm_transfer(monkeypatch) -> None:
-    """LLM may pick another starter candidate; This week must follow Do this."""
+    """LLM may name another starter; Do this / This week stay on best_affordable."""
     from fpl_agent import daily as daily_mod
     from fpl_agent.daily import DailyReport, reconcile_transfer_advice, render_daily_text
     from fpl_agent.llm.client import DailyAdvice, DailyMove, MoveType, PlanAction
@@ -411,7 +411,7 @@ def test_reconcile_aligns_weekly_plan_to_llm_transfer(monkeypatch) -> None:
         }
         plan["also_considered"] = [
             {**pick.as_payload(), "picked": True},
-            {**ajayi.as_payload(), "picked": False, "reason": "also looked at"},
+            {**egan.as_payload(), "picked": False, "reason": "also looked at"},
         ]
 
     monkeypatch.setattr(daily_mod, "apply_transfer_pick_to_weekly_plan", _fake_apply)
@@ -427,10 +427,10 @@ def test_reconcile_aligns_weekly_plan_to_llm_transfer(monkeypatch) -> None:
         weights=[1.0, 0.8, 0.6],
         season_rules=load_season_rules_2026_27(),
     )
-    assert out.suggested_moves[0].player_ids == [539, 277]
-    assert seen and seen[0].in_name == "Egan"
-    assert weekly_plan["best_affordable"]["in_name"] == "Egan"
-    assert weekly_plan["after_transfer"]["out_name"] == "O'Nien"
+    assert out.suggested_moves[0].player_ids == [356, 279]
+    assert seen and seen[0].in_name == "Ajayi"
+    assert weekly_plan["best_affordable"]["in_name"] == "Ajayi"
+    assert weekly_plan["after_transfer"]["out_name"] == "Virgil"
 
     report = DailyReport(
         gameweek=3,
@@ -448,9 +448,9 @@ def test_reconcile_aligns_weekly_plan_to_llm_transfer(monkeypatch) -> None:
         weekly_plan=weekly_plan,
     )
     text = render_daily_text(report)
-    assert "O'Nien to Egan" in text
-    assert "After **O'Nien → Egan**" in text
-    assert "After **Virgil → Ajayi**" not in text
+    assert "Ajayi" in text
+    assert "After **Virgil → Ajayi**" in text
+    assert "After **O'Nien → Egan**" not in text
 
 
 def test_reconcile_snaps_near_tie_same_out_to_engine(monkeypatch) -> None:
@@ -790,7 +790,8 @@ def test_reconcile_detects_mislabeled_hold_transfer(monkeypatch) -> None:
         season_rules=load_season_rules_2026_27(),
     )
     assert out.suggested_moves[0].move_type == MoveType.TRANSFER
-    assert weekly_plan["after_transfer"]["out_name"] == "O'Nien"
+    assert out.suggested_moves[0].player_ids == [356, 279]
+    assert weekly_plan["after_transfer"]["out_name"] == "Virgil"
     text = render_daily_text(
         DailyReport(
             gameweek=3,
@@ -808,9 +809,9 @@ def test_reconcile_detects_mislabeled_hold_transfer(monkeypatch) -> None:
             weekly_plan=weekly_plan,
         )
     )
-    assert "transfer: Consider O'Nien" in text or "transfer: O'Nien" in text or "O'Nien → Egan" in text
-    assert "After **O'Nien → Egan**" in text
-    assert "After **Virgil → Ajayi**" not in text
+    assert "Ajayi" in text
+    assert "After **Virgil → Ajayi**" in text
+    assert "After **O'Nien → Egan**" not in text
 
 
 def test_align_advice_rewrites_false_bench_lineup() -> None:

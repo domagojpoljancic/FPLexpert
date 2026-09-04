@@ -30,12 +30,7 @@ from fpl_agent.llm.client import (
 from fpl_agent.projections.preseason import PlayerProjection, project_all
 from fpl_agent.rules.season import SeasonRules
 from fpl_agent.suggest import load_public_data
-from fpl_agent.strategy.transfers import (
-    POSITION_LABEL,
-    TransferCandidate,
-    explain_xi_choice,
-    near_tie_starter_upgrades,
-)
+from fpl_agent.strategy.transfers import POSITION_LABEL, TransferCandidate, explain_xi_choice
 from fpl_agent.team_state.private import load_and_validate_private_state
 from fpl_agent.team_state.resolve import resolve_team_state
 
@@ -840,11 +835,12 @@ def reconcile_transfer_advice(
     weights: list[float],
     season_rules: SeasonRules,
 ) -> DailyAdvice:
-    """Keep Do this and This week on the same transfer.
+    """Keep Do this and This week on the engine 1-FT pick.
 
-    Live models may prefer another starter buy from transfer_candidates. When that
-    pick is legal, rebuild after_transfer / also_considered around it. When it is
-    not, snap advice back to best_affordable so the report cannot name two moves.
+    Near-tied defender upgrades (Ajayi / Egan / De Cuyper) previously flipped
+    whenever the model preferred a different legal starter buy. The named
+    transfer is now always ``weekly_plan.best_affordable``; the model may only
+    explain it, not replace it.
     """
     engine_raw = weekly_plan.get("best_affordable") or {}
     engine_pick: TransferCandidate | None = None
@@ -856,53 +852,20 @@ def reconcile_transfer_advice(
         )
 
     pair = _advice_transfer_pair(advice, affordable_transfers)
-    if pair is None:
+    if engine_pick is None:
         return advice
 
-    out_id, in_id = pair
-    advice = _coerce_mislabeled_transfer_moves(advice, out_id=out_id, in_id=in_id)
-    chosen = _starter_candidate(affordable_transfers, out_id=out_id, in_id=in_id)
-    if chosen is None:
-        if engine_pick is None:
-            return advice
-        advice = _snap_advice_to_pick(advice, engine_pick)
-        apply_transfer_pick_to_weekly_plan(
-            weekly_plan,
-            engine_pick,
-            owned_ids=owned_ids,
-            captain_id=captain_id,
-            vice_id=vice_id,
-            projections=projections,
-            gameweeks=gameweeks,
-            weights=weights,
-            season_rules=season_rules,
-            affordable_transfers=affordable_transfers,
-        )
+    if pair is not None:
+        out_id, in_id = pair
+        advice = _coerce_mislabeled_transfer_moves(advice, out_id=out_id, in_id=in_id)
+
+    if pair is not None and pair[0] == engine_pick.out_id and pair[1] == engine_pick.in_id:
         return advice
 
-    if engine_pick is not None and chosen.in_id == engine_pick.in_id and chosen.out_id == engine_pick.out_id:
-        return advice
-
-    # Near-tied starter upgrades (same position, ~same this-week pts) → keep engine pick.
-    if engine_pick is not None and near_tie_starter_upgrades(chosen, engine_pick):
-        advice = _snap_advice_to_pick(advice, engine_pick)
-        apply_transfer_pick_to_weekly_plan(
-            weekly_plan,
-            engine_pick,
-            owned_ids=owned_ids,
-            captain_id=captain_id,
-            vice_id=vice_id,
-            projections=projections,
-            gameweeks=gameweeks,
-            weights=weights,
-            season_rules=season_rules,
-            affordable_transfers=affordable_transfers,
-        )
-        return advice
-
+    advice = _snap_advice_to_pick(advice, engine_pick)
     apply_transfer_pick_to_weekly_plan(
         weekly_plan,
-        chosen,
+        engine_pick,
         owned_ids=owned_ids,
         captain_id=captain_id,
         vice_id=vice_id,

@@ -28,13 +28,13 @@ Overnight **price watch** runs on GitHub (20:00 Zagreb). **Squad news** runs whe
 - [29 Aug 04:02 CEST](reports/prices-gw3-20260829T020207Z.md) · GW3 · **NO ACTION** — No price action tonight.
 
 **Squad news** (pre-deadline — last 7 days)
+- [04 Sep 17:20 CEST](reports/predeadline-gw3-20260904T152003Z.md) · GW3 · **REVISE** — Sell Shaw for De Cuyper, start De Cuyper (bench Virgil), and captain B.Fernandes.
 - [04 Sep 17:17 CEST](reports/predeadline-gw3-20260904T151723Z.md) · GW3 · **REVISE** — Sell Shaw for De Cuyper, start De Cuyper (bench Virgil), and captain B.Fernandes.
 - [04 Sep 17:08 CEST](reports/predeadline-gw3-20260904T150826Z.md) · GW3 · **REVISE** — Sell O'Nien for Ajayi, start Ajayi (bench Virgil), and captain B.Fernandes.
 - [04 Sep 17:04 CEST](reports/predeadline-gw3-20260904T150413Z.md) · GW3 · **WATCH** — Pause the transfer decision because the payload omits weekly_plan.best_affordable and aft…
 - [04 Sep 16:55 CEST](reports/predeadline-gw3-20260904T145522Z.md) · GW3 · **REVISE** — Sell O'Nien for Egan, start Egan (bench Virgil), and captain B.Fernandes.
 - [04 Sep 16:13 CEST](reports/predeadline-gw3-20260904T141311Z.md) · GW3 · **REVISE** — Sell O'Nien for Egan, start Egan (bench Virgil), and captain B.Fernandes.
 - [04 Sep 15:59 CEST](reports/predeadline-gw3-20260904T135930Z.md) · GW3 · **REVISE** — Sell O'Nien for Egan, start Egan over Tzolis and captain Bruno Fernandes.
-- [04 Sep 15:24 CEST](reports/predeadline-gw3-20260904T132444Z.md) · GW3 · **REVISE** — Consider O'Nien to Egan, captain B.Fernandes, and keep every chip unused.
 <!-- recent-runs:end -->
 
 ---
@@ -55,7 +55,7 @@ Numbers (xP, prices, legality) are computed in code. The LLM only explains **leg
 2. **Start% is a footnote** — used when someone is unlikely to play (rotation / injury risk). It is not why a high-start% player gets benched.
 3. **Easier club ≠ more points** — clean sheets and attacking returns are already baked into the points projection. Example: after buying Ajayi/Egan (~5 pts), Virgil (~2 pts) can sit even vs an easier opponent because there are only three defender slots and the new buy outscores him.
 
-Fixtures still matter as colour in the Why text; they do not override the points ranking. When two starter buys in the same position are within ~0.5 pts this week, the report sticks to the engine pick (preferring the better next-few-GW outlook for the same sale) so the named transfer does not flip between reruns.
+Fixtures still matter as colour in the Why text; they do not override the points ranking. When two buys for the same sale are within ~0.5 pts this week, ranking prefers the better next-few-GW outlook. The named free transfer is always the engine pick — the model cannot swap it for another near-tied defender between reruns.
 
 ### From your phone
 
