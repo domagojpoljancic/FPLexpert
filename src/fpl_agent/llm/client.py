@@ -17,7 +17,7 @@ from fpl_agent.config import load_dotenv_files
 from fpl_agent.errors import AgentError, AgentErrorCode, ExitCode
 from fpl_agent.observability import redact_value
 
-PROMPT_VERSION = "predeadline-v7"
+PROMPT_VERSION = "predeadline-v8"
 SCHEMA_VERSION = "daily-advice-1.1.0"
 
 # Preferred domains for FPL-relevant search (omit scheme; includes subdomains).
@@ -579,11 +579,13 @@ class ResponsesOpenAIClient:
             "then search named squad players/clubs for injury, suspension, press-conference, "
             "or fixture news. Prefer official/club/FFS sources; treat Reddit as lower-confidence. "
             "Fill tldr (3–6 one-line bullets) and detail (decision rationale). "
-            "Write why, headline, and detail in plain football English a manager would say out loud "
-            "(who is likelier to play, who sits on the bench, bank left, why that XI). "
-            "Keep each why to one or two short sentences, then put model numbers in parentheses at the end, e.g. "
-            "'Sell O\\'Nien for Egan because Egan is much likelier to play (80% vs 40%). "
-            "Play Egan and bench Virgil (+3.1 pts this GW).' "
+            "Write why, headline, and detail in plain football English a manager would say out loud. "
+            "Lead with projected POINTS this week, then fixtures if useful; mention start% only as a "
+            "supporting detail when someone is unlikely to play. "
+            "When explaining a bench drop, compare the two players' projected points explicitly "
+            "(e.g. 'Egan 5.7 pts vs Virgil 2.1 pts') so an easier-looking fixture does not sound "
+            "like the deciding factor. "
+            "Keep each why to one or two short sentences, then put model numbers in parentheses. "
             "Do not lead with jargon such as net GW xP or weighted xP. "
             "Every suggested_moves item must include a non-empty why explaining that move. "
             "Use weekly_plan.also_considered to say why the recommended IN beat the other same-position options; "

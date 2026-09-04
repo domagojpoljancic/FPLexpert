@@ -60,6 +60,33 @@ def _xi_objective(
     return weighted, gw
 
 
+def xi_drop_for_swap(
+    *,
+    owned_ids: list[int],
+    out_id: int,
+    in_id: int,
+    projections: dict[int, PlayerProjection],
+    rules: SeasonRules,
+    gameweek_index: int | None = 0,
+) -> tuple[int | None, str | None]:
+    """Return (player_id, web_name) of the first player who leaves the modelled XI."""
+    old_starters = _starter_ids(owned_ids, projections, rules, gameweek_index=gameweek_index)
+    if old_starters is None:
+        return None, None
+    new_ids = [in_id if pid == out_id else pid for pid in owned_ids]
+    new_starters = _starter_ids(new_ids, projections, rules, gameweek_index=gameweek_index)
+    if new_starters is None:
+        return None, None
+    for pid in owned_ids:
+        if pid == out_id:
+            continue
+        if pid in old_starters and pid not in new_starters and pid in projections:
+            return pid, projections[pid].web_name
+    if out_id in old_starters and out_id not in new_starters and out_id in projections:
+        return out_id, projections[out_id].web_name
+    return None, None
+
+
 def xi_drop_name_for_swap(
     *,
     owned_ids: list[int],
@@ -70,21 +97,15 @@ def xi_drop_name_for_swap(
     gameweek_index: int | None = 0,
 ) -> str | None:
     """Name of the first player who leaves the modelled XI after the swap."""
-    old_starters = _starter_ids(owned_ids, projections, rules, gameweek_index=gameweek_index)
-    if old_starters is None:
-        return None
-    new_ids = [in_id if pid == out_id else pid for pid in owned_ids]
-    new_starters = _starter_ids(new_ids, projections, rules, gameweek_index=gameweek_index)
-    if new_starters is None:
-        return None
-    for pid in owned_ids:
-        if pid == out_id:
-            continue
-        if pid in old_starters and pid not in new_starters and pid in projections:
-            return projections[pid].web_name
-    if out_id in old_starters and out_id not in new_starters and out_id in projections:
-        return projections[out_id].web_name
-    return None
+    _pid, name = xi_drop_for_swap(
+        owned_ids=owned_ids,
+        out_id=out_id,
+        in_id=in_id,
+        projections=projections,
+        rules=rules,
+        gameweek_index=gameweek_index,
+    )
+    return name
 
 
 DEFAULT_LIMIT = 12
@@ -126,6 +147,9 @@ class TransferCandidate:
     in_p_start: float
     in_starts: bool = True
     xi_drop_name: str | None = None
+    out_xp_next: float = 0.0
+    in_xp_next: float = 0.0
+    xi_drop_xp_next: float | None = None
 
     def as_payload(self) -> dict[str, Any]:
         return {
@@ -145,6 +169,11 @@ class TransferCandidate:
             "in_p_start": round(self.in_p_start, 3),
             "in_starts": self.in_starts,
             "xi_drop_name": self.xi_drop_name,
+            "out_xp_next": round(self.out_xp_next, 2),
+            "in_xp_next": round(self.in_xp_next, 2),
+            "xi_drop_xp_next": (
+                None if self.xi_drop_xp_next is None else round(self.xi_drop_xp_next, 2)
+            ),
             "reason": explain_transfer(self),
         }
 
@@ -187,34 +216,45 @@ POSITION_LABEL = {1: "goalkeeper", 2: "defender", 3: "midfielder", 4: "forward"}
 
 
 def explain_transfer(cand: TransferCandidate) -> str:
-    """Plain-language reason a manager can act on; numbers stay in brackets."""
+    """Points-first reason a manager can act on; start% is supporting detail only."""
     gw = f"{cand.delta_gw_xp:+.1f} pts this week"
     horizon = f"{cand.delta_weighted_xp:+.1f} over the next few GWs"
     bank_bit = ""
     if cand.affordable and cand.bank_after_tenths >= 0:
-        bank_bit = f" Bank left after the move: £{cand.bank_after_tenths / 10:.1f}m."
+        bank_bit = f" Bank left: £{cand.bank_after_tenths / 10:.1f}m."
+    out_pts = cand.out_xp_next
+    in_pts = cand.in_xp_next
     if cand.in_starts:
-        if cand.in_p_start >= cand.out_p_start + 0.1:
-            body = (
-                f"Sell {cand.out_name} for {cand.in_name} because {cand.in_name} is much "
-                f"likelier to play ({cand.in_p_start:.0%} vs {cand.out_p_start:.0%}) and "
-                f"should score more for your team this week"
-            )
-        else:
-            body = (
-                f"Sell {cand.out_name} for {cand.in_name} because {cand.in_name} should "
-                f"outscore them this week while still starting ({cand.in_p_start:.0%} start chance)"
+        body = (
+            f"Sell {cand.out_name} for {cand.in_name} to raise projected points this week "
+            f"({in_pts:.1f} vs {out_pts:.1f} pts)"
+        )
+        if cand.out_p_start < 0.55:
+            body += f". {cand.out_name} is also only {cand.out_p_start:.0%} likely to play"
+        elif cand.in_p_start >= cand.out_p_start + 0.15:
+            body += (
+                f". {cand.in_name} is also more likely to play "
+                f"({cand.in_p_start:.0%} vs {cand.out_p_start:.0%})"
             )
         if cand.xi_drop_name and cand.xi_drop_name != cand.out_name:
-            body += (
-                f". After the transfer, play {cand.in_name} and move {cand.xi_drop_name} "
-                f"to the bench"
-            )
+            drop_pts = cand.xi_drop_xp_next
+            if drop_pts is not None:
+                body += (
+                    f". Then start {cand.in_name} ({in_pts:.1f} pts) ahead of "
+                    f"{cand.xi_drop_name} ({drop_pts:.1f} pts) — the XI ranks by projected "
+                    f"points, not by how easy the opponent looks"
+                )
+            else:
+                body += (
+                    f". Then start {cand.in_name} ahead of {cand.xi_drop_name} on "
+                    f"projected points this week"
+                )
         body += "."
     else:
         body = (
-            f"{cand.in_name} looks better than {cand.out_name} over the next few weeks, "
-            f"but would sit on the bench this week — so do not spend the free transfer on them yet."
+            f"{cand.in_name} ({in_pts:.1f} pts) looks better than {cand.out_name} "
+            f"({out_pts:.1f} pts) over the next few weeks, but would sit on the bench "
+            f"this week — so do not spend the free transfer on them yet."
         )
     return f"{body}{bank_bit} ({gw}; {horizon})."
 
@@ -224,11 +264,11 @@ def explain_vs_pick(alt: TransferCandidate, pick: TransferCandidate) -> str:
     gw_gap = pick.delta_gw_xp - alt.delta_gw_xp
     w_gap = pick.delta_weighted_xp - alt.delta_weighted_xp
     if gw_gap > 0.15:
-        week = f"gives you less this week than {pick.in_name}"
+        week = f"projects fewer points this week than {pick.in_name}"
     elif gw_gap < -0.15:
-        week = f"gives you a bit more this week than {pick.in_name}"
+        week = f"projects a bit more this week than {pick.in_name}"
     else:
-        week = f"is roughly level with {pick.in_name} this week"
+        week = f"is roughly level with {pick.in_name} on points this week"
     if w_gap < -0.3:
         horizon = "and looks better over the next few gameweeks"
     elif w_gap > 0.3:
@@ -238,15 +278,13 @@ def explain_vs_pick(alt: TransferCandidate, pick: TransferCandidate) -> str:
     start = ""
     if alt.out_name != pick.out_name:
         start = f" It would sell {alt.out_name} instead of {pick.out_name}."
-    elif alt.in_p_start >= alt.out_p_start + 0.15:
-        start = (
-            f" It would replace {alt.out_name} ({alt.out_p_start:.0%} start chance) "
-            f"with {alt.in_name} ({alt.in_p_start:.0%})."
-        )
     if not alt.affordable and alt.bank_shortfall_tenths > 0:
         start += f" It also needs £{alt.bank_shortfall_tenths / 10:.1f}m more in the bank."
+    pts = ""
+    if alt.in_xp_next or pick.in_xp_next:
+        pts = f" ({alt.in_name} {alt.in_xp_next:.1f} pts vs {pick.in_name} {pick.in_xp_next:.1f})."
     return (
-        f"{week} {horizon}.{start} "
+        f"{week} {horizon}.{start}{pts} "
         f"({alt.delta_gw_xp:+.1f} pts this week; {alt.delta_weighted_xp:+.1f} over the next few GWs)."
     )
 
@@ -259,24 +297,49 @@ def explain_xi_choice(
     in_name: str | None = None,
     drop_name: str | None = None,
 ) -> str:
-    """One or two short sentences explaining the modelled XI."""
+    """One or two short sentences explaining the modelled XI, with points when available."""
     if not xi:
         return ""
     formation_bit = f" in a {formation}" if formation else ""
-    if in_name and any(str(row.get("web_name")) == in_name for row in xi):
+    by_name = {
+        str(row.get("web_name") or ""): row
+        for row in [*xi, *bench]
+        if isinstance(row, dict) and row.get("web_name")
+    }
+
+    def pts(name: str | None) -> str | None:
+        if not name or name not in by_name:
+            return None
+        raw = by_name[name].get("xp_next")
+        if raw is None:
+            return None
+        return f"{float(raw):.1f}"
+
+    if in_name and in_name in by_name and any(str(row.get("web_name")) == in_name for row in xi):
+        in_pts = pts(in_name)
         if drop_name and any(str(row.get("web_name")) == drop_name for row in bench):
+            drop_pts = pts(drop_name)
+            if in_pts and drop_pts:
+                return (
+                    f"Why this XI: ranked by projected points{formation_bit}. "
+                    f"Start {in_name} ({in_pts} pts) and bench {drop_name} ({drop_pts} pts) — "
+                    f"even if {drop_name}'s fixture looks easier, the points projection is lower."
+                )
             return (
-                f"Why this XI: the model picks the highest projected points{formation_bit}. "
-                f"{in_name} comes straight in; {drop_name} is the weakest starter after the swap, "
-                f"so they go to the bench."
+                f"Why this XI: ranked by projected points{formation_bit}. "
+                f"{in_name} comes in; {drop_name} is benched because their projected score is lower."
+            )
+        if in_pts:
+            return (
+                f"Why this XI: ranked by projected points{formation_bit}, "
+                f"and {in_name} ({in_pts} pts) earns a starting spot."
             )
         return (
-            f"Why this XI: the model picks the highest projected points{formation_bit}, "
+            f"Why this XI: ranked by projected points{formation_bit}, "
             f"and {in_name} earns a starting spot."
         )
     return (
-        f"Why this XI: these 11 have the highest projected points{formation_bit}; "
-        f"bench order prefers higher start chance first."
+        f"Why this XI: these 11 have the highest projected points{formation_bit}."
     )
 
 
@@ -425,12 +488,16 @@ def rank_transfer_candidates(
                 delta_gw = new_xi[1] - base_xi[1]
                 new_starters = _starter_ids(new_ids, projections, rules) or set()
                 in_starts = inn.player_id in new_starters
-                xi_drop_name = xi_drop_name_for_swap(
+                drop_id, xi_drop_name = xi_drop_for_swap(
                     owned_ids=owned_ids,
                     out_id=out_id,
                     in_id=inn.player_id,
                     projections=projections,
                     rules=rules,
+                )
+                drop_proj = projections.get(drop_id) if drop_id is not None else None
+                xi_drop_xp = (
+                    float(drop_proj.xp_by_gw[0]) if drop_proj and drop_proj.xp_by_gw else None
                 )
             else:
                 delta_w = inn.weighted_xp - out_proj.weighted_xp
@@ -439,9 +506,12 @@ def rank_transfer_candidates(
                 delta_gw = in_gw - out_gw
                 in_starts = True
                 xi_drop_name = None
+                xi_drop_xp = None
             if delta_w < min_weighted_delta:
                 continue
             shortfall = max(0, -bank_after)
+            out_xp = float(out_proj.xp_by_gw[0]) if out_proj.xp_by_gw else 0.0
+            in_xp = float(inn.xp_by_gw[0]) if inn.xp_by_gw else 0.0
             cand = TransferCandidate(
                 out_id=out_id,
                 in_id=inn.player_id,
@@ -459,6 +529,9 @@ def rank_transfer_candidates(
                 in_p_start=inn.p_start,
                 in_starts=in_starts,
                 xi_drop_name=xi_drop_name,
+                out_xp_next=out_xp,
+                in_xp_next=in_xp,
+                xi_drop_xp_next=xi_drop_xp,
             )
             if cand.affordable:
                 affordable.append(cand)

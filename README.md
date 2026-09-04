@@ -49,6 +49,8 @@ Overnight **price watch** runs on GitHub (20:00 Zagreb). **Squad news** runs whe
 
 Numbers (xP, prices, legality) are computed in code. The LLM only explains **legal candidates we already generated** — it cannot invent players, prices, or injuries.
 
+**How to read the advice:** transfers and the XI are ranked by **projected points**, not by fixture difficulty or kit. Start% only matters as a supporting note when someone is unlikely to play. Example: Virgil may face an easier club than Egan, but if Egan projects ~5.7 pts and Virgil ~2.1, the model starts Egan and benches Virgil.
+
 ### From your phone
 
 1. Cursor mobile → **Cloud Agent** on this repo.

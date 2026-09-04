@@ -595,7 +595,7 @@ def apply_transfer_pick_to_weekly_plan(
         explain_vs_pick,
         horizon_transfer_impact,
         same_position_shortlist,
-        xi_drop_name_for_swap,
+        xi_drop_for_swap,
     )
 
     weekly_plan["best_affordable"] = pick.as_payload() if pick is not None else None
@@ -621,7 +621,7 @@ def apply_transfer_pick_to_weekly_plan(
         vice_id=vice_id if vice_id != pick.out_id else None,
     )
     # Source of truth for "who drops" is the GW0 after XI, not horizon-weighted ranking.
-    gw0_drop = xi_drop_name_for_swap(
+    drop_id, gw0_drop = xi_drop_for_swap(
         owned_ids=owned_ids,
         out_id=pick.out_id,
         in_id=pick.in_id,
@@ -640,13 +640,17 @@ def apply_transfer_pick_to_weekly_plan(
         }
         for pid, name in hold_xi.items():
             if pid not in after_xi_ids and pid != pick.out_id:
-                gw0_drop = name
+                drop_id, gw0_drop = pid, name
                 break
         else:
             if pick.out_id in hold_xi and pick.out_id not in after_xi_ids:
-                gw0_drop = hold_xi[pick.out_id]
+                drop_id, gw0_drop = pick.out_id, hold_xi[pick.out_id]
 
-    aligned_pick = replace(pick, xi_drop_name=gw0_drop) if gw0_drop != pick.xi_drop_name else pick
+    drop_proj = projections.get(drop_id) if drop_id is not None else None
+    drop_xp = float(drop_proj.xp_by_gw[0]) if drop_proj and drop_proj.xp_by_gw else None
+    aligned_pick = pick
+    if gw0_drop != pick.xi_drop_name or drop_xp != pick.xi_drop_xp_next:
+        aligned_pick = replace(pick, xi_drop_name=gw0_drop, xi_drop_xp_next=drop_xp)
     weekly_plan["best_affordable"] = aligned_pick.as_payload()
 
     considered: list[dict[str, Any]] = []
@@ -654,7 +658,7 @@ def apply_transfer_pick_to_weekly_plan(
         if cand.in_id == aligned_pick.in_id and cand.out_id == aligned_pick.out_id:
             row_cand = aligned_pick
         else:
-            alt_drop = xi_drop_name_for_swap(
+            alt_drop_id, alt_drop = xi_drop_for_swap(
                 owned_ids=owned_ids,
                 out_id=cand.out_id,
                 in_id=cand.in_id,
@@ -662,7 +666,9 @@ def apply_transfer_pick_to_weekly_plan(
                 rules=season_rules,
                 gameweek_index=0,
             )
-            row_cand = replace(cand, xi_drop_name=alt_drop) if alt_drop != cand.xi_drop_name else cand
+            alt_proj = projections.get(alt_drop_id) if alt_drop_id is not None else None
+            alt_xp = float(alt_proj.xp_by_gw[0]) if alt_proj and alt_proj.xp_by_gw else None
+            row_cand = replace(cand, xi_drop_name=alt_drop, xi_drop_xp_next=alt_xp)
         row = row_cand.as_payload()
         row["picked"] = cand.in_id == aligned_pick.in_id and cand.out_id == aligned_pick.out_id
         if not row["picked"]:
@@ -966,15 +972,26 @@ def align_advice_to_after_transfer(advice: DailyAdvice, weekly_plan: dict[str, A
         if in_name in xi_names:
             summary = f"Start {in_name}"
             why = (
-                f"Play {in_name}: they have a stronger projected score this week than the "
-                f"player they replace in the XI."
+                f"Play {in_name}: higher projected points this week than the defender "
+                f"they replace in the XI."
             )
             if drop and drop in bench_names:
                 summary += f" and bench {drop}"
-                why = (
-                    f"Play {in_name} and bench {drop}. The model rebuilds the XI for highest "
-                    f"points this week; {drop} is the one who falls out."
-                )
+                in_row = next((r for r in xi_rows if str(r.get("web_name")) == in_name), {})
+                drop_row = next((r for r in bench_rows if str(r.get("web_name")) == drop), {})
+                in_pts = in_row.get("xp_next")
+                drop_pts = drop_row.get("xp_next")
+                if in_pts is not None and drop_pts is not None:
+                    why = (
+                        f"Start {in_name} ({float(in_pts):.1f} pts) and bench {drop} "
+                        f"({float(drop_pts):.1f} pts). The XI is ranked by projected points — "
+                        f"not by how easy the fixture looks."
+                    )
+                else:
+                    why = (
+                        f"Start {in_name} and bench {drop} because {in_name} projects more "
+                        f"points this week."
+                    )
             new_moves.append(
                 DailyMove(
                     move_type=MoveType.LINEUP,
