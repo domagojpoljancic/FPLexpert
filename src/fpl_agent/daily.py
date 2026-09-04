@@ -357,6 +357,40 @@ def run_predeadline(
                 considered.append(row)
         weekly_plan["also_considered"] = considered
         weekly_plan["primary_is_close"] = primary.is_close
+
+    alternatives: list[dict[str, Any]] = []
+    if primary.runner_up is not None:
+        alternatives.append(
+            {
+                "action": "transfer",
+                **primary.runner_up.as_payload(),
+                "in_id": primary.runner_up.moves[-1].in_id if primary.runner_up.moves else None,
+                "out_id": primary.runner_up.moves[-1].out_id if primary.runner_up.moves else None,
+                "in_name": primary.runner_up.moves[-1].in_name if primary.runner_up.moves else None,
+                "out_name": primary.runner_up.moves[-1].out_name if primary.runner_up.moves else None,
+            }
+        )
+    alternatives.append({"action": "hold", "reason": "Bank the FT if news vetoes every legal upgrade."})
+    weekly_plan["alternatives"] = alternatives
+
+    veto_watchlist: list[dict[str, Any]] = []
+    seen_watch: set[int] = set()
+    for row in rows:
+        pid = int(row["player_id"])
+        if pid in seen_watch:
+            continue
+        seen_watch.add(pid)
+        veto_watchlist.append({"player_id": pid, "web_name": str(row.get("web_name") or pid)})
+    for block in (weekly_plan.get("primary_move"), *alternatives):
+        if not isinstance(block, dict):
+            continue
+        for key_id, key_name in (("in_id", "in_name"), ("out_id", "out_name")):
+            pid = block.get(key_id)
+            if pid is None or int(pid) in seen_watch:
+                continue
+            seen_watch.add(int(pid))
+            veto_watchlist.append({"player_id": int(pid), "web_name": str(block.get(key_name) or pid)})
+    weekly_plan["veto_watchlist"] = veto_watchlist[:24]
     weekly_plan["best_stretch"] = stretch_transfers[0].as_payload() if stretch_transfers else None
     weekly_plan["after_transfer"] = None
     if primary.action == "transfer" and primary.plan is not None and len(primary.plan.moves) == 1 and primary_move:
@@ -491,6 +525,9 @@ def run_predeadline(
         allowed_source_ids=allowed_sources or {c.claim_id for c in fpl_claims},
         price_actions=price_block.get("price_actions") if isinstance(price_block.get("price_actions"), list) else None,
         owned_player_ids=set(private.player_ids),
+        primary_move=weekly_plan.get("primary_move") if isinstance(weekly_plan.get("primary_move"), dict) else None,
+        alternatives=weekly_plan.get("alternatives") if isinstance(weekly_plan.get("alternatives"), list) else None,
+        veto_claims=[c.model_dump(mode="json") for c in all_claims],
     )
     advice = apply_news_fail_closed(
         advice,
@@ -586,6 +623,8 @@ def _llm_weekly_plan(plan: dict[str, Any]) -> dict[str, Any]:
         "after_transfer",
         "primary_move",
         "best_plan",
+        "alternatives",
+        "veto_watchlist",
     )
     out = {key: plan[key] for key in keys if key in plan}
     out["horizon"] = list(plan.get("horizon") or [])[:3]

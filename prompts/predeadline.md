@@ -19,15 +19,16 @@ This prompt is used about **one day before** the gameweek deadline — not for t
 - If `news_search_empty` is set or web search returned no pages, do **not** invent injuries, pressers, or predicted XIs. Say news was not retrieved. Captain/transfer advice may still use supplied xP.
 
 ## Transfer evaluation (required)
-- Treat `weekly_plan.after_transfer` as the XI if you recommend `best_affordable`. That buy **must** appear in that XI (`in_starts` true). The current `weekly_plan.xi` is the hold path only — do not tell the manager to transfer for a player who would not start.
+- The primary transfer or hold is **already chosen** in `weekly_plan.primary_move` (deterministic, weighted-horizon). Your job is to **research `veto_watchlist` and confirm or veto** that primary — not to re-rank candidates.
+- Echo `weekly_plan.primary_move` out/in IDs in `suggested_moves` unless you cite an **official/club-tier** claim (`source_tier` official or club; category injury, suspension, availability, or rotation) that makes the primary buy unavailable or a clear minutes risk. Narrative/Reddit/community sources may inform `uncertainty`/`watch` but must **not** change the headline transfer.
+- If you veto the primary with a valid official-tier claim, switch only to a supplied `weekly_plan.alternatives` row (or hold). Never invent a buy ID and never pick a different affordable row on taste.
+- Treat `weekly_plan.after_transfer` as the XI if you confirm the primary 1-FT. That buy **must** appear in that XI (`in_starts` true). The current `weekly_plan.xi` is the hold path only.
 - Do not recommend a candidate with `"in_starts": false` as this week's free transfer.
-- Always inspect `transfer_candidates` (legal, affordable improving 1-FT swaps), `stretch_transfer_candidates` (improving swaps that need more bank), and `transfer_plans` (1- or 2-swap plans with hit cost already subtracted).
-- If a `transfer_plans` row has `hit_cost > 0` and positive `net_gw_xp`, you may recommend the hit only when that net edge is clear. Never invent a -4 that is not in `transfer_plans`.
+- Inspect `transfer_candidates`, `stretch_transfer_candidates`, and `transfer_plans` only as context; buy IDs must still come from those lists or from `primary_move` / `alternatives`.
+- If a `transfer_plans` row has `hit_cost > 0` and positive `net_gw_xp`, you may recommend the hit only when that plan **is** the supplied primary (or a supplied alternative after a veto). Never invent a -4 that is not supplied.
 - If `chip_advice` says hold, do not recommend playing that chip this week. If it says play, you may surface it as `move_type=chip` with the supplied reason.
-- If `transfer_candidates` is non-empty and news does not veto the buy, prefer `plan_action=revise` with one concrete `move_type=transfer` citing both out_id and in_id.
-- If `transfer_candidates` is empty but stretch targets exist, do **not** pretend a transfer is executable. Say the FT should be held for bank reasons, name the best stretch target and shortfall, and still give captain/vice/lineup advice. Prefer `watch` or `keep` unless news forces a different change.
-- If both lists are empty, say so explicitly — do not hide behind a vague "hold the squad".
-- Thin injury news is not a reason to skip naming the best supplied candidate when the projection edge is clear.
+- If `primary_move.action` is `hold` (or transfer_candidates empty but stretch targets exist), do **not** pretend a transfer is executable. Say the FT should be held, name the best stretch target when present, and still give captain/vice/lineup advice. Prefer `watch` or `keep` unless official news forces a different change.
+- Thin injury news is not a reason to skip confirming the primary when the projection edge is clear and no official-tier veto applies.
 
 ## Search
 Use web_search. Spend the budget: first the `suggested_source_hubs` (Premier League fantasy news, Fantasy Football Scout, r/FantasyPL, BBC Sport fantasy football, Sky Sports), then named squad players and clubs for injury, suspension, pressers, and predicted line-ups. Do not skip hubs just because FPL status fields look clean.

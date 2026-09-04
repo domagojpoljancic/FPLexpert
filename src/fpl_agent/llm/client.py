@@ -17,7 +17,7 @@ from fpl_agent.config import load_dotenv_files
 from fpl_agent.errors import AgentError, AgentErrorCode, ExitCode
 from fpl_agent.observability import redact_value
 
-PROMPT_VERSION = "predeadline-v4"
+PROMPT_VERSION = "predeadline-v5"
 SCHEMA_VERSION = "daily-advice-1.1.0"
 
 # Preferred domains for FPL-relevant search (omit scheme; includes subdomains).
@@ -156,103 +156,130 @@ class FakeOpenAIClient:
         if self.daily:
             return self.daily, CallMetadata(fallback=False, model="fake")
         triggers = list(payload.get("attention_triggers") or [])
+        weekly = payload.get("weekly_plan") if isinstance(payload.get("weekly_plan"), dict) else {}
+        primary = weekly.get("primary_move") if isinstance(weekly.get("primary_move"), dict) else None
         affordable = list(payload.get("transfer_candidates") or [])
         stretch = list(payload.get("stretch_transfer_candidates") or [])
         moves: list[DailyMove] = []
         tldr: list[str] = []
-        starter_buys = [c for c in affordable if c.get("in_starts", True)]
-        if starter_buys:
-            top = starter_buys[0]
+        if primary and str(primary.get("action") or "") == "transfer" and primary.get("in_id") is not None:
             action = PlanAction.REVISE
-            reason = str(top.get("reason") or "").strip()
-            if not reason:
-                reason = (
-                    f"{top.get('in_name')} is likelier to start than {top.get('out_name')} this week "
-                    f"({float(top.get('delta_gw_xp') or 0):+.1f} pts this GW)."
-                )
-            headline = (
-                f"Consider {top.get('out_name')} to {top.get('in_name')} with the free transfer."
+            out_id = int(primary["out_id"])
+            in_id = int(primary["in_id"])
+            out_name = primary.get("out_name") or out_id
+            in_name = primary.get("in_name") or in_id
+            reason = str(primary.get("reason") or "").strip() or (
+                f"{in_name} is the locked weighted-horizon primary over {out_name}."
             )
+            headline = f"Confirm {out_name} to {in_name} with the free transfer."
             moves.append(
                 DailyMove(
                     move_type=MoveType.TRANSFER,
-                    summary=(
-                        f"Transfer {top.get('out_name')} ({top.get('out_id')}) to "
-                        f"{top.get('in_name')} ({top.get('in_id')}); affordable with current bank."
-                    ),
+                    summary=f"Transfer {out_name} ({out_id}) to {in_name} ({in_id}); locked primary.",
                     why=reason,
-                    player_ids=[int(top["out_id"]), int(top["in_id"])],
+                    player_ids=[out_id, in_id],
                     urgency="high",
                 )
             )
-            tldr = [
-                f"Transfer {top.get('out_name')} -> {top.get('in_name')}",
-                "Keep FT only if late news vetoes the buy target",
-            ]
+            tldr = [f"Transfer {out_name} -> {in_name}", "Confirm unless official news vetoes the buy"]
             detail = (
-                "Deterministic fallback chose the top affordable transfer that starts this GW. "
+                "Deterministic fallback echoed weekly_plan.primary_move. "
                 "Live OpenAI synthesis was not used."
             )
-        elif affordable:
-            action = PlanAction.WATCH if triggers else PlanAction.KEEP
-            headline = "Hold the FT: affordable upgrades do not start in the modelled XI this week."
-            moves.append(
-                DailyMove(
-                    move_type=MoveType.HOLD,
-                    summary="Do not spend the FT on a player who would sit on the bench this week.",
-                    why="Affordable candidates exist but in_starts is false for all of them.",
-                    urgency="low",
-                )
-            )
-            tldr = ["Hold the FT: no buy target starts this week"]
-            detail = (
-                "Deterministic fallback: every affordable 1-FT leaves the buy on the bench this GW."
-            )
-        elif stretch:
-            top = stretch[0]
-            shortfall = int(top.get("bank_shortfall_tenths") or 0)
-            action = PlanAction.WATCH if not triggers else PlanAction.WATCH
-            headline = (
-                f"No affordable FT upgrade with current bank; best stretch is "
-                f"{top.get('out_name')} -> {top.get('in_name')} (needs £{shortfall/10:.1f}m)."
-            )
-            moves.append(
-                DailyMove(
-                    move_type=MoveType.HOLD,
-                    summary=(
-                        f"Hold the FT for now. Stretch target when funded: "
-                        f"{top.get('out_name')} ({top.get('out_id')}) -> "
-                        f"{top.get('in_name')} ({top.get('in_id')}), shortfall £{shortfall/10:.1f}m."
-                    ),
-                    why=(
-                        f"No legal improving 1-FT fits the bank; best stretch needs "
-                        f"£{shortfall/10:.1f}m more."
-                    ),
-                    player_ids=[int(top["out_id"]), int(top["in_id"])],
-                    urgency="medium",
-                )
-            )
-            tldr = [
-                "No legal improving FT fits the bank",
-                f"Stretch: {top.get('out_name')} -> {top.get('in_name')} (needs £{shortfall/10:.1f}m)",
-            ]
-            detail = (
-                "Deterministic fallback: bank blocks every improving same-position 1-FT. "
-                "Named the top stretch_transfer_candidate so the manager has a concrete target."
-            )
         else:
-            action = PlanAction.WATCH if triggers else PlanAction.KEEP
-            headline = "Deterministic daily summary (no live model)."
-            moves.append(
-                DailyMove(
-                    move_type=MoveType.HOLD,
-                    summary="No live model; hold unless an attention trigger is material.",
-                    why="Deterministic fallback with no transfer candidates or live model.",
-                    urgency="medium" if triggers else "low",
+            starter_buys = [c for c in affordable if c.get("in_starts", True)]
+            if starter_buys:
+                top = starter_buys[0]
+                action = PlanAction.REVISE
+                reason = str(top.get("reason") or "").strip()
+                if not reason:
+                    reason = (
+                        f"{top.get('in_name')} is likelier to start than {top.get('out_name')} this week "
+                        f"({float(top.get('delta_gw_xp') or 0):+.1f} pts this GW)."
+                    )
+                headline = (
+                    f"Consider {top.get('out_name')} to {top.get('in_name')} with the free transfer."
                 )
-            )
-            tldr = ["No live model; hold unless an attention trigger is material."]
-            detail = "Deterministic fallback. No web pages were searched."
+                moves.append(
+                    DailyMove(
+                        move_type=MoveType.TRANSFER,
+                        summary=(
+                            f"Transfer {top.get('out_name')} ({top.get('out_id')}) to "
+                            f"{top.get('in_name')} ({top.get('in_id')}); affordable with current bank."
+                        ),
+                        why=reason,
+                        player_ids=[int(top["out_id"]), int(top["in_id"])],
+                        urgency="high",
+                    )
+                )
+                tldr = [
+                    f"Transfer {top.get('out_name')} -> {top.get('in_name')}",
+                    "Keep FT only if late news vetoes the buy target",
+                ]
+                detail = (
+                    "Deterministic fallback chose the top affordable transfer that starts this GW. "
+                    "Live OpenAI synthesis was not used."
+                )
+            elif affordable:
+                action = PlanAction.WATCH if triggers else PlanAction.KEEP
+                headline = "Hold the FT: affordable upgrades do not start in the modelled XI this week."
+                moves.append(
+                    DailyMove(
+                        move_type=MoveType.HOLD,
+                        summary="Do not spend the FT on a player who would sit on the bench this week.",
+                        why="Affordable candidates exist but in_starts is false for all of them.",
+                        urgency="low",
+                    )
+                )
+                tldr = ["Hold the FT: no buy target starts this week"]
+                detail = (
+                    "Deterministic fallback: every affordable 1-FT leaves the buy on the bench this GW."
+                )
+            elif stretch:
+                top = stretch[0]
+                shortfall = int(top.get("bank_shortfall_tenths") or 0)
+                action = PlanAction.WATCH if not triggers else PlanAction.WATCH
+                headline = (
+                    f"No affordable FT upgrade with current bank; best stretch is "
+                    f"{top.get('out_name')} -> {top.get('in_name')} (needs £{shortfall/10:.1f}m)."
+                )
+                moves.append(
+                    DailyMove(
+                        move_type=MoveType.HOLD,
+                        summary=(
+                            f"Hold the FT for now. Stretch target when funded: "
+                            f"{top.get('out_name')} ({top.get('out_id')}) -> "
+                            f"{top.get('in_name')} ({top.get('in_id')}), shortfall £{shortfall/10:.1f}m."
+                        ),
+                        why=(
+                            f"No legal improving 1-FT fits the bank; best stretch needs "
+                            f"£{shortfall/10:.1f}m more."
+                        ),
+                        player_ids=[int(top["out_id"]), int(top["in_id"])],
+                        urgency="medium",
+                    )
+                )
+                tldr = [
+                    "No legal improving FT fits the bank",
+                    f"Stretch: {top.get('out_name')} -> {top.get('in_name')} (needs £{shortfall/10:.1f}m)",
+                ]
+                detail = (
+                    "Deterministic fallback: bank blocks every improving same-position 1-FT. "
+                    "Named the top stretch_transfer_candidate so the manager has a concrete target."
+                )
+            else:
+                action = PlanAction.WATCH if triggers else PlanAction.KEEP
+                headline = "Deterministic daily summary (no live model)."
+                moves.append(
+                    DailyMove(
+                        move_type=MoveType.HOLD,
+                        summary="No live model; hold unless an attention trigger is material.",
+                        why="Deterministic fallback with no transfer candidates or live model.",
+                        urgency="medium" if triggers else "low",
+                    )
+                )
+                tldr = ["No live model; hold unless an attention trigger is material."]
+                detail = "Deterministic fallback. No web pages were searched."
         return (
             DailyAdvice(
                 plan_action=action,
@@ -326,6 +353,56 @@ def validate_synthesis(
     )
 
 
+OFFICIAL_VETO_TIERS = frozenset({"official", "club"})
+OFFICIAL_VETO_CATEGORIES = frozenset(
+    {"injury", "suspension", "availability", "rotation"}
+)
+MODEL_RERANKED_WITHOUT_VETO = "model_reranked_without_veto"
+MODEL_CHOSE_UNSUPPLIED_ALTERNATIVE = "model_chose_unsupplied_alternative"
+
+
+def _is_official_veto_claim(claim: dict[str, Any], *, against_player_ids: set[int]) -> bool:
+    if not against_player_ids:
+        return False
+    tier = str(claim.get("source_tier") or claim.get("tier") or "").lower()
+    if tier not in OFFICIAL_VETO_TIERS:
+        return False
+    category = str(claim.get("category") or "").lower()
+    if category not in OFFICIAL_VETO_CATEGORIES:
+        return False
+    claim_players = {int(x) for x in (claim.get("player_ids") or []) if x is not None}
+    return bool(claim_players & against_player_ids)
+
+
+def _primary_transfer_ids(primary_move: dict[str, Any] | None) -> tuple[int | None, int | None]:
+    if not primary_move or str(primary_move.get("action") or "") != "transfer":
+        return None, None
+    out_id = primary_move.get("out_id")
+    in_id = primary_move.get("in_id")
+    try:
+        return (int(out_id) if out_id is not None else None, int(in_id) if in_id is not None else None)
+    except (TypeError, ValueError):
+        return None, None
+
+
+def _alternative_buy_ids(alternatives: list[dict[str, Any]] | None) -> set[int]:
+    buys: set[int] = set()
+    for alt in alternatives or []:
+        if not isinstance(alt, dict):
+            continue
+        in_id = alt.get("in_id")
+        if in_id is None and isinstance(alt.get("moves"), list) and alt["moves"]:
+            in_id = alt["moves"][-1].get("in_id")
+        if in_id is not None:
+            try:
+                buys.add(int(in_id))
+            except (TypeError, ValueError):
+                pass
+        if str(alt.get("action") or "") == "hold":
+            buys.add(-1)  # sentinel: hold is a legal alternative
+    return buys
+
+
 def validate_daily_advice(
     advice: DailyAdvice,
     *,
@@ -333,6 +410,9 @@ def validate_daily_advice(
     allowed_source_ids: set[str],
     price_actions: list[dict[str, Any]] | None = None,
     owned_player_ids: set[int] | None = None,
+    primary_move: dict[str, Any] | None = None,
+    alternatives: list[dict[str, Any]] | None = None,
+    veto_claims: list[dict[str, Any]] | None = None,
 ) -> DailyAdvice:
     warnings = list(advice.warnings)
     ignore_watch: set[int] = set()
@@ -379,6 +459,104 @@ def validate_daily_advice(
     cited = [s for s in advice.cited_source_ids if s in allowed_source_ids]
     if len(cited) != len(advice.cited_source_ids):
         warnings.append("model_cited_unknown_sources")
+
+    # Snap-back: LLM may only veto/confirm the locked primary, never re-rank on taste.
+    primary_out, primary_in = _primary_transfer_ids(primary_move)
+    if primary_move is not None:
+        claims_by_id = {
+            str(c.get("claim_id")): c
+            for c in (veto_claims or [])
+            if isinstance(c, dict) and c.get("claim_id")
+        }
+        alt_buys = _alternative_buy_ids(alternatives)
+        against = {pid for pid in (primary_in, primary_out) if pid is not None}
+        snapped: list[DailyMove] = []
+        transfer_seen = False
+        for move in cleaned_moves:
+            if move.move_type != MoveType.TRANSFER or transfer_seen:
+                snapped.append(move)
+                continue
+            transfer_seen = True
+            buy_ids = set(move.player_ids) - owned if owned else set(move.player_ids)
+            model_buy = next(iter(buy_ids), None)
+            if primary_in is None:
+                # Primary is hold — demote unsolicited transfers without official veto of hold path.
+                snapped.append(
+                    move.model_copy(
+                        update={
+                            "move_type": MoveType.HOLD,
+                            "summary": "Hold the free transfer (locked primary).",
+                            "why": str(primary_move.get("reason") or move.why),
+                            "player_ids": [],
+                            "urgency": "low",
+                        }
+                    )
+                )
+                if MODEL_RERANKED_WITHOUT_VETO not in warnings:
+                    warnings.append(MODEL_RERANKED_WITHOUT_VETO)
+                continue
+            if model_buy == primary_in:
+                snapped.append(
+                    move.model_copy(
+                        update={
+                            "player_ids": [pid for pid in (primary_out, primary_in) if pid is not None],
+                        }
+                    )
+                )
+                continue
+            cited_ids = list(move.cited_source_ids) + list(cited)
+            has_official_veto = any(
+                _is_official_veto_claim(claims_by_id[cid], against_player_ids=against)
+                for cid in cited_ids
+                if cid in claims_by_id
+            )
+            if has_official_veto and model_buy is not None and model_buy in alt_buys:
+                snapped.append(move)
+                continue
+            if has_official_veto and model_buy is not None and model_buy not in alt_buys:
+                warnings.append(MODEL_CHOSE_UNSUPPLIED_ALTERNATIVE)
+            else:
+                warnings.append(MODEL_RERANKED_WITHOUT_VETO)
+            out_name = primary_move.get("out_name") or primary_out
+            in_name = primary_move.get("in_name") or primary_in
+            snapped.append(
+                move.model_copy(
+                    update={
+                        "move_type": MoveType.TRANSFER,
+                        "summary": f"Transfer {out_name} ({primary_out}) to {in_name} ({primary_in}).",
+                        "why": str(primary_move.get("reason") or move.why),
+                        "player_ids": [pid for pid in (primary_out, primary_in) if pid is not None],
+                        "urgency": move.urgency or "high",
+                    }
+                )
+            )
+        if not transfer_seen and primary_in is not None:
+            out_name = primary_move.get("out_name") or primary_out
+            in_name = primary_move.get("in_name") or primary_in
+            snapped.insert(
+                0,
+                DailyMove(
+                    move_type=MoveType.TRANSFER,
+                    summary=f"Transfer {out_name} ({primary_out}) to {in_name} ({primary_in}).",
+                    why=str(primary_move.get("reason") or "Locked primary move."),
+                    player_ids=[pid for pid in (primary_out, primary_in) if pid is not None],
+                    urgency="high",
+                ),
+            )
+            if MODEL_RERANKED_WITHOUT_VETO not in warnings:
+                warnings.append(MODEL_RERANKED_WITHOUT_VETO)
+        cleaned_moves = snapped
+        plan_action = PlanAction.REVISE if primary_in is not None else advice.plan_action
+        return advice.model_copy(
+            update={
+                "plan_action": plan_action,
+                "suggested_moves": cleaned_moves,
+                "cited_source_ids": cited,
+                "warnings": warnings,
+                "do_not_transfer_just_because_ran": True,
+            }
+        )
+
     return advice.model_copy(
         update={
             "suggested_moves": cleaned_moves,
@@ -541,8 +719,8 @@ class ResponsesOpenAIClient:
             "Produce structured FPL pre-deadline advice from this JSON only. "
             "Use web_search. Start with the suggested_source_hubs (Premier League fantasy news, "
             "Fantasy Football Scout, r/FantasyPL, BBC Sport fantasy football, Sky Sports), "
-            "then search named squad players/clubs for injury, suspension, press-conference, "
-            "or fixture news. Prefer official/club/FFS sources; treat Reddit as lower-confidence. "
+            "then search the veto_watchlist names (and suggested hubs) for injury, suspension, "
+            "press-conference, or fixture news. Prefer official/club sources; treat Reddit as lower-confidence. "
             "Fill tldr (3–6 one-line bullets) and detail (decision rationale). "
             "Write why, headline, and detail in plain football English a manager would say out loud "
             "(who is likelier to start, who drops from the XI, bank). "
@@ -555,14 +733,16 @@ class ResponsesOpenAIClient:
             "headline must be one sentence of advice, never a section title such as 'This week'. "
             "Use supplied price_actions if present. Do not invent price likelihoods. "
             "Do not upgrade ignore/watch price actions into transfers for price reasons. "
-            "Evaluate transfer_candidates and stretch_transfer_candidates; buy IDs must come from those lists only. "
-            "Treat weekly_plan.after_transfer as the XI / captain / bench if you recommend that transfer. "
+            "weekly_plan.primary_move is already locked by deterministic code. "
+            "Confirm that primary transfer/hold unless you cite an official/club-tier veto claim "
+            "against the primary buy (injury/suspension/availability/rotation). "
+            "If you veto, switch only to a weekly_plan.alternatives row or hold — never a non-supplied ID. "
+            "Treat weekly_plan.after_transfer as the XI / captain / bench when confirming the primary transfer. "
             "Do not recommend a transfer whose in_starts is false. "
             "Treat weekly_plan (current squad) as the hold-path XI. "
-            "Use transfer_plans (including 2-FT and hits) when present; buy IDs must still come from those moves. "
+            "Buy IDs must come from primary_move, alternatives, transfer_candidates, stretch, or transfer_plans only. "
             "If news_search_empty is already in the JSON, do not invent presser or injury outcomes. "
-            "If affordable candidates exist and news does not veto them, prefer revise with a concrete transfer. "
-            "If only stretch candidates exist, say the FT is blocked by bank and name the best stretch target. "
+            "If only stretch candidates exist and primary is hold, say the FT is blocked by bank and name the best stretch target. "
             "Do not invent player IDs. Do not recommend a transfer merely because this run happened."
         )
         if hub_lines:
