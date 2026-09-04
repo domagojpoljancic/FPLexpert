@@ -17,7 +17,7 @@ from fpl_agent.config import load_dotenv_files
 from fpl_agent.errors import AgentError, AgentErrorCode, ExitCode
 from fpl_agent.observability import redact_value
 
-PROMPT_VERSION = "predeadline-v6"
+PROMPT_VERSION = "predeadline-v7"
 SCHEMA_VERSION = "daily-advice-1.1.0"
 
 # Preferred domains for FPL-relevant search (omit scheme; includes subdomains).
@@ -580,9 +580,10 @@ class ResponsesOpenAIClient:
             "or fixture news. Prefer official/club/FFS sources; treat Reddit as lower-confidence. "
             "Fill tldr (3–6 one-line bullets) and detail (decision rationale). "
             "Write why, headline, and detail in plain football English a manager would say out loud "
-            "(who is likelier to start, who drops from the XI, bank). "
-            "Put model numbers in parentheses at the end, e.g. "
-            "'Egan is likelier to start than O'Nien this week (+2.8 pts this GW).' "
+            "(who is likelier to play, who sits on the bench, bank left, why that XI). "
+            "Keep each why to one or two short sentences, then put model numbers in parentheses at the end, e.g. "
+            "'Sell O\\'Nien for Egan because Egan is much likelier to play (80% vs 40%). "
+            "Play Egan and bench Virgil (+3.1 pts this GW).' "
             "Do not lead with jargon such as net GW xP or weighted xP. "
             "Every suggested_moves item must include a non-empty why explaining that move. "
             "Use weekly_plan.also_considered to say why the recommended IN beat the other same-position options; "

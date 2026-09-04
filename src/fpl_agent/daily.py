@@ -30,7 +30,7 @@ from fpl_agent.llm.client import (
 from fpl_agent.projections.preseason import PlayerProjection, project_all
 from fpl_agent.rules.season import SeasonRules
 from fpl_agent.suggest import load_public_data
-from fpl_agent.strategy.transfers import POSITION_LABEL, TransferCandidate
+from fpl_agent.strategy.transfers import POSITION_LABEL, TransferCandidate, explain_xi_choice
 from fpl_agent.team_state.private import load_and_validate_private_state
 from fpl_agent.team_state.resolve import resolve_team_state
 
@@ -965,11 +965,15 @@ def align_advice_to_after_transfer(advice: DailyAdvice, weekly_plan: dict[str, A
     if saw_transfer and in_name:
         if in_name in xi_names:
             summary = f"Start {in_name}"
-            why = f"{in_name} enters the modelled XI after the transfer."
+            why = (
+                f"Play {in_name}: they have a stronger projected score this week than the "
+                f"player they replace in the XI."
+            )
             if drop and drop in bench_names:
                 summary += f" and bench {drop}"
                 why = (
-                    f"{in_name} enters the modelled XI; {drop} is the player who drops to the bench."
+                    f"Play {in_name} and bench {drop}. The model rebuilds the XI for highest "
+                    f"points this week; {drop} is the one who falls out."
                 )
             new_moves.append(
                 DailyMove(
@@ -983,8 +987,11 @@ def align_advice_to_after_transfer(advice: DailyAdvice, weekly_plan: dict[str, A
             new_moves.append(
                 DailyMove(
                     move_type=MoveType.LINEUP,
-                    summary=f"Do not force-start {in_name}; modelled XI keeps them on the bench",
-                    why=f"{in_name} is in the squad after the transfer but does not make this week's XI.",
+                    summary=f"Leave {in_name} on the bench this week",
+                    why=(
+                        f"{in_name} joins the squad, but other players still project more "
+                        f"points this week, so keep them as cover."
+                    ),
                     urgency="medium",
                 )
             )
@@ -1172,11 +1179,29 @@ def _weekly_plan_section(report: DailyReport) -> list[str]:
         lines.append(f"- XI ({using.get('formation') or plan.get('formation')}): {_player_names(xi)}")
     if bench:
         lines.append(f"- Bench: {_player_names(bench, with_start=True)}")
+    xi_why = explain_xi_choice(
+        xi=[row for row in xi if isinstance(row, dict)],
+        bench=[row for row in bench if isinstance(row, dict)],
+        formation=str(using.get("formation") or plan.get("formation") or "") or None,
+        in_name=str(label.get("in_name") or "") if isinstance(label, dict) else None,
+        drop_name=(
+            str(after.get("xi_drop_name") or (best or {}).get("xi_drop_name") or "") or None
+            if after or best
+            else None
+        ),
+    )
+    if xi_why:
+        lines.append(f"- {xi_why}")
     if cap:
         lines.append(
             f"- Captain: **{cap.get('web_name')}** ({cap.get('xp_next')} xP) · "
             f"Vice: **{(vice or {}).get('web_name') or '—'}**"
         )
+        cap_name = str(cap.get("web_name") or "")
+        if cap_name:
+            lines.append(
+                f"- Why captain: **{cap_name}** has the best projected score among likely starters this week."
+            )
     also = [row for row in (plan.get("also_considered") or []) if row.get("in_name")]
     if also:
         pos_n = int(also[0].get("element_type") or 0)

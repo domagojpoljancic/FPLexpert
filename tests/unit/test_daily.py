@@ -260,6 +260,8 @@ def test_report_includes_weekly_model_decisions() -> None:
     assert "Egan" in text
     assert "After **O'Nien → Egan**" in text
     assert "Virgil drops out of the XI" in text
+    assert "Why this XI" in text
+    assert "Why captain" in text
     assert "Compared with other affordable defenders:" in text
     assert "**Egan** (recommended)" in text
     assert "Transfer vs hold (XI pts):" in text

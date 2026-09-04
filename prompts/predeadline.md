@@ -43,9 +43,9 @@ Use web_search. Spend the budget: first the `suggested_source_hubs` (Premier Lea
 - `plan_action`: keep (no action), watch (monitor a risk), revise (user should consider a concrete change).
 - `tldr`: 3–5 short bullets. Transfer, captain, the one watch. No essays.
 - `headline`: one sentence of advice (who to transfer or hold, captain). Never a section title such as "This week".
-- `detail`: 80–150 words. Why this transfer (or hold) in plain English: who is likelier to start, who drops from the XI, bank, **how later gameweeks change** (from `horizon_impact`), and **whether spending the FT now beats banking it** (from `transfer_decision`). Put model numbers in parentheses at the end (e.g. "+2.8 pts this week; +4.6 over the next few GWs"). Do not lead with "net GW xP" or "weighted xP".
+- `detail`: 80–150 words. Explain the decision in simple football English a busy manager can skim: why this transfer, why that XI/bench, why that captain, what bank/FT timing means, and one sentence on later weeks. Put model numbers in parentheses at the end (e.g. "+2.8 pts this week; +4.6 over the next few GWs"). Do not lead with "net GW xP" or "weighted xP". Avoid jargon.
 - `suggested_moves`: at most a few concrete, legal ideas referencing supplied player_ids only.
-- Every `suggested_moves` item **must** include a non-empty `why` that stands alone in the same plain-English-then-brackets style.
+- Every `suggested_moves` item **must** include a non-empty `why` that stands alone in plain English (who plays, who sits, why), then brackets for numbers.
 - A concrete 1-FT recommendation **must** use `move_type=transfer` (never `hold`) with both out_id and in_id. Use `hold` only for banking the FT or keeping chips.
 - Use `weekly_plan.also_considered` (top same-position starter buys) to say why the recommended IN beat the next options. Do not invent names.
 - Focus on injuries, suspensions, rotation, pressers, fixture/news risk, the supplied transfer candidate lists, and the supplied price actions for this deadline.

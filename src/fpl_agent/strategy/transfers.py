@@ -187,28 +187,36 @@ POSITION_LABEL = {1: "goalkeeper", 2: "defender", 3: "midfielder", 4: "forward"}
 
 
 def explain_transfer(cand: TransferCandidate) -> str:
-    """Plain-language reason; model numbers stay in brackets."""
+    """Plain-language reason a manager can act on; numbers stay in brackets."""
     gw = f"{cand.delta_gw_xp:+.1f} pts this week"
     horizon = f"{cand.delta_weighted_xp:+.1f} over the next few GWs"
+    bank_bit = ""
+    if cand.affordable and cand.bank_after_tenths >= 0:
+        bank_bit = f" Bank left after the move: £{cand.bank_after_tenths / 10:.1f}m."
     if cand.in_starts:
         if cand.in_p_start >= cand.out_p_start + 0.1:
             body = (
-                f"{cand.in_name} is likelier to start than {cand.out_name} "
-                f"({cand.in_p_start:.0%} vs {cand.out_p_start:.0%}) and should add more to the XI this week"
+                f"Sell {cand.out_name} for {cand.in_name} because {cand.in_name} is much "
+                f"likelier to play ({cand.in_p_start:.0%} vs {cand.out_p_start:.0%}) and "
+                f"should score more for your team this week"
             )
         else:
             body = (
-                f"{cand.in_name} is projected to outscore {cand.out_name} this week "
-                f"while still starting ({cand.in_p_start:.0%} start chance)"
+                f"Sell {cand.out_name} for {cand.in_name} because {cand.in_name} should "
+                f"outscore them this week while still starting ({cand.in_p_start:.0%} start chance)"
             )
         if cand.xi_drop_name and cand.xi_drop_name != cand.out_name:
-            body += f"; {cand.xi_drop_name} drops to the bench"
+            body += (
+                f". After the transfer, play {cand.in_name} and move {cand.xi_drop_name} "
+                f"to the bench"
+            )
+        body += "."
     else:
         body = (
-            f"{cand.in_name} is a longer-term upgrade on {cand.out_name} "
-            f"but would sit on the bench this week"
+            f"{cand.in_name} looks better than {cand.out_name} over the next few weeks, "
+            f"but would sit on the bench this week — so do not spend the free transfer on them yet."
         )
-    return f"{body} ({gw}; {horizon})."
+    return f"{body}{bank_bit} ({gw}; {horizon})."
 
 
 def explain_vs_pick(alt: TransferCandidate, pick: TransferCandidate) -> str:
@@ -216,28 +224,59 @@ def explain_vs_pick(alt: TransferCandidate, pick: TransferCandidate) -> str:
     gw_gap = pick.delta_gw_xp - alt.delta_gw_xp
     w_gap = pick.delta_weighted_xp - alt.delta_weighted_xp
     if gw_gap > 0.15:
-        week = f"adds less this week than {pick.in_name}"
+        week = f"gives you less this week than {pick.in_name}"
     elif gw_gap < -0.15:
-        week = f"adds a bit more this week than {pick.in_name}"
+        week = f"gives you a bit more this week than {pick.in_name}"
     else:
-        week = f"is close to {pick.in_name} this week"
+        week = f"is roughly level with {pick.in_name} this week"
     if w_gap < -0.3:
-        horizon = "and looks stronger over the next few gameweeks"
+        horizon = "and looks better over the next few gameweeks"
     elif w_gap > 0.3:
         horizon = "but looks weaker over the next few gameweeks"
     else:
-        horizon = "over a similar run of gameweeks"
+        horizon = "and looks similar over the next few gameweeks"
     start = ""
     if alt.out_name != pick.out_name:
         start = f" It would sell {alt.out_name} instead of {pick.out_name}."
     elif alt.in_p_start >= alt.out_p_start + 0.15:
         start = (
-            f" It would replace {alt.out_name} ({alt.out_p_start:.0%} start) "
+            f" It would replace {alt.out_name} ({alt.out_p_start:.0%} start chance) "
             f"with {alt.in_name} ({alt.in_p_start:.0%})."
         )
+    if not alt.affordable and alt.bank_shortfall_tenths > 0:
+        start += f" It also needs £{alt.bank_shortfall_tenths / 10:.1f}m more in the bank."
     return (
         f"{week} {horizon}.{start} "
         f"({alt.delta_gw_xp:+.1f} pts this week; {alt.delta_weighted_xp:+.1f} over the next few GWs)."
+    )
+
+
+def explain_xi_choice(
+    *,
+    xi: list[dict[str, Any]],
+    bench: list[dict[str, Any]],
+    formation: str | None,
+    in_name: str | None = None,
+    drop_name: str | None = None,
+) -> str:
+    """One or two short sentences explaining the modelled XI."""
+    if not xi:
+        return ""
+    formation_bit = f" in a {formation}" if formation else ""
+    if in_name and any(str(row.get("web_name")) == in_name for row in xi):
+        if drop_name and any(str(row.get("web_name")) == drop_name for row in bench):
+            return (
+                f"Why this XI: the model picks the highest projected points{formation_bit}. "
+                f"{in_name} comes straight in; {drop_name} is the weakest starter after the swap, "
+                f"so they go to the bench."
+            )
+        return (
+            f"Why this XI: the model picks the highest projected points{formation_bit}, "
+            f"and {in_name} earns a starting spot."
+        )
+    return (
+        f"Why this XI: these 11 have the highest projected points{formation_bit}; "
+        f"bench order prefers higher start chance first."
     )
 
 

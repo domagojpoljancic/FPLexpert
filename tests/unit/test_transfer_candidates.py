@@ -101,7 +101,7 @@ def test_explain_transfer_puts_numbers_in_brackets() -> None:
         element_type=2,
         sell_tenths=40,
         buy_tenths=40,
-        bank_after_tenths=0,
+        bank_after_tenths=5,
         bank_shortfall_tenths=0,
         affordable=True,
         delta_weighted_xp=4.563,
@@ -109,13 +109,32 @@ def test_explain_transfer_puts_numbers_in_brackets() -> None:
         out_p_start=0.4,
         in_p_start=0.8,
         in_starts=True,
+        xi_drop_name="Virgil",
     )
     text = explain_transfer(cand)
-    assert "Egan is likelier to start than O'Nien" in text
+    assert "Sell O'Nien for Egan" in text
+    assert "likelier to play" in text
+    assert "play Egan and move Virgil to the bench" in text
+    assert "Bank left after the move: £0.5m." in text
     assert "(+2.8 pts this week; +4.6 over the next few GWs)." in text
     assert "weighted xP" not in text
     assert "net GW" not in text
     assert cand.as_payload()["reason"] == text
+
+
+def test_explain_xi_choice_names_new_starter_and_bench_drop() -> None:
+    from fpl_agent.strategy.transfers import explain_xi_choice
+
+    text = explain_xi_choice(
+        xi=[{"web_name": "Egan"}, {"web_name": "Tzolis"}],
+        bench=[{"web_name": "Virgil"}],
+        formation="3-5-2",
+        in_name="Egan",
+        drop_name="Virgil",
+    )
+    assert "Why this XI" in text
+    assert "Egan comes straight in" in text
+    assert "Virgil" in text and "bench" in text
 
 
 def test_same_position_shortlist_puts_pick_first() -> None:
@@ -163,8 +182,8 @@ def test_same_position_shortlist_puts_pick_first() -> None:
     short = same_position_shortlist(pick, [pick, de_cuyper, egan, mid], limit=3)
     assert [c.in_name for c in short] == ["Ajayi", "De Cuyper", "Egan"]
     vs = explain_vs_pick(de_cuyper, pick)
-    assert "is close to Ajayi this week" in vs
-    assert "stronger over the next few gameweeks" in vs
+    assert "is roughly level with Ajayi this week" in vs
+    assert "looks better over the next few gameweeks" in vs
     assert "(+3.4 pts this week; +3.5 over the next few GWs)." in vs
     assert "O'Nien" in explain_vs_pick(egan, pick)
 
