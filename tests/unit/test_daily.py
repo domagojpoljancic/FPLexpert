@@ -184,6 +184,9 @@ def test_report_includes_weekly_model_decisions() -> None:
                 "in_name": "Egan",
                 "in_starts": True,
                 "xi_drop_name": "Virgil",
+                "bank_after_tenths": 5,
+                "sell_tenths": 45,
+                "buy_tenths": 45,
             },
             "after_transfer": {
                 "out_name": "O'Nien",
@@ -244,6 +247,21 @@ def test_report_includes_weekly_model_decisions() -> None:
                 "free_transfers_if_roll": 2,
                 "free_transfers_if_transfer": 1,
             },
+            "fixture_calendar": [
+                {
+                    "gameweek": 3,
+                    "is_double_gw": False,
+                    "is_blank_gw": False,
+                    "clubs_with_fixtures": 20,
+                },
+                {
+                    "gameweek": 10,
+                    "is_double_gw": True,
+                    "is_blank_gw": False,
+                    "clubs_with_fixtures": 18,
+                    "double_clubs": [1, 2],
+                },
+            ],
             "previous_scorecard": {
                 "gameweek": 2,
                 "model_xi_points": 55,
@@ -273,6 +291,13 @@ def test_report_includes_weekly_model_decisions() -> None:
     assert "Last week (GW2 actuals)" not in text
     assert "B.Fernandes" in text
     assert "Chips: hold" in text
+    assert "Bank after move: £0.5m" in text
+    assert "FT after: 1 if transfer · 2 if roll (now 1)" in text
+    assert "Confirmed DGW/BGW (fixtures feed): GW10 DGW" in text
+    assert "Season plan (charts): [reports/plan-gw3.md](plan-gw3.md)" in text
+    # Report honesty: locked primary OUT/IN only.
+    assert "O'Nien → Egan" in text
+    assert "Shaw → De Cuyper" not in text
     assert text.index("## Do this") < text.index("## This week")
     assert text.index("## This week") < text.index("## Why")
 

@@ -139,7 +139,25 @@ def test_refresh_replaces_marked_readme_section(tmp_path: Path) -> None:
     assert "UTC" not in text.split("Latest results", 1)[1].split("<!-- recent-runs:end -->", 1)[0]
 
 
-def test_refresh_skips_readme_without_markers(tmp_path: Path) -> None:
+def test_refresh_includes_season_plan_link(tmp_path: Path) -> None:
+    from fpl_agent.reporting.readme_index import latest_plan_doc_link
+
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    _write_report(
+        reports,
+        "predeadline-gw3-20260818T152951Z.md",
+        "REVISE",
+        "Sell Shaw for De Cuyper",
+    )
+    (reports / "plan-gw3.md").write_text("# Season plan — Gameweek 3\n", encoding="utf-8")
+    assert latest_plan_doc_link(reports) == "reports/plan-gw3.md"
+    readme = tmp_path / "README.md"
+    readme.write_text(f"# Title\n\n{START}\nold\n{END}\n", encoding="utf-8")
+    assert refresh_readme_recent_runs(readme, reports, tmp_path / "run-log.md", now=NOW) is True
+    text = readme.read_text(encoding="utf-8")
+    assert "**Season plan** (horizon charts)" in text
+    assert "[reports/plan-gw3.md](reports/plan-gw3.md)" in text
     readme = tmp_path / "README.md"
     readme.write_text("# nope\n", encoding="utf-8")
     assert refresh_readme_recent_runs(readme, tmp_path / "reports") is False

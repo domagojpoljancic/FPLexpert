@@ -313,6 +313,8 @@ def run_predeadline(
         gameweek=gw,
         weekly_plan=weekly_plan,
         chip_instances=private.chip_instances,
+        fixtures=fixtures,
+        horizon_gws=gameweeks,
     )
     this_week = this_week_upgrade(affordable_transfers)
     weekly_plan["best_stretch"] = stretch_transfers[0].as_payload() if stretch_transfers else None
@@ -363,6 +365,20 @@ def run_predeadline(
     )
     weekly_plan["transfer_decision"] = transfer_decision.as_payload()
     weekly_plan["chips"] = [c.as_payload() for c in chip_advice]
+    from fpl_agent.strategy.fixtures_calendar import calendar_for_horizon
+
+    all_clubs = {int(t["id"]) for t in (bootstrap.get("teams") or []) if t.get("id") is not None}
+    weekly_plan["fixture_calendar"] = [
+        {
+            "gameweek": row.gameweek,
+            "clubs_with_fixtures": row.clubs_with_fixtures,
+            "double_clubs": list(row.double_clubs),
+            "blank_clubs": list(row.blank_clubs),
+            "is_double_gw": row.is_double_gw,
+            "is_blank_gw": row.is_blank_gw,
+        }
+        for row in calendar_for_horizon(fixtures or [], gameweeks, all_clubs=all_clubs or None)
+    ]
     try:
         from fpl_agent.evaluation.scorecard import build_previous_scorecard
 
@@ -1249,12 +1265,23 @@ def _weekly_plan_section(report: DailyReport) -> list[str]:
         lines.append("- Chips: " + ", ".join(f"**{c.get('kind')}**" for c in play))
     elif chips:
         lines.append("- Chips: hold")
+    for chip in sorted(
+        [c for c in chips if isinstance(c, dict)],
+        key=lambda c: str(c.get("kind") or ""),
+    ):
+        reason = str(chip.get("reason") or "").strip()
+        if not reason:
+            continue
+        lines.append(f"  - {chip.get('kind')}: {reason}")
     horizon = list(plan.get("horizon") or [])[:3]
     if horizon:
         bits = " · ".join(f"GW{row.get('gw')} {row.get('xi_xp')}" for row in horizon)
         lines.append(f"- Next GWs (XI xP): {bits}")
     impact = plan.get("horizon_impact") or {}
-    impact_rows = list(impact.get("by_gw") or [])[:4]
+    impact_rows = sorted(
+        [row for row in (impact.get("by_gw") or []) if row.get("gw") is not None],
+        key=lambda row: int(row["gw"]),
+    )
     if impact_rows:
         bits = " · ".join(
             f"GW{row.get('gw')} {float(row.get('delta_xp') or 0):+.1f}" for row in impact_rows
@@ -1269,6 +1296,38 @@ def _weekly_plan_section(report: DailyReport) -> list[str]:
         action = str(decision.get("action") or "").lower()
         label_ft = "Spend FT now" if action == "transfer" else "Bank FT"
         lines.append(f"- FT timing ({label_ft}): {decision_reason}")
+    bank_after = label.get("bank_after_tenths") if isinstance(label, dict) else None
+    if bank_after is None and isinstance(best, dict):
+        bank_after = best.get("bank_after_tenths")
+    if bank_after is not None:
+        lines.append(f"- Bank after move: £{float(bank_after) / 10:.1f}m")
+    ft_now = decision.get("free_transfers_now")
+    ft_xfer = decision.get("free_transfers_if_transfer")
+    ft_roll = decision.get("free_transfers_if_roll")
+    if ft_now is not None and (ft_xfer is not None or ft_roll is not None):
+        lines.append(
+            f"- FT after: {ft_xfer} if transfer · {ft_roll} if roll (now {ft_now})"
+        )
+    calendar = sorted(
+        [row for row in (plan.get("fixture_calendar") or []) if row.get("gameweek") is not None],
+        key=lambda row: int(row["gameweek"]),
+    )
+    flagged = [
+        row
+        for row in calendar
+        if row.get("is_double_gw") or row.get("is_blank_gw")
+    ]
+    if flagged:
+        bits = " · ".join(
+            f"GW{row['gameweek']}"
+            f"{' DGW' if row.get('is_double_gw') else ''}"
+            f"{' BGW' if row.get('is_blank_gw') else ''}".rstrip()
+            for row in flagged
+        )
+        lines.append(f"- Confirmed DGW/BGW (fixtures feed): {bits}")
+    elif calendar:
+        lines.append("- Confirmed DGW/BGW (fixtures feed): none in horizon")
+    lines.append(f"- Season plan (charts): [reports/plan-gw{report.gameweek}.md](plan-gw{report.gameweek}.md)")
     return lines
 
 

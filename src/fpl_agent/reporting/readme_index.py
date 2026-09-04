@@ -65,7 +65,8 @@ def refresh_readme_recent_runs(
     clock = now or datetime.now(UTC)
     prices = list_price_runs(reports_dir, run_log, limit=PRICE_LIMIT, now=clock)
     news = list_report_files(reports_dir, kind="predeadline", limit=NEWS_LIMIT, now=clock)
-    block = render_recent_runs_block(prices, news)
+    plan_link = latest_plan_doc_link(reports_dir, news=news)
+    block = render_recent_runs_block(prices, news, plan_rel_path=plan_link)
     start = text.index(START)
     end = text.index(END) + len(END)
     updated = text[:start] + block + text[end:]
@@ -114,7 +115,12 @@ def list_report_files(
     return take_recent(rows, now=now or datetime.now(UTC), limit=limit)
 
 
-def render_recent_runs_block(prices: list[RunLink], news: list[RunLink]) -> str:
+def render_recent_runs_block(
+    prices: list[RunLink],
+    news: list[RunLink],
+    *,
+    plan_rel_path: str | None = None,
+) -> str:
     lines = [
         START,
         "## Latest results",
@@ -124,9 +130,34 @@ def render_recent_runs_block(prices: list[RunLink], news: list[RunLink]) -> str:
         "",
         "**Squad news** (pre-deadline — last 7 days)",
         *_bullets(news, empty="No pre-deadline reports yet."),
-        END,
     ]
+    if plan_rel_path:
+        lines += [
+            "",
+            "**Season plan** (horizon charts)",
+            f"- [{plan_rel_path}]({plan_rel_path})",
+        ]
+    lines += [END]
     return "\n".join(lines)
+
+
+def latest_plan_doc_link(
+    reports_dir: Path = Path("reports"),
+    news: list[RunLink] | None = None,
+) -> str | None:
+    """Stable plan-gw{N}.md for the newest pre-deadline GW, if the file exists."""
+    rows = news if news is not None else list_report_files(reports_dir, kind="predeadline", limit=1)
+    for row in rows:
+        if row.gameweek is None:
+            continue
+        name = f"plan-gw{row.gameweek}.md"
+        if (reports_dir / name).is_file():
+            return f"reports/{name}"
+    # Fall back to any plan-gw*.md (highest GW).
+    plans = sorted(reports_dir.glob("plan-gw*.md"), key=lambda p: p.name)
+    if not plans:
+        return None
+    return f"reports/{plans[-1].name}"
 
 
 def minute_key(utc: datetime) -> str:
