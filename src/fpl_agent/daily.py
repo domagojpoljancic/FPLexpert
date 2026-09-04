@@ -338,15 +338,25 @@ def run_predeadline(
     weekly_plan["primary_move"] = primary.as_payload()
 
     weekly_plan["also_considered"] = []
-    if primary_move is not None and len(primary.plan.moves) == 1:
+    if primary_move is not None and primary.plan is not None and len(primary.plan.moves) == 1:
         considered: list[dict[str, Any]] = []
+        seen_in: set[int] = set()
         for cand in same_position_shortlist(primary_move, affordable_transfers, limit=3):
             row = cand.as_payload()
             row["picked"] = cand.in_id == primary_move.in_id
             if not row["picked"]:
                 row["reason"] = explain_vs_pick(cand, primary_move)
             considered.append(row)
+            seen_in.add(cand.in_id)
+        if primary.runner_up is not None and primary.runner_up.moves:
+            alt = primary.runner_up.moves[-1]
+            if alt.in_id not in seen_in:
+                row = alt.as_payload()
+                row["picked"] = False
+                row["reason"] = explain_vs_pick(alt, primary_move)
+                considered.append(row)
         weekly_plan["also_considered"] = considered
+        weekly_plan["primary_is_close"] = primary.is_close
     weekly_plan["best_stretch"] = stretch_transfers[0].as_payload() if stretch_transfers else None
     weekly_plan["after_transfer"] = None
     if primary.action == "transfer" and primary.plan is not None and len(primary.plan.moves) == 1 and primary_move:

@@ -474,6 +474,8 @@ def roll_recommendation_reason(
 
 
 RANKING_KEY_WEIGHTED_HORIZON = "weighted_horizon_net_of_hits"
+# Net-horizon xP within this of #1 = "close"; keep deterministic sort_key winner.
+PRIMARY_EPSILON_WEIGHTED_XP = 0.30
 
 
 @dataclass(frozen=True)
@@ -485,6 +487,7 @@ class PrimaryRecommendation:
     ranking_key: str
     runner_up: TransferPlan | None
     reason: str
+    is_close: bool = False
 
     def as_payload(self) -> dict[str, Any]:
         plan = self.plan
@@ -493,6 +496,7 @@ class PrimaryRecommendation:
             "action": self.action,
             "ranking_key": self.ranking_key,
             "reason": self.reason,
+            "is_close": self.is_close,
             "out_id": move.out_id if move else None,
             "in_id": move.in_id if move else None,
             "out_name": move.out_name if move else None,
@@ -521,6 +525,23 @@ def _net_horizon(plan: TransferPlan) -> float:
     return plan.delta_weighted_xp - (plan.hit_cost / 4.0)
 
 
+def _plan_sort_key(
+    plan: TransferPlan,
+    *,
+    catalog: dict[int, dict[str, Any]] | None,
+    risk_profile: RiskProfile,
+) -> tuple[float, float, float, float, int]:
+    """Deterministic primary ranking (auditable).
+
+    Order: net weighted-horizon (hits/4), raw weighted xP, mild differential
+    tie-break (moderate risk only), this-GW xP (display-only), hit cost.
+    Insertion order must never decide the winner.
+    """
+    net_horizon = _net_horizon(plan)
+    tie = _differential_tiebreak_key(plan, catalog=catalog, risk_profile=risk_profile)
+    return (-net_horizon, -plan.delta_weighted_xp, tie, -plan.delta_gw_xp, plan.hit_cost)
+
+
 def select_primary_move(
     *,
     owned_ids: list[int],
@@ -542,6 +563,10 @@ def select_primary_move(
     Reuses ``rank_transfer_plans`` (no new scoring formula). A 1-FT plan is only
     primary when the buy ``in_starts``. A hit plan is only primary when its
     net-horizon edge over the best 0-hit plan is positive.
+
+    Close calls (runner-up within ``PRIMARY_EPSILON_WEIGHTED_XP`` on net-horizon)
+    still emit the deterministic ``_plan_sort_key`` winner; ``is_close`` is True
+    so the report can acknowledge the runner-up without re-rolling.
     """
     rules = rules or load_season_rules_2026_27()
     margin = hit_horizon_margin(
@@ -563,6 +588,11 @@ def select_primary_move(
         gameweek=gameweek,
         early_season_gws=early_season_gws,
         early_season_hit_margin_boost=early_season_hit_margin_boost,
+    )
+    # Re-sort so insertion order of a caller-supplied list cannot flip the primary.
+    ranked = sorted(
+        ranked,
+        key=lambda p: _plan_sort_key(p, catalog=catalog, risk_profile=risk_profile),
     )
     eligible = [p for p in ranked if _plan_eligible_for_primary(p)]
     zero_hit = [p for p in eligible if p.hit_cost == 0]
@@ -594,6 +624,7 @@ def select_primary_move(
             ranking_key=RANKING_KEY_WEIGHTED_HORIZON,
             runner_up=None,
             reason=reason,
+            is_close=False,
         )
 
     primary_buys = _plan_buy_ids(primary)
@@ -608,6 +639,10 @@ def select_primary_move(
         runner_up = plan
         break
 
+    is_close = False
+    if runner_up is not None:
+        is_close = abs(_net_horizon(primary) - _net_horizon(runner_up)) <= PRIMARY_EPSILON_WEIGHTED_XP
+
     reason = (
         f"Primary by {RANKING_KEY_WEIGHTED_HORIZON}: "
         + ", ".join(f"{m.out_name}→{m.in_name}" for m in primary.moves)
@@ -615,12 +650,15 @@ def select_primary_move(
         + (f", {primary.hit_cost}-pt hit" if primary.hit_cost else "")
         + ")."
     )
+    if is_close and runner_up is not None and len(primary.moves) == 1 and len(runner_up.moves) == 1:
+        reason += " " + explain_vs_pick(runner_up.moves[-1], primary.moves[-1])
     return PrimaryRecommendation(
         action="transfer",
         plan=primary,
         ranking_key=RANKING_KEY_WEIGHTED_HORIZON,
         runner_up=runner_up,
         reason=reason,
+        is_close=is_close,
     )
 
 
@@ -870,11 +908,9 @@ def rank_transfer_plans(
     plans.extend(cross)
 
     def sort_key(p: TransferPlan) -> tuple[float, float, float, float, int]:
-        net_horizon = p.delta_weighted_xp - (p.hit_cost / 4.0)
-        tie = _differential_tiebreak_key(
+        return _plan_sort_key(
             p, catalog=catalog_for_tiebreak or catalog, risk_profile=risk_profile
         )
-        return (-net_horizon, -p.delta_weighted_xp, tie, -p.delta_gw_xp, p.hit_cost)
 
     return sorted(plans, key=sort_key)
 

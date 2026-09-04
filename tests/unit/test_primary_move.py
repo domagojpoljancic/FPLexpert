@@ -117,6 +117,170 @@ def test_select_primary_prefers_horizon_over_this_gw() -> None:
     assert plans[0].moves[-1].in_name == "Egan"
 
 
+def _one_move_plan(
+    *,
+    out_id: int,
+    in_id: int,
+    out_name: str,
+    in_name: str,
+    weighted: float,
+    gw: float,
+) -> TransferPlan:
+    from fpl_agent.strategy.transfers import TransferCandidate, TransferPlan
+
+    move = TransferCandidate(
+        out_id=out_id,
+        in_id=in_id,
+        out_name=out_name,
+        in_name=in_name,
+        element_type=2,
+        sell_tenths=50,
+        buy_tenths=50,
+        bank_after_tenths=0,
+        bank_shortfall_tenths=0,
+        affordable=True,
+        delta_weighted_xp=weighted,
+        delta_gw_xp=gw,
+        out_p_start=0.4,
+        in_p_start=0.9,
+        in_starts=True,
+    )
+    return TransferPlan(
+        moves=(move,),
+        free_transfers_used=1,
+        hit_cost=0,
+        delta_weighted_xp=weighted,
+        delta_gw_xp=gw,
+        net_gw_xp=gw,
+        bank_after_tenths=0,
+        affordable=True,
+    )
+
+
+def test_epsilon_keeps_sort_key_winner_and_ignores_insertion_order() -> None:
+    from fpl_agent.strategy.transfers import PRIMARY_EPSILON_WEIGHTED_XP
+
+    # Within epsilon on net-horizon; this-GW tie-break prefers Alpha (higher gw).
+    alpha = _one_move_plan(out_id=1, in_id=10, out_name="Out", in_name="Alpha", weighted=4.0, gw=3.0)
+    beta = _one_move_plan(out_id=2, in_id=11, out_name="Out2", in_name="Beta", weighted=4.0 - 0.1, gw=2.0)
+    assert abs(alpha.delta_weighted_xp - beta.delta_weighted_xp) <= PRIMARY_EPSILON_WEIGHTED_XP
+
+    owned, catalog, projections = _gw3_shaped_conflict()
+    base = dict(
+        owned_ids=owned,
+        bank_tenths=0,
+        free_transfers=1,
+        purchase_prices_tenths={str(i): 50 for i in owned},
+        catalog=catalog,
+        projections=projections,
+    )
+    first = select_primary_move(**base, plans=[beta, alpha])
+    second = select_primary_move(**base, plans=[alpha, beta])
+    assert first.plan is not None and second.plan is not None
+    assert first.plan.moves[-1].in_name == "Alpha"
+    assert second.plan.moves[-1].in_name == "Alpha"
+    assert first.is_close is True
+    assert second.is_close is True
+    assert first.runner_up is not None
+    assert first.runner_up.moves[-1].in_name == "Beta"
+
+
+def test_outside_epsilon_higher_horizon_wins() -> None:
+    from fpl_agent.strategy.transfers import PRIMARY_EPSILON_WEIGHTED_XP
+
+    winner = _one_move_plan(out_id=1, in_id=10, out_name="Out", in_name="Horizon", weighted=5.0, gw=2.0)
+    loser = _one_move_plan(
+        out_id=2,
+        in_id=11,
+        out_name="Out2",
+        in_name="ThisGw",
+        weighted=5.0 - PRIMARY_EPSILON_WEIGHTED_XP - 0.5,
+        gw=4.0,
+    )
+    owned, catalog, projections = _gw3_shaped_conflict()
+    primary = select_primary_move(
+        owned_ids=owned,
+        bank_tenths=0,
+        free_transfers=1,
+        purchase_prices_tenths={str(i): 50 for i in owned},
+        catalog=catalog,
+        projections=projections,
+        plans=[loser, winner],
+    )
+    assert primary.plan is not None
+    assert primary.plan.moves[-1].in_name == "Horizon"
+    assert primary.is_close is False
+    assert primary.runner_up is not None
+    assert primary.runner_up.moves[-1].in_name == "ThisGw"
+
+
+def test_also_considered_marks_runner_up(tmp_path: Path, monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from fpl_agent.config import load_settings
+    from fpl_agent.daily import run_predeadline
+    from fpl_agent.llm.client import FakeOpenAIClient
+
+    owned, catalog, projections = _gw3_shaped_conflict()
+    elements = []
+    for pid, el in catalog.items():
+        row = dict(el)
+        row.setdefault("chance_of_playing_next_round", 100)
+        row.setdefault("news", "")
+        elements.append(row)
+    teams = [{"id": i, "short_name": f"T{i}"} for i in range(1, 21)]
+    deadline = (datetime.now(UTC) + timedelta(hours=20)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    bootstrap = {
+        "events": [{"id": 3, "is_next": True, "deadline_time": deadline}],
+        "elements": elements,
+        "teams": teams,
+    }
+    private = {
+        "schema_version": "1.0.0",
+        "season": "2026-27",
+        "applies_before_gameweek": 3,
+        "as_of": datetime.now(UTC).isoformat(),
+        "player_ids": owned,
+        "bank_tenths": 0,
+        "free_transfers": 1,
+        "purchase_prices_tenths": {str(i): 50 for i in owned},
+        "chip_instances": [],
+        "captain_id": 8,
+        "vice_id": 1,
+    }
+    private_path = tmp_path / "current.json"
+    private_path.write_text(__import__("json").dumps(private), encoding="utf-8")
+    monkeypatch.setattr("fpl_agent.daily.load_public_data", lambda offline=False: (bootstrap, []))
+    monkeypatch.setattr(
+        "fpl_agent.prices.run.run_prices",
+        lambda **kwargs: SimpleNamespace(status=SimpleNamespace(value="NO ACTION"), warnings=[]),
+    )
+    monkeypatch.setattr(
+        "fpl_agent.prices.run.prices_payload_for_llm",
+        lambda report: {"price_actions": [], "price_status": "NO ACTION"},
+    )
+    monkeypatch.setattr("fpl_agent.daily.project_all", lambda **kwargs: list(projections.values()))
+    monkeypatch.setattr("fpl_agent.projections.preseason.configure_from_settings", lambda settings: None)
+    monkeypatch.setattr("fpl_agent.daily.build_client", lambda **kwargs: FakeOpenAIClient())
+
+    report = run_predeadline(
+        settings=load_settings(),
+        offline=True,
+        force=True,
+        private_path=private_path,
+        reports_dir=tmp_path / "reports",
+        snapshot_root=tmp_path / "snaps",
+    )
+    also = report.weekly_plan.get("also_considered") or []
+    assert also
+    picked = [r for r in also if r.get("picked")]
+    not_picked = [r for r in also if not r.get("picked")]
+    assert len(picked) == 1
+    assert picked[0]["in_name"] == "Egan"
+    assert not_picked
+    assert any(r.get("in_name") == "Ajayi" and r.get("reason") for r in not_picked)
+
+
 def test_primary_payload_ids_agree_and_are_stable() -> None:
     owned, catalog, projections = _gw3_shaped_conflict()
     kwargs = dict(
