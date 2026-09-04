@@ -26,12 +26,12 @@ xychart-beta
 
 ## Spend now vs bank the free transfer
 
-**Bank vs spend verdict: Spend the FT now.** Spend the FT: +5.6 horizon xP clears the bar (+3.4 this GW). Rolling would bank 2 FT next GW but forego this edge. Net after FT-banking cost (~0.3): +5.2. (FT now 1 → 1 if you transfer, 2 if you roll; flat FT-bank option cost ~0.35; deferred dual-move upside +4.49; net after FT penalty +5.25; locked pick Shaw→De Cuyper.)
+**Bank vs spend verdict: Bank the FT.** Bank the FT (1→2 next GW). Bank for 2 FT: dual-move horizon EV 10.1 beats act-now 5.6 (delta +4.5). (FT now 1 → 1 if you transfer, 2 if you roll; sequence bank_for_2ft (act-now 5.599, roll-to-2FT 10.089, hit 4.413); deferred dual-move upside +4.49; net after FT penalty +5.25; locked pick Shaw→De Cuyper.)
 
 ```mermaid
 flowchart LR
     A["GW3 locked: Shaw to De Cuyper"]
-    B["Spend FT now"]
+    B["Bank FT"]
     C["Next GW: 2 FT if rolled"]
     D["Chips: hold chips"]
     A --> B
@@ -54,9 +54,22 @@ flowchart TD
 
 ## Confirmed DGW / BGW in the horizon
 
-No confirmed DGW/BGW strip was attached to this report (fixtures-feed calendar is surfaced when present). Any unscheduled windows must be labelled priors — never shown as confirmed.
+Confirmed fixtures in horizon (GW3, GW4, GW5, GW6, GW7, GW8): no DGW/BGW flags from the feed.
 
-_No confirmed fixture-calendar rows to chart._
+```mermaid
+flowchart LR
+    G0["GW3 SGW"]
+    G1["GW4 SGW"]
+    G2["GW5 SGW"]
+    G3["GW6 SGW"]
+    G4["GW7 SGW"]
+    G5["GW8 SGW"]
+    G0 --> G1
+    G1 --> G2
+    G2 --> G3
+    G3 --> G4
+    G4 --> G5
+```
 
 ## DGW / BGW priors (not confirmed)
 
