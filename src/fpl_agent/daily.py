@@ -392,6 +392,12 @@ def run_predeadline(
             veto_watchlist.append({"player_id": int(pid), "web_name": str(block.get(key_name) or pid)})
     weekly_plan["veto_watchlist"] = veto_watchlist[:24]
     weekly_plan["best_stretch"] = stretch_transfers[0].as_payload() if stretch_transfers else None
+
+    price_block = _align_price_actions_to_primary(
+        price_block,
+        weekly_plan.get("primary_move") if isinstance(weekly_plan.get("primary_move"), dict) else None,
+    )
+
     weekly_plan["after_transfer"] = None
     if primary.action == "transfer" and primary.plan is not None and len(primary.plan.moves) == 1 and primary_move:
         after_ids = [
@@ -565,6 +571,20 @@ def run_predeadline(
         extra_warnings = _unique_texts(extra_warnings + list(override_result.warnings))
     if price_report is not None:
         extra_warnings = _unique_texts(extra_warnings + list(price_report.warnings))
+    if price_block.get("price_watch_notes"):
+        extra_warnings = _unique_texts(extra_warnings + list(price_block["price_watch_notes"]))
+
+    # Escalate transfer urgency when price timing applies to the locked primary.
+    if price_block.get("primary_price_urgency") == "high":
+        from fpl_agent.llm.client import MoveType as _MoveType
+
+        escalated = []
+        for move in advice.suggested_moves:
+            if move.move_type == _MoveType.TRANSFER:
+                escalated.append(move.model_copy(update={"urgency": "high"}))
+            else:
+                escalated.append(move)
+        advice = advice.model_copy(update={"suggested_moves": escalated})
 
     tldr = [item.strip() for item in advice.tldr if item.strip()]
     if not tldr and advice.headline:
@@ -594,7 +614,11 @@ def run_predeadline(
         used_live_ai=used_live and not meta.fallback,
         skipped=False,
         skip_reason=None,
-        price_status=price_report.status.value if price_report is not None else None,
+        price_status=(
+            str(price_block.get("price_status"))
+            if price_block.get("price_status") is not None
+            else (price_report.status.value if price_report is not None else None)
+        ),
         price_actions=price_block.get("price_actions") if isinstance(price_block.get("price_actions"), list) else None,
         squad_as_of=private.as_of,
         squad_max_age_hours=float(settings.freshness.private_squad_max_age_hours),
@@ -628,6 +652,69 @@ def _llm_weekly_plan(plan: dict[str, Any]) -> dict[str, Any]:
     )
     out = {key: plan[key] for key in keys if key in plan}
     out["horizon"] = list(plan.get("horizon") or [])[:3]
+    return out
+
+
+def _align_price_actions_to_primary(
+    price_block: dict[str, Any],
+    primary_move: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Price timing may escalate the locked primary only — never choose a different IN.
+
+    act_now_* rows whose player_ids miss the primary out/in become watch notes.
+    The report banner is ACT TONIGHT only when the primary itself is timed.
+    """
+    actions = list(price_block.get("price_actions") or [])
+    if not actions:
+        return price_block
+    primary_ids: set[int] = set()
+    if isinstance(primary_move, dict) and str(primary_move.get("action") or "") == "transfer":
+        for key in ("in_id", "out_id"):
+            if primary_move.get(key) is not None:
+                try:
+                    primary_ids.add(int(primary_move[key]))
+                except (TypeError, ValueError):
+                    pass
+    rewritten: list[dict[str, Any]] = []
+    primary_timed = False
+    watch_notes: list[str] = list(price_block.get("price_watch_notes") or [])
+    for raw in actions:
+        if not isinstance(raw, dict):
+            continue
+        action = dict(raw)
+        cls = str(action.get("action_class") or "")
+        ids = []
+        for x in action.get("player_ids") or []:
+            try:
+                ids.append(int(x))
+            except (TypeError, ValueError):
+                continue
+        if cls in {"act_now_recommended", "act_now_conditional"}:
+            if primary_ids and set(ids) & primary_ids:
+                primary_timed = True
+                rewritten.append(action)
+            else:
+                names = action.get("web_names") or ids
+                watch_notes.append(
+                    f"Price act-now on {names} ignored for transfer choice "
+                    "(timing may only bring forward the locked primary)."
+                )
+                action["action_class"] = "watch"
+                action["demoted_from_act_now"] = True
+                rewritten.append(action)
+        else:
+            rewritten.append(action)
+    out = dict(price_block)
+    out["price_actions"] = rewritten
+    if watch_notes:
+        out["price_watch_notes"] = watch_notes
+    if primary_timed:
+        out["price_status"] = "ACT TONIGHT (conditional)"
+        out["primary_price_urgency"] = "high"
+    elif str(out.get("price_status") or "").upper().startswith("ACT"):
+        # Banner was driven by a non-primary act_now — demote.
+        out["price_status"] = "WATCH"
+        out["primary_price_urgency"] = "low"
     return out
 
 

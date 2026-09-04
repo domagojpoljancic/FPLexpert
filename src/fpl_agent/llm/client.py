@@ -414,6 +414,12 @@ def validate_daily_advice(
     alternatives: list[dict[str, Any]] | None = None,
     veto_claims: list[dict[str, Any]] | None = None,
 ) -> DailyAdvice:
+    """Validate model output; snap transfer/hold back to the locked primary.
+
+    Price timing cannot choose the IN: act_now on a non-primary player never
+    promotes a hold primary into a transfer (snap-back handles that), and
+    ignore/watch buys stay blocked.
+    """
     warnings = list(advice.warnings)
     ignore_watch: set[int] = set()
     act_now: set[int] = set()
@@ -546,7 +552,12 @@ def validate_daily_advice(
             if MODEL_RERANKED_WITHOUT_VETO not in warnings:
                 warnings.append(MODEL_RERANKED_WITHOUT_VETO)
         cleaned_moves = snapped
-        plan_action = PlanAction.REVISE if primary_in is not None else advice.plan_action
+        if primary_in is not None:
+            plan_action = PlanAction.REVISE
+        elif any(m.move_type == MoveType.HOLD for m in cleaned_moves):
+            plan_action = PlanAction.KEEP
+        else:
+            plan_action = advice.plan_action
         return advice.model_copy(
             update={
                 "plan_action": plan_action,
@@ -848,6 +859,8 @@ class ResponsesOpenAIClient:
             "headline must be one sentence of advice, never a section title such as 'This week'. "
             "Use supplied price_actions if present. Do not invent price likelihoods. "
             "Do not upgrade ignore/watch price actions into transfers for price reasons. "
+            "price_actions may only add timing/urgency to weekly_plan.primary_move — "
+            "never switch the IN because a different player has act_now. "
             "weekly_plan.primary_move is already locked by deterministic code. "
             "Confirm that primary transfer/hold unless you cite an official/club-tier veto claim "
             "against the primary buy (injury/suspension/availability/rotation). "

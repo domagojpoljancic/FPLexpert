@@ -14,7 +14,8 @@ This prompt is used about **one day before** the gameweek deadline — not for t
 - Preserve uncertainty. If status is doubtful, prefer watch + recheck triggers.
 - You may use supplied `price_actions`. You must not invent likelihood bands.
 - You must not upgrade a price action of `ignore` or `watch` into a transfer **for price reasons**.
-- You may mention `act_now_*` price actions in `suggested_moves` only if those player IDs were supplied.
+- `price_actions` may only add timing/urgency to the locked `weekly_plan.primary_move`. An `act_now_*` on a different player must not change the IN.
+- You may mention `act_now_*` price actions in `suggested_moves` only if those player IDs were supplied **and** they intersect the primary out/in IDs.
 - Transfer buys must come from `transfer_candidates`, `stretch_transfer_candidates`, or `transfer_plans` moves only. Never invent a buy target.
 - If `news_search_empty` is set or web search returned no pages, do **not** invent injuries, pressers, or predicted XIs. Say news was not retrieved. Captain/transfer advice may still use supplied xP.
 
