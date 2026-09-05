@@ -46,7 +46,7 @@ Overnight **price watch** runs on GitHub (20:00 Zagreb). **Squad news** runs whe
 
 ### What you get
 
-- **Pre-deadline review** — TLDR, XI / captain / bench, transfer options (including when to spend vs bank a free transfer), chip hints, a **Why** section from news the run actually opened, and (once the prior gameweek is officially final) a short **Reflection** on how last week's advice scored.
+- **Pre-deadline review** — TLDR, XI / captain / bench, transfer options (including when to spend vs bank a free transfer), chip hints, a **Why** section from news the run actually opened, and (once the prior gameweek is officially final) a **Reflection** section: short header line, predicted-vs-actual table, Mermaid calibration/transfer trends when enough history exists, proposal-only calibration notes, and how past transfer calls have aged across their original horizon.
 - **Overnight price watch** — whether to lock a move before a likely rise or fall (plan-gated; it won't chase random template moves).
 - **After the deadline** (optional) — `uv run fpl-agent scorecard -g N` compares the last plan to official points.
 
