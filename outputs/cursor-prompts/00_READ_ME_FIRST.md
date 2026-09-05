@@ -1,5 +1,7 @@
 # FPL Decision-Support Agent — Cursor Prompt Pack
 
+**Scope:** private-purpose personal Fantasy Premier League assistant for this season — not a shipped product. Productization is deferred until after a full Premier League season.
+
 This directory replaces the old PRD. Do not give the old PRD to Cursor and do not ask Cursor to reconcile against it.
 
 Use these prompts in order, one at a time. Give Cursor the entire contents of one file. Let it inspect and modify the repository, run the required tests, and report its checkpoint before proceeding to the next prompt.
@@ -31,7 +33,9 @@ Use these prompts in order, one at a time. Give Cursor the entire contents of on
 
 ## Non-negotiable product contract
 
-The finished product is a read-only FPL decision-support system. It may recommend transfers, hits, lineups, captains, bench order, and chips, but the user always makes the FPL changes.
+This season the system is a **private-purpose** personal co-pilot. A public product may follow after a full Premier League season.
+
+The finished product (when that happens) is a read-only FPL decision-support system. It may recommend transfers, hits, lineups, captains, bench order, and chips, but the user always makes the FPL changes.
 
 The product must:
 

@@ -1,6 +1,8 @@
 # FPL Expert
 
-Read-only Fantasy Premier League co-pilot. It recommends transfers, captain, bench, and price moves from your squad, fixtures, and news. **You** make every change in the official FPL app.
+**Private-purpose project** — built for personal Fantasy Premier League use this season, not a shipped product. After a full Premier League season, it may become a product.
+
+Read-only co-pilot. It recommends transfers, captain, bench, and price moves from your squad, fixtures, and news. **You** make every change in the official FPL app.
 
 ## Quick start
 

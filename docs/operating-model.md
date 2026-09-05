@@ -1,5 +1,6 @@
 # Operating Model
 
+- **Private-purpose project** for personal FPL use this season; not a shipped product. It may become a product after a full Premier League season.
 - The **user owns all FPL actions**. The agent only recommends.
 - **Executable advice** requires a fresh, reconciled team state (squad + bank + FT + selling basis + chips).
 - **Deterministic code** owns rules, numeric projections, scenario construction, and outcome replay.
