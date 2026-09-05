@@ -7,9 +7,9 @@ on:
         type: boolean
         default: false
   schedule:
-    # 21:00 Europe/Zagreb in summer (CEST = 19:00 UTC). Winter this is 20:00 Zagreb.
-    # GitHub cron is UTC and may delay/drop.
-    - cron: "0 19 * * *"
+    # 18:00 Europe/Zagreb in summer (CEST = 16:00 UTC). Winter this is 17:00 Zagreb.
+    # GitHub cron is often 1–3h late; aiming earlier so the job lands before ~21:00 CEST.
+    - cron: "0 16 * * *"
 
 permissions: {}
 
@@ -31,7 +31,7 @@ jobs:
           gh issue comment 1 --repo "${GITHUB_REPOSITORY}" --body "$(cat <<'EOF'
           **Email test from github-actions[bot]**
 
-          If this reaches your inbox, overnight price alerts will use the same path (comments on issue #1).
+          If this reaches your inbox, overnight price alerts will use the same path (comments on issue #1 / "FPL price alerts").
           EOF
           )"
       - name: Summary
@@ -40,7 +40,7 @@ jobs:
             echo "## Email test only"
             echo
             echo "The **prices** job was skipped. This run only posted a test comment."
-            echo "Uncheck **test_email** (or wait for the 21:00 schedule) to run the real price watch."
+            echo "Uncheck **test_email** (or wait for the 18:00 Zagreb schedule) to run the real price watch."
           } >> "$GITHUB_STEP_SUMMARY"
 
   prices:
@@ -79,11 +79,13 @@ jobs:
           gameweek = None
           headline = ""
           md_text = ""
+          notify_email = False
           if reports:
               payload = json.loads(reports[-1].read_text(encoding="utf-8"))
               status = payload.get("status") or status
               gameweek = payload.get("gameweek")
               headline = payload.get("headline") or ""
+              notify_email = bool(payload.get("notify_email"))
               md_path = reports[-1].with_suffix(".md")
               if md_path.exists():
                   md_text = md_path.read_text(encoding="utf-8")
@@ -101,6 +103,7 @@ jobs:
                       "gameweek": gameweek,
                       "status": status,
                       "headline": headline,
+                      "notify_email": notify_email,
                   },
                   indent=2,
               )
@@ -130,39 +133,34 @@ jobs:
                   f"- Gameweek: `{gameweek}`",
                   f"- Status: **{status}**",
                   f"- Headline: {headline or '(none)'}",
+                  f"- Email comment: **{'yes' if notify_email else 'no'}**",
                   "",
-                  "Email is sent only on act-now. This summary is the run log.",
+                  "Email (GitHub Issue comment) when act-now **or** likely market movers.",
+                  "Watch the **FPL price alerts** issue (or Actions email) to get notified.",
                   "",
               ]
               if md_text:
                   body.extend(["### Report", "", md_text[:12000], ""])
               Path(summary).write_text("\n".join(body), encoding="utf-8")
-          print(status, stamp_local)
+          print(status, stamp_local, "notify_email=", notify_email)
           from fpl_agent.reporting.readme_index import refresh_readme_recent_runs
 
           refresh_readme_recent_runs()
           PY
-      - name: Email via GitHub Issue (act-now only)
+      - name: Email via GitHub Issue (act-now or likely market movers)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           uv run python - <<'PY'
           import json, subprocess, sys
           from pathlib import Path
-          from fpl_agent.prices.alerts import should_comment_issue
-          from fpl_agent.prices.types import ReportStatus
 
           reports = sorted(Path("reports").glob("prices-gw*.json"), key=lambda p: p.stat().st_mtime)
           if not reports:
               print("no price report; skip issue")
               sys.exit(0)
           payload = json.loads(reports[-1].read_text(encoding="utf-8"))
-          try:
-              status = ReportStatus(payload["status"])
-          except ValueError:
-              print("unknown status; skip issue")
-              sys.exit(0)
-          if not should_comment_issue(status=status, notified=payload.get("notified") or []):
+          if not payload.get("notify_email"):
               print("quiet night; no issue comment")
               sys.exit(0)
           md = reports[-1].with_suffix(".md")
@@ -172,7 +170,6 @@ jobs:
               ["gh", "issue", "list", "--state", "open", "--search", f"{title} in:title", "--json", "number,title"],
               text=True,
           )
-          import json as json_mod
           matches = [i for i in json.loads(listed) if i.get("title") == title]
           if matches:
               number = str(matches[0]["number"])
@@ -181,11 +178,12 @@ jobs:
                   [
                       "gh", "issue", "create",
                       "--title", title,
-                      "--body", "Standing thread for overnight price alerts. Watch this issue to get GitHub emails.",
+                      "--body",
+                      "Standing thread for overnight price alerts (act-now + likely market movers). "
+                      "Watch this issue (Subscribe) to get GitHub notification emails.",
                   ],
                   text=True,
               )
-              # URL ends with /issues/N
               number = created.strip().rsplit("/", 1)[-1]
           subprocess.check_call(["gh", "issue", "comment", number, "--body", body])
           print(f"commented on issue {number}")

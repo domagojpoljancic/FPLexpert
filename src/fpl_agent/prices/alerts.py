@@ -58,8 +58,15 @@ def should_notify(action: PriceAction) -> bool:
     }
 
 
-def should_comment_issue(*, status: ReportStatus, notified: list[Any]) -> bool:
-    """Email-worthy GitHub Issue comment: new act-now alerts only."""
+def should_comment_issue(
+    *,
+    status: ReportStatus,
+    notified: list[Any],
+    market_likely_count: int = 0,
+) -> bool:
+    """Email-worthy GitHub Issue comment: act-now alerts or likely market movers."""
+    if market_likely_count > 0:
+        return True
     if not notified:
         return False
     return status in {ReportStatus.ACT_TONIGHT, ReportStatus.ACT_TONIGHT_CONDITIONAL}

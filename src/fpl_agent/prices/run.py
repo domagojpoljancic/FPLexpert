@@ -20,6 +20,15 @@ from fpl_agent.prices.alerts import (
     maybe_post_webhook,
     notify_payload,
     select_new_notifications,
+    should_comment_issue,
+)
+from fpl_agent.prices.external import (
+    DEFAULT_LIVEFPL_PRICES_URL,
+    ExternalPriceRow,
+    MarketMover,
+    attach_external_progress,
+    fetch_external_prices,
+    select_market_movers,
 )
 from fpl_agent.prices.model import score_player
 from fpl_agent.prices.outcomes import append_outcomes, outcomes_from_snapshots
@@ -33,6 +42,7 @@ from fpl_agent.prices.snapshot import (
     snapshot_from_bootstrap,
 )
 from fpl_agent.prices.types import (
+    LikelihoodBand,
     PriceAction,
     PricePrediction,
     ReportStatus,
@@ -60,6 +70,9 @@ class PricesReport:
     model_version: str
     snapshot_hashes: list[str]
     report_hash: str
+    market: list[MarketMover]
+    external_source: str | None
+    notify_email: bool
 
 
 def load_plan_view(
@@ -307,6 +320,38 @@ def run_prices(
     if universe == "catalog":
         warnings.append("universe_catalog_diagnostic_no_notify")
 
+    external_rows: list[ExternalPriceRow] = []
+    external_source: str | None = None
+    ext_url = (settings.prices.external_predictor_url or "").strip()
+    if offline:
+        if ext_url:
+            warnings.append("external_predictor_skipped_offline")
+    elif ext_url:
+        try:
+            external_rows = fetch_external_prices(ext_url)
+            external_source = ext_url
+        except Exception as exc:  # noqa: BLE001 — degrade; never fail the overnight job
+            warnings.append(f"external_predictor_unavailable:{type(exc).__name__}")
+            external_rows = []
+
+    market: list[MarketMover] = []
+    if external_rows:
+        plan_ids = set(plan_view.in_ids | plan_view.out_ids)
+        catalog_names = {
+            pid: str(el.get("web_name") or pid) for pid, el in catalog.items()
+        }
+        market = select_market_movers(
+            external_rows,
+            owned=owned,
+            plan_ids=plan_ids,
+            watch_progress=settings.prices.external_watch_progress,
+            likely_progress=settings.prices.external_likely_progress,
+            top_n=settings.prices.market_top_n,
+            catalog_names=catalog_names,
+        )
+        # Score market highlights with the internal model too (report / attach only).
+        target_ids = set(target_ids) | {m.player_id for m in market}
+
     max_age = timedelta(minutes=settings.freshness.public_fpl_max_age_minutes)
     event_started = None
     events = list(bootstrap.get("events") or [])
@@ -336,8 +381,26 @@ def run_prices(
             )
         )
 
+    # Squad/plan/watchlist only for smart-to-act; market ids are scored but not classified
+    # unless they are already in the action universe.
+    action_ids = resolve_universe(
+        "all-relevant" if universe == "catalog" else universe,
+        owned=owned,
+        plan=plan_view,
+        watchlist=watchlist,
+        catalog=set(catalog),
+    )
+    if universe == "catalog":
+        action_preds = predictions
+    else:
+        action_preds = [p for p in predictions if p.player_id in action_ids]
+
+    if external_rows:
+        by_ext = {r.player_id: r for r in external_rows}
+        attach_external_progress(predictions, by_ext)
+
     actions = classify_all(
-        predictions=predictions,
+        predictions=action_preds,
         team=team,
         rules=rules,
         plan=plan_view,
@@ -348,7 +411,7 @@ def run_prices(
         now=now,
     )
     warnings.extend(team.warnings)
-    status = report_status(actions)
+    status = report_status(actions, market=market)
     tz = ZoneInfo(settings.manager.timezone)
     local_now = now.astimezone(tz).strftime("%Y-%m-%d %H:%M %Z")
     markdown = render_prices_markdown(
@@ -361,12 +424,17 @@ def run_prices(
         timezone_label=local_now,
         warnings=warnings,
         executability=team.executability.value,
+        market=market,
+        external_source=external_source or (DEFAULT_LIVEFPL_PRICES_URL if market else None),
     )
     report_hash = stable_json_hash(markdown)
 
     notify_enabled = settings.publishing.issue_publishing if notify is None else notify
     dry = settings.publishing.dry_run or not notify_enabled
     notified: list[dict[str, Any]] = []
+    market_likely = [
+        m for m in market if m.band == LikelihoodBand.LIKELY_NEXT_WINDOW
+    ]
     if universe != "catalog":
         directions = {p.player_id: p.direction.value for p in predictions}
         state_path = gw_dir(snapshot_root, SeasonId.S2026_27.value, gw) / "notify-state.json"
@@ -397,6 +465,12 @@ def run_prices(
         if dry and fresh:
             warnings.append("notify_dry_run")
 
+    notify_email = should_comment_issue(
+        status=status,
+        notified=notified,
+        market_likely_count=len(market_likely) if settings.prices.notify_on_market_movers else 0,
+    )
+
     headline = status_headline(status)
 
     report = PricesReport(
@@ -412,6 +486,9 @@ def run_prices(
         model_version=settings.prices.model_version,
         snapshot_hashes=[s.content_hash for s in snapshots],
         report_hash=report_hash,
+        market=market,
+        external_source=external_source,
+        notify_email=notify_email,
     )
     if save:
         write_prices_artifact(report, reports_dir)
@@ -435,6 +512,22 @@ def write_prices_artifact(report: PricesReport, root: Path = Path("reports")) ->
         "predictions": [p.model_dump(mode="json") for p in report.predictions],
         "actions": [a.model_dump(mode="json") for a in report.actions],
         "notified": report.notified,
+        "notify_email": report.notify_email,
+        "external_source": report.external_source,
+        "market": [
+            {
+                "player_id": m.player_id,
+                "web_name": m.web_name,
+                "direction": m.direction.value,
+                "external_progress": m.external_progress,
+                "cost_millions": m.cost_millions,
+                "band": m.band.value,
+                "owned": m.owned,
+                "in_plan": m.in_plan,
+                "source_label": m.source_label,
+            }
+            for m in report.market
+        ],
     }
     path.with_suffix(".json").write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
     return path

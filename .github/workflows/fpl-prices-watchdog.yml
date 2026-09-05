@@ -2,8 +2,8 @@ name: fpl-prices-watchdog
 on:
   workflow_dispatch:
   schedule:
-    # Every 6 hours. The price job is 19:00 UTC; a miss should alert within ~26h.
-    - cron: "20 1,7,13,19 * * *"
+    # Every 6 hours. The price job is 16:00 UTC; a miss should alert within ~26h.
+    - cron: "20 22,4,10,16 * * *"
 
 permissions: {}
 

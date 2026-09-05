@@ -68,8 +68,13 @@ prices:
   max_hours_ahead_to_spend_ft: 36
   bank_floor_tenths_after: 0
   webhook_url: ""
-  external_predictor_url: ""
-  model_version: prices-v1.0.0
+  # LiveFPL public JSON (same data as https://www.livefpl.net/prices). Empty disables market section.
+  external_predictor_url: "https://livefpl.us/api/prices.json"
+  external_watch_progress: 0.55
+  external_likely_progress: 0.85
+  market_top_n: 12
+  notify_on_market_movers: true
+  model_version: prices-v1.1.0
 
 projections:
   enable_defcon: false
