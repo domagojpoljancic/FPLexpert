@@ -1386,7 +1386,11 @@ def _weekly_plan_section(report: DailyReport) -> list[str]:
     return lines
 
 
-def render_daily_text(report: DailyReport) -> str:
+def render_daily_text(
+    report: DailyReport,
+    *,
+    evaluation_dir: Path = Path("data/evaluation"),
+) -> str:
     if report.skipped:
         lines = [
             f"# Pre-deadline FPL review — Gameweek {report.gameweek}",
@@ -1451,7 +1455,7 @@ def render_daily_text(report: DailyReport) -> str:
             lines.append("")
         lines.extend(f"- {x}" for x in watch[:6])
     if report.reflection:
-        lines += ["", *_reflection_section(report.reflection)]
+        lines += ["", *_reflection_section(report.reflection, evaluation_dir=evaluation_dir)]
     lines += ["", *_sources_section(report), "", "_Recommend only — you make all FPL changes._"]
     return "\n".join(lines)
 
@@ -1466,9 +1470,18 @@ def _fmt_signed(value: float | int | None) -> str:
     return text
 
 
-def _reflection_section(reflection: dict[str, Any]) -> list[str]:
+def _reflection_section(
+    reflection: dict[str, Any],
+    *,
+    evaluation_dir: Path = Path("data/evaluation"),
+) -> list[str]:
     """Format the detailed reflection block — numbers only, no recomputation."""
     from fpl_agent.evaluation.reflection import root_cause_plain
+    from fpl_agent.reporting.reflection_charts import (
+        load_reflection_history,
+        mermaid_calibration_trend,
+        mermaid_transfer_payoff_trend,
+    )
 
     lines = [
         "## Reflection: how last week's advice did",
@@ -1509,6 +1522,27 @@ def _reflection_section(reflection: dict[str, Any]) -> list[str]:
     better = str(reflection.get("what_could_have_been_better") or "").strip()
     if better:
         lines += ["", better]
+
+    subject_gw = int(reflection.get("gameweek") or 0)
+    history = (
+        load_reflection_history(evaluation_dir, through_gameweek=subject_gw)
+        if subject_gw > 0
+        else []
+    )
+    cal = mermaid_calibration_trend(history)
+    xfer = mermaid_transfer_payoff_trend(history)
+    lines += ["", "### Trends"]
+    if cal is None and xfer is None:
+        lines += ["", "Not enough finalized weeks yet to chart a trend."]
+    else:
+        if cal is not None:
+            lines += ["", cal]
+        else:
+            lines += ["", "Not enough finalized weeks yet to chart a calibration trend."]
+        if xfer is not None:
+            lines += ["", xfer]
+        else:
+            lines += ["", "Not enough transfer weeks yet to chart a payoff trend."]
     return lines
 
 

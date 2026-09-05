@@ -1427,3 +1427,106 @@ def test_run_predeadline_keeps_going_when_reflection_raises(tmp_path, monkeypatc
     assert "Reflection" not in text
     assert "## Do this" in text
     assert "## Why" in text
+
+
+def test_render_reflection_includes_charts_when_history_exists(tmp_path) -> None:
+    import json
+
+    from fpl_agent.daily import render_daily_text
+    from fpl_agent.evaluation.reflection import (
+        GwFinality,
+        REFLECTION_SCHEMA_VERSION,
+        ReflectionSummary,
+    )
+
+    evaluation = tmp_path / "evaluation"
+    evaluation.mkdir()
+    for gw, pred, act, delta in ((1, 30.0, 28, 2), (2, 40.0, 42, 4)):
+        summary = ReflectionSummary(
+            schema_version=REFLECTION_SCHEMA_VERSION,
+            gameweek=gw,
+            computed_at="2026-09-01T00:00:00+00:00",
+            finality=GwFinality.FINAL.value,
+            report_path=None,
+            predicted_xi_xp=pred,
+            actual_xi_points=act,
+            model_captain_name="Haaland",
+            model_captain_points=12,
+            predicted_captain_xp=10.0,
+            saved_captain_name=None,
+            saved_captain_points=None,
+            transfer_out_name="Out",
+            transfer_in_name="In",
+            transfer_out_points=2,
+            transfer_in_points=2 + delta,
+            transfer_predicted_delta=1.0,
+            transfer_actual_delta=delta,
+            process_quality="good",
+            outcome_quality="positive",
+            root_cause="sound_process_normal_variance",
+            alternatives_reviewed=tuple(),
+            short_summary=f"Last week (GW{gw}): short",
+            detail_summary=f"GW{gw} detail",
+            what_could_have_been_better="No recorded alternative would have done better.",
+        )
+        (evaluation / f"reflection-gw{gw}.json").write_text(
+            json.dumps(summary.as_payload()), encoding="utf-8"
+        )
+
+    reflection = json.loads((evaluation / "reflection-gw2.json").read_text(encoding="utf-8"))
+    text = render_daily_text(_base_report(reflection=reflection), evaluation_dir=evaluation)
+    assert "### Trends" in text
+    assert text.count("```mermaid") == 2
+    assert "XI predicted xP vs actual points" in text
+    assert "Transfer payoff" in text
+    assert "Not enough finalized weeks yet to chart a trend." not in text
+
+
+def test_render_reflection_chart_fallback_with_thin_history(tmp_path) -> None:
+    import json
+
+    from fpl_agent.daily import render_daily_text
+    from fpl_agent.evaluation.reflection import (
+        GwFinality,
+        REFLECTION_SCHEMA_VERSION,
+        ReflectionSummary,
+    )
+
+    evaluation = tmp_path / "evaluation"
+    evaluation.mkdir()
+    summary = ReflectionSummary(
+        schema_version=REFLECTION_SCHEMA_VERSION,
+        gameweek=2,
+        computed_at="2026-09-01T00:00:00+00:00",
+        finality=GwFinality.FINAL.value,
+        report_path=None,
+        predicted_xi_xp=40.0,
+        actual_xi_points=42,
+        model_captain_name="Haaland",
+        model_captain_points=12,
+        predicted_captain_xp=10.0,
+        saved_captain_name=None,
+        saved_captain_points=None,
+        transfer_out_name="Out",
+        transfer_in_name="In",
+        transfer_out_points=2,
+        transfer_in_points=6,
+        transfer_predicted_delta=1.0,
+        transfer_actual_delta=4,
+        process_quality="good",
+        outcome_quality="positive",
+        root_cause="sound_process_normal_variance",
+        alternatives_reviewed=tuple(),
+        short_summary="Last week (GW2): short",
+        detail_summary="GW2 detail",
+        what_could_have_been_better="No recorded alternative would have done better.",
+    )
+    (evaluation / "reflection-gw2.json").write_text(
+        json.dumps(summary.as_payload()), encoding="utf-8"
+    )
+    text = render_daily_text(
+        _base_report(reflection=summary.as_payload()), evaluation_dir=evaluation
+    )
+    assert "### Trends" in text
+    assert "```mermaid" not in text
+    assert "Not enough finalized weeks yet to chart a trend." in text
