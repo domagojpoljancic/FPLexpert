@@ -1,4 +1,4 @@
-"""CLI entrypoint for the FPL decision-support agent."""
+"""CLI entrypoint for the private-purpose FPL decision-support agent."""
 
 from __future__ import annotations
 
@@ -14,7 +14,11 @@ from fpl_agent.config import default_settings_path, load_dotenv_files, load_sett
 from fpl_agent.errors import AgentError, ExitCode
 from fpl_agent.observability import configure_logging, redact_value
 
-app = typer.Typer(add_completion=False, no_args_is_help=True, help="Read-only FPL decision-support agent")
+app = typer.Typer(
+    add_completion=False,
+    no_args_is_help=True,
+    help="Private-purpose read-only FPL assistant (personal use this season; product candidate after a full PL season)",
+)
 team_state_app = typer.Typer(help="Local private team-state synchronization (no FPL login)")
 rules_app = typer.Typer(help="Season rules utilities")
 app.add_typer(team_state_app, name="team-state")

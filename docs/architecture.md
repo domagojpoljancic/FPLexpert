@@ -1,5 +1,7 @@
 # Architecture
 
+**Scope:** private-purpose personal FPL assistant for this season (not a product yet). Productization is deferred until after a full Premier League season.
+
 ## Packaging choice
 
 We use **uv** + **hatchling** with a `src/` layout and `uv.lock`.
