@@ -1557,6 +1557,16 @@ def _reflection_section(
     )
     if lesson_lines:
         lines += ["", *lesson_lines]
+
+    from fpl_agent.evaluation.transfer_pertinence import (
+        format_theses_section,
+        load_latest_theses,
+    )
+
+    theses = list(load_latest_theses(evaluation_dir / "transfer-theses-latest.json").values())
+    thesis_lines = format_theses_section(theses, current_gameweek=subject_gw)
+    if thesis_lines:
+        lines += ["", *thesis_lines]
     return lines
 
 
@@ -1587,10 +1597,42 @@ def _write_decision_ledger(report: DailyReport) -> None:
 
     if report.skipped:
         return
+    weekly_plan = report.weekly_plan or {}
+    best = weekly_plan.get("best_affordable") or {}
+    impact = weekly_plan.get("horizon_impact") or {}
+    by_gw = [row for row in (impact.get("by_gw") or []) if isinstance(row, dict)]
+    horizon_gameweeks = [
+        int(row["gw"] if row.get("gw") is not None else row["gameweek"])
+        for row in by_gw
+        if row.get("gw") is not None or row.get("gameweek") is not None
+    ]
+    predicted_delta_by_gw = {
+        str(int(row["gw"] if row.get("gw") is not None else row["gameweek"])): float(
+            row.get("delta_xp") or 0
+        )
+        for row in by_gw
+        if row.get("gw") is not None or row.get("gameweek") is not None
+    }
+    primary: dict[str, Any] = {"plan_action": report.plan_action}
+    if weekly_plan.get("after_transfer") and best.get("in_id") and best.get("out_id"):
+        primary.update(
+            {
+                "out_id": best.get("out_id"),
+                "out_name": best.get("out_name"),
+                "in_id": best.get("in_id"),
+                "in_name": best.get("in_name"),
+                "delta_gw_xp": best.get("delta_gw_xp"),
+                "delta_weighted_xp": best.get("delta_weighted_xp"),
+                "horizon_gameweeks": horizon_gameweeks,
+                "predicted_delta_by_gw": predicted_delta_by_gw,
+            }
+        )
+    alternatives = list(weekly_plan.get("also_considered") or [])
     payload = {
         "gameweek": report.gameweek,
-        "weekly_plan": report.weekly_plan,
+        "weekly_plan": weekly_plan,
         "plan_action": report.plan_action,
+        "primary": primary,
     }
     now = datetime.now(UTC).isoformat()
     record = DecisionRecord(
@@ -1607,7 +1649,8 @@ def _write_decision_ledger(report: DailyReport) -> None:
         config_hash="",
         code_version="",
         roll={},
-        primary={"plan_action": report.plan_action},
+        primary=primary,
+        alternatives=alternatives,
         warnings=list(report.warnings),
         report_hash=build_decision_id({"headline": report.headline}),
     )

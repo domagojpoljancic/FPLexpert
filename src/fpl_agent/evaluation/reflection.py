@@ -277,6 +277,8 @@ def build_reflection(
     player_points: dict[int, int] | None = None,
     evaluation_dir: Path = Path("data/evaluation"),
     persist: bool = True,
+    current_squad_ids: set[int] | None = None,
+    ledger_root: Path = Path("data/decision-ledger"),
 ) -> ReflectionSummary | None:
     """Build a ``ReflectionSummary`` for a final gameweek, or ``None`` on soft failure.
 
@@ -408,6 +410,34 @@ def build_reflection(
             json.dumps(summary.as_payload(), indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
+        # Multi-GW transfer theses share this live-points fetch (no second network call).
+        try:
+            from fpl_agent.evaluation.transfer_pertinence import sync_theses_for_reflection
+
+            squad_ids = current_squad_ids
+            if squad_ids is None:
+                # Approximate: XI + any known IDs from the plan's after_transfer in-player.
+                squad_ids = {
+                    int(row.get("player_id") or 0)
+                    for row in (plan.get("xi") or [])
+                    if row.get("player_id")
+                }
+                after = plan.get("after_transfer") or {}
+                if after.get("in_id"):
+                    squad_ids.add(int(after["in_id"]))
+                if after.get("out_id") and int(after["out_id"]) in squad_ids:
+                    squad_ids.discard(int(after["out_id"]))
+            sync_theses_for_reflection(
+                gameweek=gameweek,
+                player_points=points,
+                current_squad_ids=set(squad_ids),
+                ledger_root=ledger_root,
+                jsonl_path=evaluation_dir / "transfer-theses.jsonl",
+                latest_path=evaluation_dir / "transfer-theses-latest.json",
+            )
+        except Exception:
+            # Thesis sync must never fail the reflection itself.
+            pass
 
     return summary
 
