@@ -1143,3 +1143,287 @@ def test_extract_web_search_trace_collects_queries_and_pages() -> None:
         "https://www.bbc.com/sport/football/fantasy-football",
     ]
     assert sources[0]["title"] == "Fantasy News"
+
+
+def _base_report(**kwargs):
+    from fpl_agent.daily import DailyReport
+
+    payload = dict(
+        gameweek=3,
+        plan_action="revise",
+        headline="Buy a midfielder",
+        what_changed=[],
+        attention_triggers=["injury watch"],
+        suggested_moves=[{"move_type": "transfer", "summary": "A → B", "why": "xP"}],
+        uncertainty=[],
+        warnings=[],
+        sources=[],
+        model_meta={"model": "test", "web_search_calls": 0, "fallback": True},
+        executability="EXECUTABLE",
+        used_live_ai=False,
+        tldr=["Buy a midfielder"],
+        detail="Because the numbers say so.",
+    )
+    payload.update(kwargs)
+    return DailyReport(**payload)
+
+
+def test_render_omits_reflection_when_absent() -> None:
+    from fpl_agent.daily import render_daily_text
+
+    text = render_daily_text(_base_report(reflection=None))
+    assert "Reflection" not in text
+    assert "## Do this" in text
+    assert "## Why" in text
+    assert "## Sources" in text
+
+
+def test_render_includes_short_and_detail_reflection() -> None:
+    from fpl_agent.daily import render_daily_text
+
+    reflection = {
+        "short_summary": "Last week (GW2): good process, positive outcome — Raya → Sels was +4 pts.",
+        "detail_summary": "GW2 model XI predicted 16.0 xp and scored 16 official points.",
+        "predicted_xi_xp": 16.0,
+        "actual_xi_points": 16,
+        "model_captain_name": "Haaland",
+        "predicted_captain_xp": 16.0,
+        "model_captain_points": 20,
+        "transfer_out_name": "Raya",
+        "transfer_in_name": "Sels",
+        "transfer_predicted_delta": 1.2,
+        "transfer_actual_delta": 4,
+        "process_quality": "good",
+        "outcome_quality": "positive",
+        "root_cause": "sound_process_normal_variance",
+        "what_could_have_been_better": "No recorded alternative would have done better.",
+    }
+    text = render_daily_text(_base_report(reflection=reflection))
+    assert "Last week (GW2): good process, positive outcome — Raya → Sels was +4 pts." in text
+    assert "## Reflection: how last week's advice did" in text
+    assert "| XI points | 16.0 | 16 |" in text
+    assert "| Captain (Haaland) | 16.0 | 20 |" in text
+    assert "| Raya → Sels | +1.2 | +4 |" in text
+    assert "Process: **good** · Outcome: **positive**" in text
+    assert "normal week-to-week variance" in text
+    assert "No recorded alternative would have done better." in text
+    # Strictly additive: existing sections still present and in order.
+    assert text.index("## Do this") < text.index("## Why")
+    assert text.index("## Why") < text.index("## Reflection")
+    assert text.index("## Reflection") < text.index("## Sources")
+
+
+def test_safe_reflection_mid_gameweek_is_none(tmp_path) -> None:
+    from datetime import UTC, datetime
+
+    from fpl_agent.daily import _safe_reflection_payload
+    from fpl_agent.evaluation.reflection import GwFinality, reflection_gate
+
+    bootstrap = {
+        "events": [
+            {
+                "id": 2,
+                "finished": False,
+                "data_checked": False,
+                "is_next": False,
+                "is_current": True,
+            },
+            {
+                "id": 3,
+                "finished": False,
+                "data_checked": False,
+                "is_next": True,
+                "is_current": False,
+            },
+        ]
+    }
+    fixtures = [
+        {"event": 2, "finished": False, "kickoff_time": "2026-08-30T14:00:00Z"},
+        {"event": 2, "finished": True, "kickoff_time": "2026-08-29T14:00:00Z"},
+    ]
+    subject, status = reflection_gate(
+        bootstrap, fixtures, now=datetime(2026, 8, 30, 12, 0, tzinfo=UTC)
+    )
+    assert subject == 2
+    assert status is GwFinality.IN_PROGRESS
+    assert (
+        _safe_reflection_payload(
+            bootstrap=bootstrap, fixtures=fixtures, reports_dir=tmp_path / "reports"
+        )
+        is None
+    )
+
+
+def test_safe_reflection_gw1_not_applicable(tmp_path) -> None:
+    from fpl_agent.daily import _safe_reflection_payload
+
+    bootstrap = {
+        "events": [
+            {
+                "id": 1,
+                "finished": False,
+                "data_checked": False,
+                "is_next": True,
+                "is_current": False,
+            }
+        ]
+    }
+    assert (
+        _safe_reflection_payload(
+            bootstrap=bootstrap, fixtures=[], reports_dir=tmp_path / "reports"
+        )
+        is None
+    )
+
+
+def test_safe_reflection_final_builds_payload(tmp_path, monkeypatch) -> None:
+    import json
+
+    from fpl_agent.daily import _safe_reflection_payload
+    from fpl_agent.evaluation import reflection as reflection_mod
+    from fpl_agent.evaluation.reflection import GwFinality
+
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    evaluation = tmp_path / "evaluation"
+    plan = {
+        "ok": True,
+        "model_captain": {"player_id": 1, "web_name": "Haaland", "xp_next": 8.0},
+        "xi": [{"player_id": 1, "web_name": "Haaland", "xp_next": 8.0}],
+        "best_affordable": {
+            "out_id": 3,
+            "in_id": 9,
+            "out_name": "Raya",
+            "in_name": "Sels",
+            "delta_weighted_xp": 1.2,
+        },
+        "after_transfer": {"out_id": 3, "in_id": 9},
+        "also_considered": [],
+    }
+    (reports / "predeadline-gw2-20260828T010000Z.json").write_text(
+        json.dumps({"weekly_plan": plan}), encoding="utf-8"
+    )
+
+    bootstrap = {
+        "events": [
+            {"id": 2, "finished": True, "data_checked": True, "is_next": False},
+            {"id": 3, "finished": False, "data_checked": False, "is_next": True},
+        ]
+    }
+    fixtures = [
+        {"event": 2, "finished": True, "kickoff_time": "2026-08-16T14:00:00Z"},
+    ]
+
+    monkeypatch.setattr(
+        reflection_mod,
+        "reflection_gate",
+        lambda *_a, **_k: (2, GwFinality.FINAL),
+    )
+    monkeypatch.setattr(
+        reflection_mod,
+        "fetch_live_points",
+        lambda *_a, **_k: {1: 10, 3: 2, 9: 6},
+    )
+    real_build = reflection_mod.build_reflection
+
+    def _build(**kwargs):
+        kwargs["evaluation_dir"] = evaluation
+        return real_build(**kwargs)
+
+    monkeypatch.setattr(reflection_mod, "build_reflection", _build)
+
+    payload = _safe_reflection_payload(
+        bootstrap=bootstrap, fixtures=fixtures, reports_dir=reports
+    )
+    assert payload is not None
+    assert payload["gameweek"] == 2
+    assert payload["transfer_actual_delta"] == 4
+    assert "Raya" in payload["short_summary"]
+    assert payload["process_quality"] == "good"
+
+
+def test_safe_reflection_swallows_builder_errors(tmp_path, monkeypatch) -> None:
+    from fpl_agent.daily import _safe_reflection_payload
+    from fpl_agent.evaluation import reflection as reflection_mod
+    from fpl_agent.evaluation.reflection import GwFinality
+
+    monkeypatch.setattr(
+        reflection_mod,
+        "reflection_gate",
+        lambda *_a, **_k: (2, GwFinality.FINAL),
+    )
+
+    def _boom(**_kwargs):
+        raise RuntimeError("reflection exploded")
+
+    monkeypatch.setattr(reflection_mod, "build_reflection", _boom)
+    assert (
+        _safe_reflection_payload(
+            bootstrap={"events": [{"id": 3, "is_next": True}]},
+            fixtures=[],
+            reports_dir=tmp_path / "reports",
+        )
+        is None
+    )
+
+
+def test_run_predeadline_keeps_going_when_reflection_raises(tmp_path, monkeypatch) -> None:
+    """build_reflection raising must not change substance of a normal predeadline run."""
+    import json
+    from datetime import UTC, datetime
+
+    from fpl_agent.config import load_settings
+    from fpl_agent.daily import render_daily_text, run_predeadline
+    from fpl_agent.evaluation import reflection as reflection_mod
+    from fpl_agent.evaluation.reflection import GwFinality
+
+    settings = load_settings()
+    monkeypatch.setattr(
+        "fpl_agent.daily.predeadline_gate",
+        lambda *_a, **_k: (True, type("G", (), {"value": "forced"})()),
+    )
+    monkeypatch.setattr(
+        reflection_mod,
+        "reflection_gate",
+        lambda *_a, **_k: (2, GwFinality.FINAL),
+    )
+
+    def _boom(**_kwargs):
+        raise RuntimeError("reflection exploded")
+
+    monkeypatch.setattr(reflection_mod, "build_reflection", _boom)
+
+    ids = [1, 2, 4, 5, 6, 8, 9, 7, 12, 13, 14, 15, 25, 26, 27]
+    private = {
+        "schema_version": "1.0.0",
+        "season": "2026-27",
+        "applies_before_gameweek": 1,
+        "as_of": datetime.now(UTC).isoformat(),
+        "player_ids": ids,
+        "bank_tenths": 15,
+        "free_transfers": 1,
+        "purchase_prices_tenths": {str(i): 50 for i in ids},
+        "chip_instances": [],
+        "watchlist_player_ids": [],
+        "captain_id": 25,
+        "vice_id": 26,
+    }
+    private_path = tmp_path / "current.json"
+    private_path.write_text(json.dumps(private), encoding="utf-8")
+    reports = tmp_path / "reports"
+    reports.mkdir()
+
+    report = run_predeadline(
+        settings=settings,
+        offline=True,
+        force=True,
+        private_path=private_path,
+        reports_dir=reports,
+        snapshot_root=tmp_path / "snaps",
+    )
+    assert report.skipped is False
+    assert report.reflection is None
+    text = render_daily_text(report)
+    assert "Reflection" not in text
+    assert "## Do this" in text
+    assert "## Why" in text

@@ -89,6 +89,7 @@ class ReflectionSummary:
     actual_xi_points: int | None
     model_captain_name: str
     model_captain_points: int
+    predicted_captain_xp: float | None
     saved_captain_name: str | None
     saved_captain_points: int | None
     transfer_out_name: str | None
@@ -196,6 +197,7 @@ def load_reflection_summary(path: Path) -> ReflectionSummary:
         actual_xi_points=_optional_int(payload.get("actual_xi_points")),
         model_captain_name=str(payload.get("model_captain_name") or ""),
         model_captain_points=int(payload.get("model_captain_points") or 0),
+        predicted_captain_xp=_optional_float(payload.get("predicted_captain_xp")),
         saved_captain_name=payload.get("saved_captain_name"),
         saved_captain_points=_optional_int(payload.get("saved_captain_points")),
         transfer_out_name=payload.get("transfer_out_name"),
@@ -320,6 +322,7 @@ def build_reflection(
         actual_xi_points=card.model_xi_points,
         model_captain_name=card.model_captain_name,
         model_captain_points=card.model_captain_points,
+        predicted_captain_xp=card.predicted_captain_xp,
         saved_captain_name=card.saved_captain_name,
         saved_captain_points=card.saved_captain_points,
         transfer_out_name=transfer_out_name,
@@ -590,3 +593,8 @@ def _what_could_have_been_better(
         )
 
     return "No recorded alternative would have done better."
+
+
+def root_cause_plain(root_cause: str) -> str:
+    """Spell a root-cause enum value in plain language for report prose."""
+    return _ROOT_CAUSE_PLAIN.get(root_cause, root_cause.replace("_", " "))

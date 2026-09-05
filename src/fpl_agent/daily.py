@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+_LOG = logging.getLogger(__name__)
 
 from fpl_agent.cadence import hours_until, next_deadline, predeadline_gate
 from fpl_agent.config import Settings, load_settings
@@ -61,6 +64,38 @@ class DailyReport:
     search_queries: list[str] = field(default_factory=list)
     suggested_hubs: list[dict[str, str]] = field(default_factory=list)
     weekly_plan: dict[str, Any] = field(default_factory=dict)
+    reflection: dict[str, Any] | None = None
+
+
+def _safe_reflection_payload(
+    *,
+    bootstrap: dict[str, Any],
+    fixtures: list[dict[str, Any]],
+    reports_dir: Path,
+) -> dict[str, Any] | None:
+    """Build reflection JSON for the prior GW, or None when gated/unavailable.
+
+    Never raises — a reflection failure must not change the predeadline run.
+    """
+    try:
+        from fpl_agent.evaluation.reflection import (
+            GwFinality,
+            build_reflection,
+            reflection_gate,
+        )
+
+        subject_gw, finality_status = reflection_gate(bootstrap, fixtures)
+        if finality_status != GwFinality.FINAL:
+            return None
+        summary = build_reflection(
+            gameweek=subject_gw,
+            reports_dir=reports_dir,
+            bootstrap=bootstrap,
+        )
+        return summary.as_payload() if summary is not None else None
+    except Exception as exc:  # noqa: BLE001 — reflection must never break predeadline
+        _LOG.warning("reflection skipped due to error: %s", exc)
+        return None
 
 
 def _squad_rows(
@@ -165,6 +200,11 @@ def run_predeadline(
 
     bootstrap, fixtures = load_public_data(offline=offline)
     gw, deadline = next_deadline(bootstrap)
+    reflection_payload = _safe_reflection_payload(
+        bootstrap=bootstrap,
+        fixtures=fixtures,
+        reports_dir=reports_dir,
+    )
     hours = hours_until(deadline)
     allowed, gate = predeadline_gate(hours, settings.cadence, force=force)
     if not allowed:
@@ -575,6 +615,7 @@ def run_predeadline(
         search_queries=list(meta.search_queries),
         suggested_hubs=[dict(h) for h in SUGGESTED_SOURCE_HUBS],
         weekly_plan=weekly_plan,
+        reflection=reflection_payload,
     )
 
 
@@ -1375,6 +1416,8 @@ def render_daily_text(report: DailyReport) -> str:
     ]
     if report.price_status and report.price_status not in {"NO ACTION", "no action"}:
         lines.append(f"Price: **{report.price_status}**")
+    if report.reflection and report.reflection.get("short_summary"):
+        lines.append(report.reflection["short_summary"])
     lines += ["", "## Do this", ""]
     if report.suggested_moves:
         for move in report.suggested_moves:
@@ -1407,8 +1450,74 @@ def render_daily_text(report: DailyReport) -> str:
             lines.extend(x for x in notes if not x.startswith("#") and x)
             lines.append("")
         lines.extend(f"- {x}" for x in watch[:6])
+    if report.reflection:
+        lines += ["", *_reflection_section(report.reflection)]
     lines += ["", *_sources_section(report), "", "_Recommend only — you make all FPL changes._"]
     return "\n".join(lines)
+
+
+def _fmt_signed(value: float | int | None) -> str:
+    if value is None:
+        return "—"
+    if isinstance(value, float):
+        text = f"{value:+.1f}" if value != 0 else "0.0"
+    else:
+        text = f"{value:+d}" if value != 0 else "0"
+    return text
+
+
+def _reflection_section(reflection: dict[str, Any]) -> list[str]:
+    """Format the detailed reflection block — numbers only, no recomputation."""
+    from fpl_agent.evaluation.reflection import root_cause_plain
+
+    lines = [
+        "## Reflection: how last week's advice did",
+        "",
+    ]
+    detail = str(reflection.get("detail_summary") or "").strip()
+    if detail:
+        lines += [detail, ""]
+
+    pred_xi = reflection.get("predicted_xi_xp")
+    act_xi = reflection.get("actual_xi_points")
+    cap_name = reflection.get("model_captain_name") or "?"
+    pred_cap = reflection.get("predicted_captain_xp")
+    act_cap = reflection.get("model_captain_points")
+    out_name = reflection.get("transfer_out_name")
+    in_name = reflection.get("transfer_in_name")
+    pred_xfer = reflection.get("transfer_predicted_delta")
+    act_xfer = reflection.get("transfer_actual_delta")
+
+    lines += [
+        "| | Predicted | Actual |",
+        "| --- | ---: | ---: |",
+        f"| XI points | {_fmt_num(pred_xi)} | {_fmt_num(act_xi)} |",
+        f"| Captain ({cap_name}) | {_fmt_num(pred_cap)} | {_fmt_num(act_cap)} |",
+    ]
+    if out_name and in_name:
+        lines.append(
+            f"| {out_name} → {in_name} | {_fmt_signed(pred_xfer)} | {_fmt_signed(act_xfer)} |"
+        )
+
+    process = str(reflection.get("process_quality") or "").replace("_", " ")
+    outcome = str(reflection.get("outcome_quality") or "").replace("_", " ")
+    root = root_cause_plain(str(reflection.get("root_cause") or ""))
+    lines += [
+        "",
+        f"Process: **{process}** · Outcome: **{outcome}** ({root})",
+    ]
+    better = str(reflection.get("what_could_have_been_better") or "").strip()
+    if better:
+        lines += ["", better]
+    return lines
+
+
+def _fmt_num(value: float | int | None) -> str:
+    if value is None:
+        return "—"
+    if isinstance(value, float):
+        return f"{value:.1f}"
+    return str(value)
 
 
 def write_daily_artifact(report: DailyReport, root: Path = Path("reports")) -> Path:
