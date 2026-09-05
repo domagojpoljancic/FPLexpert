@@ -1543,6 +1543,20 @@ def _reflection_section(
             lines += ["", xfer]
         else:
             lines += ["", "Not enough transfer weeks yet to chart a payoff trend."]
+
+    from fpl_agent.evaluation.lessons import build_lessons_for_history, format_lessons_section
+
+    lessons, observations = build_lessons_for_history(
+        history,
+        as_of_gameweek=subject_gw,
+        lessons_path=evaluation_dir / "lessons.jsonl",
+        persist=True,
+    )
+    lesson_lines = format_lessons_section(
+        lessons, observations, as_of_gameweek=subject_gw
+    )
+    if lesson_lines:
+        lines += ["", *lesson_lines]
     return lines
 
 

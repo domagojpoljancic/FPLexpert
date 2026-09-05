@@ -76,6 +76,26 @@ class AlternativeReviewed:
     predicted_delta: float | None
     actual_delta: int | None
     beat_the_pick: bool | None
+    position: str | None = None
+    price_tier: str | None = None
+
+
+@dataclass(frozen=True)
+class PlayerCalibrationRow:
+    """Per-XI-player predicted vs actual for segment calibration (M4).
+
+    Price tiers (documented breakpoints, £m):
+    - budget: < 5.0
+    - mid: 5.0 inclusive through 8.0 inclusive
+    - premium: > 8.0
+    """
+
+    player_id: int
+    web_name: str
+    position: str
+    price_tier: str
+    predicted_xp: float
+    actual_points: int
 
 
 @dataclass(frozen=True)
@@ -105,11 +125,27 @@ class ReflectionSummary:
     short_summary: str
     detail_summary: str
     what_could_have_been_better: str
+    player_calibration: tuple[PlayerCalibrationRow, ...] = ()
 
     def as_payload(self) -> dict[str, Any]:
         payload = asdict(self)
         payload["alternatives_reviewed"] = [asdict(a) for a in self.alternatives_reviewed]
+        payload["player_calibration"] = [asdict(r) for r in self.player_calibration]
         return payload
+
+
+def price_tier_from_millions(price_m: float | None) -> str:
+    """Map listed price (£m) to budget / mid / premium.
+
+    Breakpoints: budget < 5.0; mid 5.0–8.0 inclusive; premium > 8.0.
+    """
+    if price_m is None:
+        return "mid"
+    if price_m < 5.0:
+        return "budget"
+    if price_m <= 8.0:
+        return "mid"
+    return "premium"
 
 
 def gw_finality_status(
@@ -183,9 +219,24 @@ def load_reflection_summary(path: Path) -> ReflectionSummary:
             predicted_delta=_optional_float(row.get("predicted_delta")),
             actual_delta=_optional_int(row.get("actual_delta")),
             beat_the_pick=row.get("beat_the_pick") if isinstance(row.get("beat_the_pick"), bool) else None,
+            position=str(row["position"]) if row.get("position") else None,
+            price_tier=str(row["price_tier"]) if row.get("price_tier") else None,
         )
         for row in alts_raw
         if isinstance(row, dict)
+    )
+    cal_raw = payload.get("player_calibration") or []
+    calibration = tuple(
+        PlayerCalibrationRow(
+            player_id=int(row.get("player_id") or 0),
+            web_name=str(row.get("web_name") or ""),
+            position=str(row.get("position") or "?"),
+            price_tier=str(row.get("price_tier") or "mid"),
+            predicted_xp=float(row.get("predicted_xp") or 0),
+            actual_points=int(row.get("actual_points") or 0),
+        )
+        for row in cal_raw
+        if isinstance(row, dict) and int(row.get("player_id") or 0)
     )
     return ReflectionSummary(
         schema_version=str(payload.get("schema_version") or REFLECTION_SCHEMA_VERSION),
@@ -213,6 +264,7 @@ def load_reflection_summary(path: Path) -> ReflectionSummary:
         short_summary=str(payload.get("short_summary") or ""),
         detail_summary=str(payload.get("detail_summary") or ""),
         what_could_have_been_better=str(payload.get("what_could_have_been_better") or ""),
+        player_calibration=calibration,
     )
 
 
@@ -228,15 +280,17 @@ def build_reflection(
 ) -> ReflectionSummary | None:
     """Build a ``ReflectionSummary`` for a final gameweek, or ``None`` on soft failure.
 
-    ``bootstrap`` is accepted for API symmetry with the gate (and future name
-    resolution); the builder does not require live network beyond ``player_points``
-    / ``fetch_live_points``.
+    ``bootstrap`` supplies catalog prices/positions for per-player calibration rows.
     """
-    _ = bootstrap  # reserved; gate is the consumer of bootstrap shape today
     plan = load_latest_predeadline_plan(reports_dir, gameweek)
     if plan is None:
         return None
     report_path = _latest_ok_report_path(reports_dir, gameweek)
+    catalog = {
+        int(el["id"]): el
+        for el in (bootstrap.get("elements") or [])
+        if isinstance(el, dict) and el.get("id") is not None
+    }
 
     try:
         points = (
@@ -277,6 +331,12 @@ def build_reflection(
         plan=plan,
         player_points=points,
         pick_actual_delta=pick_actual,
+        catalog=catalog,
+    )
+    calibration = _player_calibration_rows(
+        plan=plan,
+        player_points=points,
+        catalog=catalog,
     )
 
     short = _build_short_summary(
@@ -338,6 +398,7 @@ def build_reflection(
         short_summary=short,
         detail_summary=detail,
         what_could_have_been_better=better,
+        player_calibration=calibration,
     )
 
     if persist:
@@ -428,12 +489,14 @@ def _review_alternatives(
     plan: dict[str, Any],
     player_points: dict[int, int],
     pick_actual_delta: int | None,
+    catalog: dict[int, dict[str, Any]] | None = None,
 ) -> tuple[AlternativeReviewed, ...]:
     """Build alternative reviews from recorded ``also_considered`` only.
 
     Note: ``also_considered`` is same-*position* (see ``same_position_shortlist``),
     not necessarily same-OUT — each row's own ``out_id`` is used for actual delta.
     """
+    catalog = catalog or {}
     rows = [r for r in (plan.get("also_considered") or []) if isinstance(r, dict)]
     out: list[AlternativeReviewed] = []
     for row in rows:
@@ -453,6 +516,7 @@ def _review_alternatives(
         beat: bool | None = None
         if actual is not None and pick_actual_delta is not None:
             beat = actual > pick_actual_delta
+        pos, tier = _position_and_tier(in_id, catalog, fallback_pos=row.get("position"))
         out.append(
             AlternativeReviewed(
                 in_name=in_name,
@@ -460,9 +524,66 @@ def _review_alternatives(
                 predicted_delta=predicted,
                 actual_delta=actual,
                 beat_the_pick=beat,
+                position=pos,
+                price_tier=tier,
             )
         )
     return tuple(out)
+
+
+_ELEMENT_TYPE_POS = {1: "GKP", 2: "DEF", 3: "MID", 4: "FWD"}
+
+
+def _position_and_tier(
+    player_id: int,
+    catalog: dict[int, dict[str, Any]],
+    *,
+    fallback_pos: object = None,
+) -> tuple[str | None, str | None]:
+    el = catalog.get(player_id) or {}
+    pos = None
+    if fallback_pos:
+        pos = str(fallback_pos)
+    et = el.get("element_type")
+    if et is not None:
+        pos = _ELEMENT_TYPE_POS.get(int(et), pos)
+    price_m = None
+    if el.get("now_cost") is not None:
+        price_m = float(el["now_cost"]) / 10.0
+    tier = price_tier_from_millions(price_m) if price_m is not None else None
+    return pos, tier
+
+
+def _player_calibration_rows(
+    *,
+    plan: dict[str, Any],
+    player_points: dict[int, int],
+    catalog: dict[int, dict[str, Any]],
+) -> tuple[PlayerCalibrationRow, ...]:
+    rows: list[PlayerCalibrationRow] = []
+    for row in plan.get("xi") or []:
+        if not isinstance(row, dict):
+            continue
+        pid = int(row.get("player_id") or 0)
+        if not pid:
+            continue
+        predicted = float(row.get("xp_next") or 0)
+        actual = int(player_points.get(pid, 0))
+        pos = str(row.get("position") or "") or None
+        cat_pos, tier = _position_and_tier(pid, catalog, fallback_pos=pos)
+        position = cat_pos or pos or "?"
+        price_tier = tier or "mid"
+        rows.append(
+            PlayerCalibrationRow(
+                player_id=pid,
+                web_name=str(row.get("web_name") or pid),
+                position=position,
+                price_tier=price_tier,
+                predicted_xp=predicted,
+                actual_points=actual,
+            )
+        )
+    return tuple(rows)
 
 
 def _process_word(process: str) -> str:

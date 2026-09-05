@@ -171,6 +171,17 @@ class CadenceSettings(BaseModel):
         return self
 
 
+class ReflectionSettings(BaseModel):
+    """Sample gates for proposal-only calibration lessons (reflection-v1)."""
+
+    min_sample: int = Field(default=20, ge=1)
+    min_distinct_gws: int = Field(default=4, ge=1)
+    max_adjustment_factor: float = Field(default=1.15, gt=1.0, le=1.5)
+    min_adjustment_factor: float = Field(default=0.85, ge=0.5, lt=1.0)
+    review_after_gws: int = Field(default=3, ge=1)
+    expires_after_gws: int = Field(default=8, ge=1)
+
+
 class ProjectionsSettings(BaseModel):
     """xp-v2 projection knobs. DEFCON default on; disable if holdout regresses vs ep_next."""
 
@@ -194,6 +205,7 @@ class Settings(BaseSettings):
     alerts: AlertsSettings = Field(default_factory=AlertsSettings)
     prices: PricesSettings = Field(default_factory=PricesSettings)
     cadence: CadenceSettings = Field(default_factory=CadenceSettings)
+    reflection: ReflectionSettings = Field(default_factory=ReflectionSettings)
     projections: ProjectionsSettings = Field(default_factory=ProjectionsSettings)
 
 
