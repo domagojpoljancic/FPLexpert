@@ -1,7 +1,8 @@
 {
-  "utc": "2026-09-07T21:56Z",
-  "local": "2026-09-07 23:56 CEST",
+  "utc": "2026-09-08T19:09Z",
+  "local": "2026-09-08 21:09 CEST",
   "gameweek": 4,
-  "status": "NO ACTION",
-  "headline": "No price action tonight."
+  "status": "WATCH",
+  "headline": "Watch list only \u2014 do not churn for \u00a30.1m.",
+  "notify_email": true
 }

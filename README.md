@@ -21,13 +21,13 @@ Overnight **price watch** runs on GitHub (18:00 Zagreb target; Actions often run
 ## Latest results
 
 **Price watch** (GitHub, 18:00 Zagreb target — last 7 days)
+- [08 Sep 21:09 CEST](reports/prices-gw4-20260908T190943Z.md) · GW4 · **WATCH** — Watch list only — do not churn for £0.1m.
 - [07 Sep 23:56 CEST](reports/prices-gw4-20260907T215644Z.md) · GW4 · **NO ACTION** — No price action tonight.
 - [06 Sep 23:10 CEST](reports/prices-gw4-20260906T211037Z.md) · GW4 · **NO ACTION** — No price action tonight.
 - [05 Sep 23:03 CEST](reports/prices-gw4-20260905T210341Z.md) · GW4 · **NO ACTION** — No price action tonight.
 - [04 Sep 23:19 CEST](reports/prices-gw4-20260904T211945Z.md) · GW4 · **NO ACTION** — No price action tonight.
 - [03 Sep 23:36 CEST](reports/prices-gw3-20260903T213651Z.md) · GW3 · **WATCH** — Watch list only — do not churn for £0.1m.
 - [02 Sep 23:41 CEST](reports/prices-gw3-20260902T214102Z.md) · GW3 · **WATCH** — Watch list only — do not churn for £0.1m.
-- [01 Sep 23:40 CEST](reports/prices-gw3-20260901T214030Z.md) · GW3 · **NO ACTION** — No price action tonight.
 
 **Squad news** (pre-deadline — last 7 days)
 - [04 Sep 20:11 CEST](reports/predeadline-gw3-20260904T181140Z.md) · GW3 · **REVISE** — Sell Shaw for De Cuyper, start De Cuyper (bench Virgil), and captain B.Fernandes.
