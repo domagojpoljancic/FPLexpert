@@ -1,4 +1,4 @@
-# Price-change prediction (prices-v1.0.0)
+# Price-change prediction (prices-v1.1.0)
 
 Uncalibrated, deterministic heuristic. It does **not** claim to match FPL’s unpublished threshold. Bands only — never a percentage chance. A predicted rise/fall is **not** a transfer recommendation.
 
@@ -28,17 +28,27 @@ Reports speak in **likelihood bands for the next expected window**, never “wil
 
 ## Player universe (alerts)
 
-Score for alerts:
+Score for **smart-to-act** alerts:
 
 1. Owned squad
 2. Planned transfer in/out ids from the latest strategy/pre-deadline artifact
 3. Optional `watchlist_player_ids` on private state
 
+Additionally, when `prices.external_predictor_url` is set (default: LiveFPL public JSON
+`https://livefpl.us/api/prices.json`, same data as [livefpl.net/prices](https://www.livefpl.net/prices)):
+
+- fetch that HTTPS JSON (not HTML scrape);
+- list top market rises/falls by `progress_tonight` in the report;
+- attach `external_progress` on scored players;
+- **never** escalate to `act_now_recommended` from the external feed alone;
+- for unowned likely risers, tell the manager to run the GW predictor / pre-deadline review
+  before transferring.
+
 `--universe catalog` may score everyone for evaluation and **must not notify**.
 
 ## Constants (model version bump if changed)
 
-| Key | v1.0.0 value | Role |
+| Key | v1.1.0 value | Role |
 | --- | --- | --- |
 | `rise_base_net` | 40000 | Net in-event transfers for progress=1.0 at 0% ownership (rises) |
 | `fall_base_net` | 50000 | Same for falls (slightly harder) |
@@ -48,6 +58,9 @@ Score for alerts:
 | `hysteresis` | 0.05 | Avoids flip-flopping bands |
 | `min_snapshots_for_likely` | 2 | One snapshot cannot emit `likely_next_window` |
 | `event_early_cap` | `watch` | First 24h of an event unless progress ≥ 0.95 with ≥2 snapshots |
+| `external_watch_progress` | 0.55 | LiveFPL `|progress_tonight|` → watch band |
+| `external_likely_progress` | 0.85 | LiveFPL `|progress_tonight|` → likely band |
+| `market_top_n` | 12 | Max rises and falls listed from the external feed |
 
 Missing ownership → do not emit `likely_next_window` (cap `watch`); warn `ownership_missing`.
 
@@ -95,8 +108,11 @@ With sell-on fee 0.5, a +0.1 rise often **does not** increase selling price; a +
 
 Recommended local windows (manager tz), not guarantees:
 
-- GitHub Actions: 21:00 Europe/Zagreb in summer (`0 19 * * *` UTC). Persist snapshots in git. Email via GitHub Issue on act-now only. Run log: Actions Summary + `run-log.md` at repo root.
-- Evening: after transfer activity, before the uncertain overnight window (e.g. 21:30–23:30 Europe/Zagreb)
+- GitHub Actions: 18:00 Europe/Zagreb in summer (`0 16 * * *` UTC). Persist snapshots in git.
+  Email via GitHub Issue on **act-now or likely market movers**. Subscribe to the **FPL price alerts**
+  issue for notification emails; optional `prices.webhook_url` for Discord/Slack.
+  Run log: Actions Summary + `run-log.md` at repo root.
+- Evening: after transfer activity, before the uncertain overnight window (e.g. 19:00–22:00 Europe/Zagreb)
 - Morning: confirm `now_cost` vs last night’s predictions
 - ~24h before deadline: full pre-deadline check (you start this from Cursor on your phone)
 
@@ -108,6 +124,10 @@ When a later snapshot shows `now_cost` moved, append a `PriceOutcome` (predicted
 
 ## Explicitly not used
 
-- Scraping Fantasy Football Hub or any third-party HTML/JS predictor
+- Scraping Fantasy Football Hub **HTML** (or any third-party HTML/JS UI) for proprietary progress bars
+- Copying another product’s unpublished threshold formula into our act-now policy
 - LLM-estimated likelihood or action class
 - Ownership as a reason to churn a hold for team value
+
+LiveFPL’s **public JSON** (`livefpl.us/api/prices.json`) is optional and labeled untrusted community data.
+It may only populate the market section and `external_progress`; it cannot set `now_cost` or alone trigger act-now.

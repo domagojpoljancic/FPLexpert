@@ -125,7 +125,7 @@ def render_recent_runs_block(
         START,
         "## Latest results",
         "",
-        "**Price watch** (GitHub, 20:00 Zagreb — last 7 days)",
+        "**Price watch** (GitHub, 18:00 Zagreb target — last 7 days)",
         *_bullets(prices, empty="No price reports yet."),
         "",
         "**Squad news** (pre-deadline — last 7 days)",

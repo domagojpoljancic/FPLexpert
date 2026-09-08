@@ -16,7 +16,9 @@ def test_example_config_loads() -> None:
     assert settings.manager.team_id == 1
     assert settings.planning.horizon == 6
     assert len(settings.planning.weights) == 6
-    assert settings.prices.model_version == "prices-v1.0.0"
+    assert settings.prices.model_version == "prices-v1.1.0"
+    assert settings.prices.external_predictor_url.startswith("https://")
+    assert settings.prices.notify_on_market_movers is True
     assert settings.cadence.predeadline_hours_before == 24
     assert settings.models.deadline_model == "gpt-5.6"
 

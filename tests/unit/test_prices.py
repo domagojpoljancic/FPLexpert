@@ -541,7 +541,11 @@ def test_prices_offline_cli_path(tmp_path: Path) -> None:
     )
     assert report.gameweek == 1
     assert list((tmp_path / "reports").glob("prices-gw1-*.md"))
-    assert report.model_version == "prices-v1.0.0"
+    assert report.model_version == "prices-v1.1.0"
+    assert report.market == []
+    assert any("external_predictor_skipped_offline" in w for w in report.warnings)
+    assert "Market tonight" in report.markdown
+    assert "Should you transfer?" in report.markdown
     # webhook/issue dry-run: nothing posted
     assert all("webhook" not in n or n.get("webhook", {}).get("dry_run") for n in report.notified)
 
@@ -557,6 +561,105 @@ def test_outcomes_recorder(tmp_path: Path) -> None:
     assert recs[0].hit is True
 
 
+def test_livefpl_parse_and_market_movers() -> None:
+    from fpl_agent.prices.external import parse_livefpl_prices, select_market_movers
+    from fpl_agent.prices.report import render_prices_markdown
+    from fpl_agent.prices.types import PriceDirection
+
+    payload = {
+        "10": {
+            "name": "Riser",
+            "team": "ARS",
+            "type": "MID",
+            "type_code": 3,
+            "team_code": "1",
+            "cost": 7.5,
+            "progress": 0.9,
+            "progress_tonight": 0.95,
+            "per_hour": 0.01,
+        },
+        "11": {
+            "name": "Faller",
+            "team": "MCI",
+            "type": "DEF",
+            "type_code": 2,
+            "team_code": "2",
+            "cost": 5.0,
+            "progress": -0.9,
+            "progress_tonight": -0.92,
+            "per_hour": -0.01,
+        },
+        "12": {
+            "name": "Quiet",
+            "team": "LIV",
+            "type": "FWD",
+            "type_code": 4,
+            "team_code": "3",
+            "cost": 8.0,
+            "progress": 0.1,
+            "progress_tonight": 0.1,
+            "per_hour": 0.0,
+        },
+        "bad": {"name": "skip"},
+    }
+    rows = parse_livefpl_prices(payload)
+    assert {r.player_id for r in rows} == {10, 11, 12}
+    movers = select_market_movers(
+        rows,
+        owned={11},
+        plan_ids=set(),
+        watch_progress=0.55,
+        likely_progress=0.85,
+        top_n=5,
+        catalog_names={10: "CatalogRiser"},
+    )
+    assert len(movers) == 2
+    rise = next(m for m in movers if m.direction == PriceDirection.RISE)
+    fall = next(m for m in movers if m.direction == PriceDirection.FALL)
+    assert rise.web_name == "CatalogRiser"
+    assert rise.band == LikelihoodBand.LIKELY_NEXT_WINDOW
+    assert fall.owned is True
+    md = render_prices_markdown(
+        gameweek=4,
+        status=ReportStatus.WATCH,
+        actions=[],
+        predictions=[],
+        snapshot_times=["2026-09-05T16:00Z"],
+        model_version="prices-v1.1.0",
+        timezone_label="2026-09-05 18:00 CEST",
+        warnings=[],
+        executability="EXECUTABLE",
+        market=movers,
+        external_source="https://livefpl.us/api/prices.json",
+    )
+    assert "CatalogRiser" in md
+    assert "Faller" in md
+    assert "predeadline" in md
+    assert "Likely / watch rises" in md
+
+
+def test_report_status_watch_when_market_only() -> None:
+    from fpl_agent.prices.external import MarketMover
+    from fpl_agent.prices.report import report_status
+    from fpl_agent.prices.types import PriceDirection
+
+    market = [
+        MarketMover(
+            player_id=1,
+            web_name="X",
+            direction=PriceDirection.RISE,
+            external_progress=0.9,
+            cost_millions=6.0,
+            band=LikelihoodBand.LIKELY_NEXT_WINDOW,
+            owned=False,
+            in_plan=False,
+            source_label="livefpl",
+        )
+    ]
+    assert report_status([], market=market) == ReportStatus.WATCH
+    assert report_status([], market=[]) == ReportStatus.NO_ACTION
+
+
 def test_append_snapshot_dedupes(tmp_path: Path) -> None:
     boot = {"elements": [{"id": 1, "now_cost": 50, "transfers_in_event": 1, "transfers_out_event": 0}]}
     snap = snapshot_from_bootstrap(boot, event_id=1, season="2026-27", retrieved_at=NOW)
@@ -566,10 +669,26 @@ def test_append_snapshot_dedupes(tmp_path: Path) -> None:
     assert p2 is None
 
 
-def test_should_comment_issue_only_for_new_act_now() -> None:
-    assert should_comment_issue(status=ReportStatus.ACT_TONIGHT, notified=[{"action_class": "act_now_recommended"}])
+def test_should_comment_issue_for_act_now_or_market_movers() -> None:
+    assert should_comment_issue(
+        status=ReportStatus.ACT_TONIGHT,
+        notified=[{"action_class": "act_now_recommended"}],
+    )
     assert not should_comment_issue(status=ReportStatus.ACT_TONIGHT, notified=[])
-    assert not should_comment_issue(status=ReportStatus.WATCH, notified=[{"action_class": "act_now_recommended"}])
+    assert not should_comment_issue(
+        status=ReportStatus.WATCH,
+        notified=[{"action_class": "act_now_recommended"}],
+    )
+    assert should_comment_issue(
+        status=ReportStatus.WATCH,
+        notified=[],
+        market_likely_count=3,
+    )
+    assert not should_comment_issue(
+        status=ReportStatus.NO_ACTION,
+        notified=[],
+        market_likely_count=0,
+    )
 
 
 def test_price_scorecard_reports_false_alarm_and_missed_rise() -> None:

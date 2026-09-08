@@ -137,13 +137,20 @@ class PricesSettings(BaseModel):
     max_hours_ahead_to_spend_ft: float = Field(default=36.0, gt=0)
     bank_floor_tenths_after: int = Field(default=0, ge=0)
     webhook_url: str = ""
-    external_predictor_url: str = ""
-    model_version: str = "prices-v1.0.0"
+    # LiveFPL public JSON (not HTML scrape). Empty disables the market section.
+    external_predictor_url: str = "https://livefpl.us/api/prices.json"
+    external_watch_progress: float = Field(default=0.55, ge=0.0, le=1.0)
+    external_likely_progress: float = Field(default=0.85, ge=0.0, le=1.0)
+    market_top_n: int = Field(default=12, ge=1, le=40)
+    notify_on_market_movers: bool = True
+    model_version: str = "prices-v1.1.0"
 
     @model_validator(mode="after")
     def _progress_order(self) -> PricesSettings:
         if self.watch_progress >= self.likely_progress:
             raise ValueError("watch_progress must be < likely_progress")
+        if self.external_watch_progress >= self.external_likely_progress:
+            raise ValueError("external_watch_progress must be < external_likely_progress")
         for name, url in (
             ("webhook_url", self.webhook_url),
             ("external_predictor_url", self.external_predictor_url),
