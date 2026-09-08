@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "fpl-agent"
 version = "0.1.0"
-description = "Read-only Fantasy Premier League assistant — transfers, captain, lineup, and price watch"
+description = "Private-purpose FPL assistant (personal use this season; product candidate after a full PL season) — read-only transfers, captain, lineup, price watch"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
