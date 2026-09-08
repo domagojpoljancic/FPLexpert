@@ -2,7 +2,9 @@
 
 ## Supported use
 
-This project is a **read-only** FPL decision-support agent. Supported deployments:
+This repository is a **private-purpose** project for personal Fantasy Premier League decision support this season — not a public product. It may become a product after a full Premier League season.
+
+It is a **read-only** FPL decision-support agent. Supported deployments:
 
 - local CLI analysis with user-provided private team state files;
 - GitHub Actions scheduled **price** workflow (no OpenAI) and manual/test workflows. Never authenticate to Fantasy Premier League.

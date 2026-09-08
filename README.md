@@ -1,6 +1,8 @@
 # FPL Expert
 
-Read-only Fantasy Premier League co-pilot. It recommends transfers, captain, bench, and price moves from your squad, fixtures, and news. **You** make every change in the official FPL app.
+**Private-purpose project** — built for personal Fantasy Premier League use this season, not a shipped product. After a full Premier League season, it may become a product.
+
+Read-only co-pilot. It recommends transfers, captain, bench, and price moves from your squad, fixtures, and news. **You** make every change in the official FPL app.
 
 ## Quick start
 
@@ -19,13 +21,13 @@ Overnight **price watch** runs on GitHub (18:00 Zagreb target; Actions often run
 ## Latest results
 
 **Price watch** (GitHub, 18:00 Zagreb target — last 7 days)
+- [07 Sep 23:56 CEST](reports/prices-gw4-20260907T215644Z.md) · GW4 · **NO ACTION** — No price action tonight.
+- [06 Sep 23:10 CEST](reports/prices-gw4-20260906T211037Z.md) · GW4 · **NO ACTION** — No price action tonight.
+- [05 Sep 23:03 CEST](reports/prices-gw4-20260905T210341Z.md) · GW4 · **NO ACTION** — No price action tonight.
 - [04 Sep 23:19 CEST](reports/prices-gw4-20260904T211945Z.md) · GW4 · **NO ACTION** — No price action tonight.
 - [03 Sep 23:36 CEST](reports/prices-gw3-20260903T213651Z.md) · GW3 · **WATCH** — Watch list only — do not churn for £0.1m.
 - [02 Sep 23:41 CEST](reports/prices-gw3-20260902T214102Z.md) · GW3 · **WATCH** — Watch list only — do not churn for £0.1m.
 - [01 Sep 23:40 CEST](reports/prices-gw3-20260901T214030Z.md) · GW3 · **NO ACTION** — No price action tonight.
-- [01 Sep 01:09 CEST](reports/prices-gw3-20260831T230954Z.md) · GW3 · **NO ACTION** — No price action tonight.
-- [30 Aug 23:52 CEST](reports/prices-gw3-20260830T215242Z.md) · GW3 · **NO ACTION** — No price action tonight.
-- [29 Aug 23:36 CEST](reports/prices-gw3-20260829T213616Z.md) · GW3 · **NO ACTION** — No price action tonight.
 
 **Squad news** (pre-deadline — last 7 days)
 - [04 Sep 20:11 CEST](reports/predeadline-gw3-20260904T181140Z.md) · GW3 · **REVISE** — Sell Shaw for De Cuyper, start De Cuyper (bench Virgil), and captain B.Fernandes.
@@ -46,7 +48,7 @@ Overnight **price watch** runs on GitHub (18:00 Zagreb target; Actions often run
 
 ### What you get
 
-- **Pre-deadline review** — TLDR, XI / captain / bench, transfer options (including when to spend vs bank a free transfer), chip hints, and a **Why** section from news the run actually opened.
+- **Pre-deadline review** — TLDR, XI / captain / bench, transfer options (including when to spend vs bank a free transfer), chip hints, a **Why** section from news the run actually opened, and (once the prior gameweek is officially final) a **Reflection** section: short header line, predicted-vs-actual table, Mermaid calibration/transfer trends when enough history exists, proposal-only calibration notes, and how past transfer calls have aged across their original horizon.
 - **Overnight price watch** — market rises/falls (LiveFPL JSON + our heuristic), whether a plan-gated move should be locked tonight, and a reminder to run the GW predictor before buying a riser for price alone.
 - **After the deadline** (optional) — `uv run fpl-agent scorecard -g N` compares the last plan to official points.
 
