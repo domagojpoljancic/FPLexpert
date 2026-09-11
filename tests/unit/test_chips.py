@@ -58,6 +58,68 @@ def test_wildcard_play_when_several_starters_look_benched() -> None:
     assert next(r for r in rows if r.kind == "wildcard").action == "play"
 
 
+def test_wildcard_hold_reason_cites_multiple_factors() -> None:
+    rows = recommend_chips(
+        gameweek=5,
+        weekly_plan=_plan(captain_xp=5.0, bench_xp=4.0, this_xi=48.0, other_xi=46.0),
+    )
+    wc = next(r for r in rows if r.kind == "wildcard")
+    assert wc.action == "hold"
+    assert "Squad health" in wc.reason
+    assert "fixture trend" in wc.reason
+    assert "transfer-plan" in wc.reason
+
+
+def test_wildcard_play_on_fixture_swing_even_with_healthy_squad() -> None:
+    plan = _plan(captain_xp=5.0, bench_xp=4.0, this_xi=48.0, other_xi=46.0)
+    plan["horizon"] = [
+        {"gw": 5, "xi_xp": 48.0, "captain": "Haaland", "captain_xp": 5.0},
+        {"gw": 6, "xi_xp": 46.0, "captain": "Haaland", "captain_xp": 5.0},
+        {"gw": 7, "xi_xp": 44.0, "captain": "Haaland", "captain_xp": 5.0},
+        {"gw": 8, "xi_xp": 20.0, "captain": "Haaland", "captain_xp": 5.0},
+        {"gw": 9, "xi_xp": 18.0, "captain": "Haaland", "captain_xp": 5.0},
+    ]
+    rows = recommend_chips(gameweek=5, weekly_plan=plan)
+    wc = next(r for r in rows if r.kind == "wildcard")
+    assert wc.action == "play"
+    assert "fixtures get" in wc.reason
+
+
+def test_wildcard_holds_on_flat_fixture_trend_with_full_horizon() -> None:
+    plan = _plan(captain_xp=5.0, bench_xp=4.0, this_xi=48.0, other_xi=46.0)
+    plan["horizon"] = [
+        {"gw": 5, "xi_xp": 48.0, "captain": "Haaland", "captain_xp": 5.0},
+        {"gw": 6, "xi_xp": 27.0, "captain": "Haaland", "captain_xp": 5.0},
+        {"gw": 7, "xi_xp": 26.0, "captain": "Haaland", "captain_xp": 5.0},
+        {"gw": 8, "xi_xp": 27.5, "captain": "Haaland", "captain_xp": 5.0},
+        {"gw": 9, "xi_xp": 25.0, "captain": "Haaland", "captain_xp": 5.0},
+    ]
+    rows = recommend_chips(gameweek=5, weekly_plan=plan)
+    wc = next(r for r in rows if r.kind == "wildcard")
+    assert wc.action == "hold"
+
+
+def test_wildcard_play_on_strong_transfer_plan_even_with_healthy_squad() -> None:
+    rows = recommend_chips(
+        gameweek=5,
+        weekly_plan=_plan(captain_xp=5.0, bench_xp=4.0, this_xi=48.0, other_xi=46.0),
+        best_transfer_plan={"n_transfers": 2, "delta_weighted_xp": 10.0, "hit_cost": 2},
+    )
+    wc = next(r for r in rows if r.kind == "wildcard")
+    assert wc.action == "play"
+    assert "transfer plan" in wc.reason
+
+
+def test_wildcard_holds_on_weak_transfer_plan() -> None:
+    rows = recommend_chips(
+        gameweek=5,
+        weekly_plan=_plan(captain_xp=5.0, bench_xp=4.0, this_xi=48.0, other_xi=46.0),
+        best_transfer_plan={"n_transfers": 1, "delta_weighted_xp": 3.0, "hit_cost": 0},
+    )
+    wc = next(r for r in rows if r.kind == "wildcard")
+    assert wc.action == "hold"
+
+
 def test_gw19_use_or_lose_urgency() -> None:
     rows = recommend_chips(
         gameweek=18,

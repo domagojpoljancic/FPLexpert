@@ -20,6 +20,10 @@ FH_VS_MEDIAN = 0.72
 FH_MIN_GAP = 8.0
 WC_LOW_START_COUNT = 3
 WC_LOW_P_START = 0.40
+WC_FIXTURE_SWING_DROP = 0.20
+WC_MIN_FUTURE_WEEKS_FOR_SWING = 4
+WC_PLAN_MIN_TRANSFERS = 2
+WC_PLAN_MIN_NET_XP = 6.0
 
 
 @dataclass(frozen=True)
@@ -48,6 +52,7 @@ def recommend_chips(
     rules: SeasonRules | None = None,
     fixtures: list[dict[str, Any]] | None = None,
     horizon_gws: list[int] | None = None,
+    best_transfer_plan: dict[str, Any] | None = None,
 ) -> list[ChipAdvice]:
     """Play vs hold for chips still available this half."""
     rules = rules or load_season_rules_2026_27()
@@ -91,7 +96,7 @@ def recommend_chips(
         elif kind == ChipKind.FREE_HIT:
             out.append(_free_hit(gameweek, xi_xp, horizon, rules, this_cal))
         else:
-            out.append(_wildcard(gameweek, xi, rules))
+            out.append(_wildcard(gameweek, xi, rules, horizon, best_transfer_plan))
         if gameweek >= FIRST_HALF_CHIP_EXPIRY_EVENT - 2 and key in available:
             out[-1] = _apply_use_or_lose_urgency(out[-1], gameweek)
     return out
@@ -325,7 +330,27 @@ def _free_hit(
     )
 
 
-def _wildcard(gameweek: int, xi: list[dict[str, Any]], rules: SeasonRules) -> ChipAdvice:
+def _wildcard(
+    gameweek: int,
+    xi: list[dict[str, Any]],
+    rules: SeasonRules,
+    horizon: list[dict[str, Any]] | None = None,
+    best_transfer_plan: dict[str, Any] | None = None,
+) -> ChipAdvice:
+    """Rebuild signal from three independent angles, not start-chance alone:
+
+    1. Squad health — how many nominal starters are actually at risk of not playing.
+    2. Fixture swing — whether the squad's own fixtures get harder later in the horizon.
+    3. Transfer-market value — whether even the best legal 1-/2-transfer plan leaves a
+       lot of value on the table that only a full rebuild could capture.
+
+    Fixture swing deliberately excludes the current gameweek's own xi_xp: it is partly
+    blended with FPL's short-term `ep_next` estimate, which runs structurally higher than
+    the model-only projections used for future weeks, so comparing "this week" to "future
+    weeks" would flag a swing almost every week regardless of real fixture difficulty.
+    Instead this compares the earlier vs later halves of the *future* weeks only, which
+    are computed the same way and so are comparable to each other.
+    """
     first_wc = next(
         (inst for inst in rules.chip_instances if inst.kind == ChipKind.WILDCARD),
         None,
@@ -337,26 +362,73 @@ def _wildcard(gameweek: int, xi: list[dict[str, Any]], rules: SeasonRules) -> Ch
             available=True,
             reason=f"Wildcard is not available until GW{first_wc.start_event}.",
         )
+
+    horizon = horizon or []
     low = [p for p in xi if float(p.get("p_start") or 1.0) < WC_LOW_P_START]
-    metric = float(len(low))
-    if len(low) >= WC_LOW_START_COUNT:
-        names = ", ".join(str(p.get("web_name") or p.get("player_id")) for p in low[:5])
+    health_flag = len(low) >= WC_LOW_START_COUNT
+
+    future_rows = sorted(
+        (row for row in horizon if int(row.get("gw") or 0) != gameweek),
+        key=lambda row: int(row.get("gw") or 0),
+    )
+    future_xp = [float(row.get("xi_xp") or 0.0) for row in future_rows]
+    near_avg = far_avg = swing_drop = 0.0
+    fixture_flag = False
+    if len(future_xp) >= WC_MIN_FUTURE_WEEKS_FOR_SWING:
+        mid = len(future_xp) // 2
+        near_avg = sum(future_xp[:mid]) / mid
+        far_avg = sum(future_xp[mid:]) / (len(future_xp) - mid)
+        swing_drop = (near_avg - far_avg) / near_avg if near_avg > 0 else 0.0
+        fixture_flag = swing_drop >= WC_FIXTURE_SWING_DROP
+
+    plan_moves = int(
+        (best_transfer_plan or {}).get("n_transfers")
+        or len((best_transfer_plan or {}).get("moves") or [])
+    )
+    plan_net_xp = float((best_transfer_plan or {}).get("delta_weighted_xp") or 0.0) - float(
+        (best_transfer_plan or {}).get("hit_cost") or 0.0
+    )
+    plan_flag = plan_moves >= WC_PLAN_MIN_TRANSFERS and plan_net_xp >= WC_PLAN_MIN_NET_XP
+
+    metric = float(len(low)) + float(fixture_flag) + float(plan_flag)
+
+    if health_flag or fixture_flag or plan_flag:
+        triggers: list[str] = []
+        if health_flag:
+            names = ", ".join(str(p.get("web_name") or p.get("player_id")) for p in low[:5])
+            triggers.append(f"{len(low)} modelled starters are below {WC_LOW_P_START:.0%} start chance ({names})")
+        if fixture_flag:
+            triggers.append(
+                f"the squad's own fixtures get {swing_drop:.0%} harder later in the horizon "
+                f"({near_avg:.1f} avg pts in the next few GWs vs {far_avg:.1f} avg further out)"
+            )
+        if plan_flag:
+            triggers.append(
+                f"even the best {plan_moves}-transfer plan still nets +{plan_net_xp:.1f} horizon pts after hits"
+            )
         return ChipAdvice(
             kind=ChipKind.WILDCARD.value,
             action="play",
             available=True,
             reason=(
-                f"{len(low)} modelled starters are below {WC_LOW_P_START:.0%} start chance ({names}). "
-                "That is a rebuild signal, not a one-week Free Hit."
+                "; ".join(triggers)
+                + ". That combination points to a rebuild, not a one-week Free Hit."
             ),
             metric=metric,
         )
+    fixture_bit = (
+        f"fixture trend ({near_avg:.1f} avg pts near-term vs {far_avg:.1f} avg further out)"
+        if len(future_xp) >= WC_MIN_FUTURE_WEEKS_FOR_SWING
+        else "fixture trend (not enough horizon weeks to judge)"
+    )
     return ChipAdvice(
         kind=ChipKind.WILDCARD.value,
         action="hold",
         available=True,
         reason=(
-            f"Only {len(low)} XI player(s) have start chance below {WC_LOW_P_START:.0%}; keep Wildcard."
+            f"Squad health ({len(low)} of {len(xi) or 11} starters below {WC_LOW_P_START:.0%} start chance), "
+            f"{fixture_bit}, and transfer-plan value (best plan nets {plan_net_xp:+.1f} horizon pts after hits) "
+            "all look fine; keep Wildcard."
         ),
         metric=metric,
     )

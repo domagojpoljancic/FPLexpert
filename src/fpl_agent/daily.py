@@ -356,6 +356,7 @@ def run_predeadline(
         chip_instances=private.chip_instances,
         fixtures=fixtures,
         horizon_gws=gameweeks,
+        best_transfer_plan=transfer_plans[0].as_payload() if transfer_plans else None,
     )
     this_week = this_week_upgrade(affordable_transfers)
     weekly_plan["best_stretch"] = stretch_transfers[0].as_payload() if stretch_transfers else None
