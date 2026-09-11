@@ -636,6 +636,225 @@ def test_livefpl_parse_and_market_movers() -> None:
     assert "Faller" in md
     assert "predeadline" in md
     assert "Likely / watch rises" in md
+    assert "interesting for *who* may tick up" in md
+    assert "not an automatic buy" in md
+
+
+def _proj(
+    player_id: int,
+    *,
+    element_type: int,
+    team_id: int,
+    price: int,
+    weighted: float,
+    gw: float,
+    p_start: float = 0.9,
+    name: str = "X",
+):
+    from fpl_agent.projections.preseason import PlayerProjection
+
+    return PlayerProjection(
+        player_id=player_id,
+        web_name=name,
+        team_id=team_id,
+        element_type=element_type,
+        price_tenths=price,
+        p_start=p_start,
+        expected_minutes=80.0,
+        points_per_90=4.0,
+        xp_by_gw=(gw, gw, gw, gw),
+        weighted_xp=weighted,
+    )
+
+
+def _squad_team(tmp_path: Path, *, bank: int = 20):
+    """Minimal MID-heavy squad for upgrade-check unit tests (not a full legal 15)."""
+    catalog = {
+        1: {"id": 1, "web_name": "Saka", "team": 1, "element_type": 3, "now_cost": 100, "status": "a"},
+        2: {"id": 2, "web_name": "KeepDef", "team": 2, "element_type": 2, "now_cost": 50, "status": "a"},
+        10: {"id": 10, "web_name": "Palmer", "team": 3, "element_type": 3, "now_cost": 105, "status": "a"},
+        11: {"id": 11, "web_name": "Elanga", "team": 4, "element_type": 3, "now_cost": 55, "status": "a"},
+        12: {"id": 12, "web_name": "WeakMid", "team": 5, "element_type": 3, "now_cost": 50, "status": "a"},
+    }
+    ids = [1, 2]
+    private = _private_file(tmp_path, ids, bank=bank)
+    # _private_file always writes 15 ids by default; override to our two.
+    raw = json.loads(private.read_text(encoding="utf-8"))
+    raw["player_ids"] = ids
+    raw["purchase_prices_tenths"] = {str(i): catalog[i]["now_cost"] for i in ids}
+    private.write_text(json.dumps(raw), encoding="utf-8")
+    # Bypass private-state 15-player validator by building a lightweight team stub.
+    from types import SimpleNamespace
+
+    from fpl_agent.domain.models import Position, SquadPlayer
+
+    squad = [
+        SquadPlayer(
+            player_id=1,
+            position=Position.MID,
+            club_id=1,
+            purchase_price_tenths=100,
+            current_price_tenths=100,
+        ),
+        SquadPlayer(
+            player_id=2,
+            position=Position.DEF,
+            club_id=2,
+            purchase_price_tenths=50,
+            current_price_tenths=50,
+        ),
+    ]
+    team = SimpleNamespace(
+        squad=SimpleNamespace(value=squad),
+        bank_tenths=SimpleNamespace(value=bank),
+        free_transfers=SimpleNamespace(value=1),
+        executability=Executability.EXECUTABLE,
+        warnings=[],
+    )
+    return team, catalog
+
+
+def test_market_upgrade_check_flags_squad_replacement(tmp_path: Path) -> None:
+    from fpl_agent.prices.external import MarketMover
+    from fpl_agent.prices.report import render_prices_markdown
+    from fpl_agent.prices.transfer_check import evaluate_market_upgrades
+
+    team, catalog = _squad_team(tmp_path, bank=20)
+    projections = {
+        1: _proj(1, element_type=3, team_id=1, price=100, weighted=8.0, gw=4.0, name="Saka"),
+        2: _proj(2, element_type=2, team_id=2, price=50, weighted=4.0, gw=2.0, name="KeepDef"),
+        10: _proj(10, element_type=3, team_id=3, price=105, weighted=12.0, gw=6.0, name="Palmer"),
+    }
+    market = [
+        MarketMover(
+            player_id=10,
+            web_name="Palmer",
+            direction=PriceDirection.RISE,
+            external_progress=0.95,
+            cost_millions=10.5,
+            band=LikelihoodBand.LIKELY_NEXT_WINDOW,
+            owned=False,
+            in_plan=False,
+            source_label="livefpl",
+        )
+    ]
+    verdicts = evaluate_market_upgrades(
+        market=market,
+        projections=projections,
+        team=team,
+        catalog=catalog,
+    )
+    assert verdicts
+    assert verdicts[0].is_upgrade
+    assert verdicts[0].out_name == "Saka"
+    assert verdicts[0].affordable is True
+    md = render_prices_markdown(
+        gameweek=4,
+        status=ReportStatus.WATCH,
+        actions=[],
+        predictions=[],
+        snapshot_times=[],
+        model_version="prices-v1.1.0",
+        timezone_label="test",
+        warnings=[],
+        executability="EXECUTABLE",
+        market=market,
+        upgrade_verdicts=verdicts,
+    )
+    assert "would upgrade **Saka**" in md
+    assert "Palmer" in md
+    assert "Affordable now" in md
+
+
+def test_market_upgrade_check_reports_non_upgrade(tmp_path: Path) -> None:
+    from fpl_agent.prices.external import MarketMover
+    from fpl_agent.prices.report import render_prices_markdown
+    from fpl_agent.prices.transfer_check import evaluate_market_upgrades
+
+    team, catalog = _squad_team(tmp_path, bank=50)
+    projections = {
+        1: _proj(1, element_type=3, team_id=1, price=100, weighted=12.0, gw=6.0, name="Saka"),
+        2: _proj(2, element_type=2, team_id=2, price=50, weighted=4.0, gw=2.0, name="KeepDef"),
+        11: _proj(11, element_type=3, team_id=4, price=55, weighted=7.0, gw=3.0, name="Elanga"),
+    }
+    market = [
+        MarketMover(
+            player_id=11,
+            web_name="Elanga",
+            direction=PriceDirection.RISE,
+            external_progress=0.9,
+            cost_millions=5.5,
+            band=LikelihoodBand.LIKELY_NEXT_WINDOW,
+            owned=False,
+            in_plan=False,
+            source_label="livefpl",
+        )
+    ]
+    verdicts = evaluate_market_upgrades(
+        market=market,
+        projections=projections,
+        team=team,
+        catalog=catalog,
+    )
+    assert verdicts
+    assert verdicts[0].is_upgrade is False
+    md = render_prices_markdown(
+        gameweek=4,
+        status=ReportStatus.WATCH,
+        actions=[],
+        predictions=[],
+        snapshot_times=[],
+        model_version="prices-v1.1.0",
+        timezone_label="test",
+        warnings=[],
+        executability="EXECUTABLE",
+        market=market,
+        upgrade_verdicts=verdicts,
+    )
+    assert "not an upgrade" in md
+    assert "Elanga" in md
+
+
+def test_market_upgrade_check_degrades_without_fixtures(tmp_path: Path, monkeypatch) -> None:
+    from fpl_agent.prices.external import ExternalPriceRow
+
+    catalog = _catalog()
+    private = _private_file(tmp_path)
+    boot = {
+        "events": [{"id": 1, "is_next": True, "deadline_time": "2026-08-21T17:30:00Z"}],
+        "elements": list(catalog.values()),
+        "teams": [{"id": 1, "short_name": "ARS"}],
+    }
+
+    def fake_fetch(_url: str):
+        return [
+            ExternalPriceRow(
+                player_id=20,
+                name="Target",
+                cost=7.0,
+                progress=0.9,
+                progress_tonight=0.95,
+                per_hour=0.01,
+            )
+        ]
+
+    monkeypatch.setattr("fpl_agent.prices.run.fetch_external_prices", fake_fetch)
+    # Force online path for external fetch while keeping bootstrap (empty fixtures).
+    report = run_prices(
+        settings=SETTINGS,
+        offline=False,
+        private_path=private,
+        snapshot_root=tmp_path / "snaps",
+        reports_dir=tmp_path / "reports",
+        save=False,
+        notify=False,
+        bootstrap=boot,
+        now=NOW,
+    )
+    assert any("market_upgrade_check_skipped_no_fixtures" in w for w in report.warnings)
+    assert "interesting for *who* may tick up" in report.markdown
+    assert "Target" in report.markdown
+    assert "would upgrade" not in report.markdown
 
 
 def test_report_status_watch_when_market_only() -> None:

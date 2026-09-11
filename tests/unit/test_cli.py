@@ -154,7 +154,8 @@ def test_prices_workflow_wired() -> None:
     assert "FPL_PRIVATE_STATE_B64" in text
     assert "materialize-from-env" in text
     assert "cron:" in text
-    assert "0 16 * * *" in text
+    assert "0 13 * * *" in text
+    assert "0 16 * * *" not in text
     assert "*/2" not in text
     assert "run-log.md" in text
     assert "README.md" in text

@@ -7,9 +7,10 @@ on:
         type: boolean
         default: false
   schedule:
-    # 18:00 Europe/Zagreb in summer (CEST = 16:00 UTC). Winter this is 17:00 Zagreb.
-    # GitHub cron is often 1–3h late; aiming earlier so the job lands before ~21:00 CEST.
-    - cron: "0 16 * * *"
+    # 15:00 Europe/Zagreb in summer (CEST = 13:00 UTC). Winter this is 14:00 Zagreb.
+    # GitHub cron is often 1–3h late; aiming earlier so the job lands before evening
+    # transfer activity (~18:00–20:00 CEST rather than after 21:00).
+    - cron: "0 13 * * *"
 
 permissions: {}
 
@@ -40,7 +41,7 @@ jobs:
             echo "## Email test only"
             echo
             echo "The **prices** job was skipped. This run only posted a test comment."
-            echo "Uncheck **test_email** (or wait for the 18:00 Zagreb schedule) to run the real price watch."
+            echo "Uncheck **test_email** (or wait for the 15:00 Zagreb schedule) to run the real price watch."
           } >> "$GITHUB_STEP_SUMMARY"
 
   prices:

@@ -15,12 +15,12 @@ Read-only co-pilot. It recommends transfers, captain, bench, and price moves fro
 | **Too early / late?** | Add `--force` |
 | **FPL API down?** | Add `--offline` |
 
-Overnight **price watch** runs on GitHub (18:00 Zagreb target; Actions often runs later). **Squad news** runs when you trigger the agent ~24h before the deadline. Reports are linked below.
+Overnight **price watch** runs on GitHub (15:00 Zagreb target; Actions often runs later). **Squad news** runs when you trigger the agent ~24h before the deadline. Reports are linked below.
 
 <!-- recent-runs:start -->
 ## Latest results
 
-**Price watch** (GitHub, 18:00 Zagreb target — last 7 days)
+**Price watch** (GitHub, 15:00 Zagreb target — last 7 days)
 - [10 Sep 20:51 CEST](reports/prices-gw4-20260910T185113Z.md) · GW4 · **WATCH** — Watch list only — do not churn for £0.1m.
 - [09 Sep 20:58 CEST](reports/prices-gw4-20260909T185807Z.md) · GW4 · **WATCH** — Watch list only — do not churn for £0.1m.
 - [08 Sep 21:09 CEST](reports/prices-gw4-20260908T190943Z.md) · GW4 · **WATCH** — Watch list only — do not churn for £0.1m.
@@ -49,7 +49,7 @@ Overnight **price watch** runs on GitHub (18:00 Zagreb target; Actions often run
 ### What you get
 
 - **Pre-deadline review** — TLDR, XI / captain / bench, transfer options (including when to spend vs bank a free transfer), chip hints, a **Why** section from news the run actually opened, and (once the prior gameweek is officially final) a **Reflection** section: short header line, predicted-vs-actual table, Mermaid calibration/transfer trends when enough history exists, proposal-only calibration notes, and how past transfer calls have aged across their original horizon.
-- **Overnight price watch** — market rises/falls (LiveFPL JSON + our heuristic), whether a plan-gated move should be locked tonight, and a reminder to run the GW predictor before buying a riser for price alone.
+- **Overnight price watch** — market rises/falls (LiveFPL JSON + our heuristic), whether a riser upgrades someone you own (projected points + affordability), whether a plan-gated move should be locked tonight, and a reminder to run the GW predictor before buying for price alone.
 - **After the deadline** (optional) — `uv run fpl-agent scorecard -g N` compares the last plan to official points.
 
 Numbers (xP, prices, legality) are computed in code. The LLM only explains **legal candidates we already generated** — it cannot invent players, prices, or injuries.
@@ -104,5 +104,5 @@ Reports live in `reports/`. Private squad files stay in `data/private-state/` (g
 
 ### Automation
 
-- **Prices:** GitHub Actions `fpl-prices.yml` at 18:00 Zagreb daily (UTC cron `0 16 * * *`; GitHub may delay 1–3h).
+- **Prices:** GitHub Actions `fpl-prices.yml` at 15:00 Zagreb daily (UTC cron `0 13 * * *`; GitHub may delay 1–3h).
 - **Watchdog:** `fpl-prices-watchdog.yml` comments if the price job is more than 26 hours late.

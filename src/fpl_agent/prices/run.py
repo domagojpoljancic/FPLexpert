@@ -41,12 +41,14 @@ from fpl_agent.prices.snapshot import (
     row_map,
     snapshot_from_bootstrap,
 )
+from fpl_agent.prices.transfer_check import UpgradeVerdict, evaluate_market_upgrades
 from fpl_agent.prices.types import (
     LikelihoodBand,
     PriceAction,
     PricePrediction,
     ReportStatus,
 )
+from fpl_agent.projections.preseason import configure_from_settings, project_all
 from fpl_agent.rules.season import load_season_rules_2026_27
 from fpl_agent.strategy.engine import TransferMove, generate_scenarios
 from fpl_agent.suggest import load_public_data
@@ -242,8 +244,9 @@ def run_prices(
             exit_code=ExitCode.INSUFFICIENT_OR_STALE_TEAM_STATE,
         )
 
+    fixtures: list[dict[str, Any]] = []
     if bootstrap is None:
-        bootstrap, _fixtures = load_public_data(offline=offline)
+        bootstrap, fixtures = load_public_data(offline=offline)
     catalog = {int(e["id"]): e for e in bootstrap.get("elements") or [] if "id" in e}
     gw, deadline = next_deadline(bootstrap)
     hours = hours_until(deadline, now=now)
@@ -411,6 +414,34 @@ def run_prices(
         now=now,
     )
     warnings.extend(team.warnings)
+
+    upgrade_verdicts: list[UpgradeVerdict] | None = None
+    if market:
+        if not fixtures:
+            warnings.append("market_upgrade_check_skipped_no_fixtures")
+        else:
+            try:
+                configure_from_settings(settings)
+                weights = list(settings.planning.weights)
+                gameweeks = list(range(gw, gw + len(weights)))
+                proj_list = project_all(
+                    bootstrap=bootstrap,
+                    fixtures=fixtures,
+                    gameweeks=gameweeks,
+                    weights=weights,
+                )
+                upgrade_verdicts = evaluate_market_upgrades(
+                    market=market,
+                    projections=proj_list,
+                    team=team,
+                    catalog=catalog,
+                    rules=rules,
+                    private=private,
+                )
+            except Exception as exc:  # noqa: BLE001 — never fail the overnight job
+                warnings.append(f"market_upgrade_check_failed:{type(exc).__name__}")
+                upgrade_verdicts = None
+
     status = report_status(actions, market=market)
     tz = ZoneInfo(settings.manager.timezone)
     local_now = now.astimezone(tz).strftime("%Y-%m-%d %H:%M %Z")
@@ -426,6 +457,7 @@ def run_prices(
         executability=team.executability.value,
         market=market,
         external_source=external_source or (DEFAULT_LIVEFPL_PRICES_URL if market else None),
+        upgrade_verdicts=upgrade_verdicts,
     )
     report_hash = stable_json_hash(markdown)
 

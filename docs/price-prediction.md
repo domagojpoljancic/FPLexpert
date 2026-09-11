@@ -41,8 +41,13 @@ Additionally, when `prices.external_predictor_url` is set (default: LiveFPL publ
 - list top market rises/falls by `progress_tonight` in the report;
 - attach `external_progress` on scored players;
 - **never** escalate to `act_now_recommended` from the external feed alone;
-- for unowned likely risers, tell the manager to run the GW predictor / pre-deadline review
-  before transferring.
+- for unowned likely/watch risers, compare each to same-position players you own
+  (projected ΔxP this GW and over the planning horizon, plus affordability) via
+  `prices/transfer_check.py` using the same primitives as pre-deadline transfers;
+  fall back to the generic “interesting for who may tick up” line when fixtures
+  or projections are unavailable;
+- still point the manager at the GW predictor / pre-deadline review before
+  transferring for a £0.1m tick alone.
 
 `--universe catalog` may score everyone for evaluation and **must not notify**.
 
@@ -108,7 +113,9 @@ With sell-on fee 0.5, a +0.1 rise often **does not** increase selling price; a +
 
 Recommended local windows (manager tz), not guarantees:
 
-- GitHub Actions: 18:00 Europe/Zagreb in summer (`0 16 * * *` UTC). Persist snapshots in git.
+- GitHub Actions: 15:00 Europe/Zagreb in summer (`0 13 * * *` UTC; winter = 14:00 Zagreb).
+  Persist snapshots in git. GitHub cron is often 1–3h late; the earlier slot aims for the
+  report to land before evening transfer activity.
   Email via GitHub Issue on **act-now or likely market movers**. Subscribe to the **FPL price alerts**
   issue for notification emails; optional `prices.webhook_url` for Discord/Slack.
   Run log: Actions Summary + `run-log.md` at repo root.
