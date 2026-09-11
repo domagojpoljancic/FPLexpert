@@ -806,3 +806,58 @@ def test_sequence_ev_banks_when_dual_beats_marginal_single() -> None:
     assert decision.action == "roll"
     assert decision.sequence_recommendation == "bank_for_2ft"
     assert "dual-move" in decision.reason.lower() or "bank for 2" in decision.reason.lower()
+
+
+def test_compare_roll_vs_transfer_zero_ft_rejects_hit_and_exposes_minus_four() -> None:
+    """With 0 FT, a +2.2 gross upgrade must roll and report the −4 / net."""
+    from fpl_agent.rules.season import load_season_rules_2026_27
+    from fpl_agent.strategy.transfers import TransferCandidate, TransferPlan, compare_roll_vs_transfer
+
+    rules = load_season_rules_2026_27()
+    move = TransferCandidate(
+        out_id=1,
+        in_id=2,
+        out_name="Anderson",
+        in_name="Tavernier",
+        element_type=3,
+        sell_tenths=55,
+        buy_tenths=55,
+        bank_after_tenths=3,
+        bank_shortfall_tenths=0,
+        affordable=True,
+        delta_weighted_xp=1.75,
+        delta_gw_xp=2.16,
+        out_p_start=0.9,
+        in_p_start=0.9,
+        in_starts=True,
+    )
+    plan = TransferPlan(
+        moves=(move,),
+        free_transfers_used=0,
+        hit_cost=4,
+        delta_weighted_xp=1.75,
+        delta_gw_xp=2.16,
+        net_gw_xp=-1.84,
+        bank_after_tenths=3,
+        affordable=True,
+    )
+    decision = compare_roll_vs_transfer(
+        free_transfers=0,
+        best_plan=plan,
+        margin=1.0,
+        rules=rules,
+        ft_bank_option_value=0.35,
+    )
+    assert decision.action == "roll"
+    assert decision.hit_points_if_transfer == 4
+    assert decision.free_transfers_now == 0
+    assert decision.free_transfers_if_roll == 1
+    assert decision.free_transfers_if_transfer == 1
+    assert decision.net_value_after_ft_penalty == 1.75 - 4
+    reason = decision.reason.lower()
+    assert "−4" in decision.reason or "-4" in decision.reason
+    assert "0 ft" in reason or "no free transfer" in reason
+    assert "net" in reason
+    payload = decision.as_payload()
+    assert payload["hit_points_if_transfer"] == 4
+    assert payload["net_value_after_ft_penalty"] < 0

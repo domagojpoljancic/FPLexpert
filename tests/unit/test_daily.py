@@ -1530,3 +1530,147 @@ def test_render_reflection_chart_fallback_with_thin_history(tmp_path) -> None:
     assert "### Trends" in text
     assert "```mermaid" not in text
     assert "Not enough finalized weeks yet to chart a trend." in text
+
+
+def test_reconcile_roll_strips_transfer_and_surfaces_hit_cost() -> None:
+    """FT=0 roll: Do this must not sell without −4, and This week must show net after hit."""
+    from fpl_agent.daily import DailyReport, reconcile_transfer_advice, render_daily_text
+    from fpl_agent.llm.client import DailyAdvice, DailyMove, MoveType, PlanAction
+    from fpl_agent.rules.season import load_season_rules_2026_27
+    from fpl_agent.strategy.transfers import TransferCandidate
+
+    cand = TransferCandidate(
+        out_id=10,
+        in_id=20,
+        out_name="Anderson",
+        in_name="Tavernier",
+        element_type=3,
+        sell_tenths=55,
+        buy_tenths=55,
+        bank_after_tenths=3,
+        bank_shortfall_tenths=0,
+        affordable=True,
+        delta_weighted_xp=1.75,
+        delta_gw_xp=2.16,
+        out_p_start=0.9,
+        in_p_start=0.9,
+        in_starts=True,
+    )
+    weekly_plan = {
+        "ok": True,
+        "best_affordable": cand.as_payload(),
+        "formation": "3-4-3",
+        "xi": [{"web_name": "Anderson", "xp_next": 2.1}],
+        "bench": [{"web_name": "Dubravka", "xp_next": 0.2}],
+        "model_captain": {"web_name": "Odegaard", "xp_next": 4.8},
+        "model_vice": {"web_name": "Raya", "xp_next": 3.4},
+        "after_transfer": {
+            "out_name": "Anderson",
+            "in_name": "Tavernier",
+            "formation": "3-4-3",
+            "xi": [{"web_name": "Tavernier", "xp_next": 4.3}],
+            "bench": [{"web_name": "Dubravka", "xp_next": 0.2}],
+            "model_captain": {"web_name": "Odegaard", "xp_next": 4.8},
+            "model_vice": {"web_name": "Raya", "xp_next": 3.4},
+        },
+        "also_considered": [{**cand.as_payload(), "picked": True}],
+        "chips": [],
+        "transfer_decision": {
+            "action": "roll",
+            "reason": (
+                "You have 0 FT, so Anderson→Tavernier costs a −4 hit. "
+                "Gross +2.2 this GW is -1.8 net after the hit."
+            ),
+            "free_transfers_now": 0,
+            "free_transfers_if_roll": 1,
+            "free_transfers_if_transfer": 1,
+            "hit_points_if_transfer": 4,
+            "net_value_after_ft_penalty": -2.25,
+        },
+    }
+    advice = DailyAdvice(
+        plan_action=PlanAction.REVISE,
+        headline="Sell Anderson for Tavernier and captain Odegaard",
+        tldr=[
+            "Sell Anderson for Tavernier (+2.2 this week)",
+            "Captain Odegaard",
+        ],
+        suggested_moves=[
+            DailyMove(
+                move_type=MoveType.TRANSFER,
+                summary="Sell Anderson for Tavernier",
+                why="Raises projected points this week (4.3 vs 2.1 pts). Bank left: £0.3m.",
+                player_ids=[10, 20],
+                urgency="high",
+            ),
+            DailyMove(
+                move_type=MoveType.HOLD,
+                summary="Roll the transfer",
+                why="Rolling and transferring both leave one free transfer.",
+                player_ids=[],
+                urgency="medium",
+            ),
+            DailyMove(
+                move_type=MoveType.CAPTAIN,
+                summary="Captain Odegaard",
+                why="Best projected score among starters.",
+                player_ids=[30],
+                urgency="high",
+            ),
+            DailyMove(
+                move_type=MoveType.LINEUP,
+                summary="Start Tavernier",
+                why="Higher projected points than the defender replaced.",
+                player_ids=[20],
+                urgency="medium",
+            ),
+        ],
+    )
+    out = reconcile_transfer_advice(
+        advice,
+        weekly_plan,
+        affordable_transfers=[cand],
+        owned_ids=[10],
+        captain_id=30,
+        vice_id=40,
+        projections={},
+        gameweeks=[4],
+        weights=[1.0],
+        season_rules=load_season_rules_2026_27(),
+    )
+    assert out.plan_action == PlanAction.REVISE  # captain change remains
+    assert all(m.move_type != MoveType.TRANSFER for m in out.suggested_moves)
+    assert all(m.move_type != MoveType.LINEUP for m in out.suggested_moves)
+    hold = next(m for m in out.suggested_moves if m.move_type == MoveType.HOLD)
+    assert "−4" in hold.summary or "-4" in hold.summary
+    assert "net" in hold.why.lower()
+    assert "−4" in hold.why or "-4" in hold.why
+    assert "sell anderson" not in (out.tldr[0].lower() if out.tldr else "")
+    assert "−4" in out.headline or "-4" in out.headline
+    assert "aligned_roll_decision_no_transfer" in out.warnings
+
+    report = DailyReport(
+        gameweek=4,
+        plan_action=out.plan_action.value,
+        headline=out.headline,
+        what_changed=[],
+        attention_triggers=[],
+        suggested_moves=[m.model_dump(mode="json") for m in out.suggested_moves],
+        uncertainty=[],
+        warnings=list(out.warnings),
+        sources=[],
+        model_meta={},
+        executability="EXECUTABLE",
+        used_live_ai=False,
+        tldr=list(out.tldr),
+        weekly_plan=weekly_plan,
+    )
+    text = render_daily_text(report)
+    assert "Sell Anderson for Tavernier" not in text.split("## This week")[0]
+    assert "Start Tavernier" not in text
+    assert "−4" in text
+    assert "net -1.8" in text or "net −1.8" in text
+    assert "Hold path" in text
+    assert "After **Anderson → Tavernier**" not in text
+    assert "transfer costs −4 pts now" in text
+    assert "aligned_roll_decision_no_transfer" not in text
