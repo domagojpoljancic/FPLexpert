@@ -150,6 +150,16 @@ def scorecard_from_plan(
 
 
 def load_latest_predeadline_plan(reports_dir: Path, gameweek: int) -> dict[str, Any] | None:
+    """Load the latest ok weekly_plan for a GW.
+
+    Prefers the git-trackable slim plan under ``data/plans/`` (so reflection works
+    on fresh checkouts), then falls back to local ``reports/predeadline-gw*.json``.
+    """
+    from fpl_agent.evaluation.plan_store import load_weekly_plan
+
+    persisted = load_weekly_plan(gameweek)
+    if persisted is not None:
+        return persisted
     paths = sorted(reports_dir.glob(f"predeadline-gw{gameweek}-*.json"), reverse=True)
     for path in paths:
         try:

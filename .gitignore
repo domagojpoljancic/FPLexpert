@@ -22,6 +22,9 @@ data/outcomes/**
 !data/outcomes/.gitkeep
 data/evaluation/**
 !data/evaluation/.gitkeep
+data/plans/**
+!data/plans/.gitkeep
+!data/plans/gw*-weekly-plan.json
 reports/**
 !reports/.gitkeep
 !reports/prices-gw*.md

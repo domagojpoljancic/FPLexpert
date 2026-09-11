@@ -43,7 +43,7 @@ Overnight **price watch** runs on GitHub (15:00 Zagreb target; Actions often run
 
 ### What you get
 
-- **Pre-deadline review** — TLDR, XI / captain / bench, transfer options (including when to spend vs bank a free transfer), chip hints, a **Why** section from news the run actually opened, and (once the prior gameweek is officially final) a **Reflection** section: short header line, predicted-vs-actual table, Mermaid calibration/transfer trends when enough history exists, proposal-only calibration notes, and how past transfer calls have aged across their original horizon.
+- **Pre-deadline review** — TLDR, XI / captain / bench, transfer options (including when to spend vs bank a free transfer), chip hints, a **Why** section from news the run actually opened, and (once the prior gameweek is officially final) a **Reflection** section: short header line, predicted-vs-actual table, Mermaid calibration/transfer trends when enough history exists, calibration lessons (applied to live projections when backtested), prior-transfer learning notes under This week, and how past transfer calls have aged across their original horizon. Prior plans live in `data/plans/` so reflection works without local JSON reports.
 - **Overnight price watch** — market rises/falls (LiveFPL JSON + our heuristic), whether a riser upgrades someone you own (projected points + affordability), whether a plan-gated move should be locked tonight, and a reminder to run the GW predictor before buying for price alone.
 - **After the deadline** (optional) — `uv run fpl-agent scorecard -g N` compares the last plan to official points.
 

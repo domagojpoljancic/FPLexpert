@@ -1,9 +1,9 @@
-"""Cross-GW calibration lessons — proposal-only, never auto-applied.
+"""Cross-GW calibration lessons — propose, backtest, then apply when enabled.
 
 Lessons are append-only JSONL under ``data/evaluation/lessons.jsonl``.
 Nothing in this module imports or writes into ``projections/preseason`` or
-``strategy/transfers``; adjustment factors stay proposals until a future,
-explicitly signed-off plan wires them in.
+``strategy/transfers``; backtested_pass lessons are applied to live projections when
+ReflectionSettings.apply_backtested_lessons is true.
 """
 
 from __future__ import annotations
@@ -270,7 +270,7 @@ def format_lessons_section(
         return []
 
     lines = [
-        "### Suggested adjustments for future reports (not applied automatically)",
+        "### Suggested adjustments (applied to live projections when backtested_pass and enabled)",
         "",
     ]
     for segment, lesson in sorted(by_segment.items()):
@@ -283,7 +283,7 @@ def format_lessons_section(
             f"{'high' if lesson.observed_bias > 0 else 'low'} over {lesson.distinct_gameweeks} weeks "
             f"(n={lesson.sample_size}). Proposed: {direction} {pos} {tier}-price xP by "
             f"{pct:.0f}% for upcoming reports. Backtest: **pass** — {lesson.backtest_detail}. "
-            "Not yet applied — needs an explicit config change and human sign-off."
+            "Applied automatically when ReflectionSettings.apply_backtested_lessons is true."
         )
     for stats in sorted(observations, key=lambda s: s.segment):
         if stats.sample_size < 1:

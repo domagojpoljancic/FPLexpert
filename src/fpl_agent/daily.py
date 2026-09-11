@@ -293,6 +293,19 @@ def run_predeadline(
         allowed_player_ids=set(private.player_ids),
     )
     proj_by_id = override_result.projections
+
+    from fpl_agent.evaluation.learning import (
+        apply_learning_to_projections,
+        build_learning_application,
+    )
+
+    learning = build_learning_application(
+        gameweek=gw,
+        reflection=reflection_payload,
+        settings=settings.reflection,
+    )
+    proj_by_id = apply_learning_to_projections(proj_by_id, catalog, learning)
+
     search_req = build_squad_search_request(
         player_ids=private.player_ids,
         club_ids=sorted({int(catalog[p]["team"]) for p in private.player_ids if p in catalog}),
@@ -431,6 +444,7 @@ def run_predeadline(
     )
     weekly_plan["transfer_decision"] = transfer_decision.as_payload()
     weekly_plan["chips"] = [c.as_payload() for c in chip_advice]
+    weekly_plan["learning"] = learning.as_payload()
     from fpl_agent.strategy.fixtures_calendar import attach_priors, calendar_for_horizon
 
     all_clubs = {int(t["id"]) for t in (bootstrap.get("teams") or []) if t.get("id") is not None}
@@ -1657,6 +1671,12 @@ def _weekly_plan_section(report: DailyReport) -> list[str]:
     if priors:
         bits = " · ".join(str(row.get("label") or f"PRIOR GW{row.get('gameweek')}") for row in priors)
         lines.append(f"- DGW/BGW priors (not confirmed): {bits}")
+    learning = plan.get("learning") if isinstance(plan.get("learning"), dict) else {}
+    learning_notes = [str(n).strip() for n in (learning.get("notes") or []) if str(n).strip()]
+    if learning_notes:
+        lines.append("- Learning from prior GW:")
+        for note in learning_notes[:6]:
+            lines.append(f"  - {note}")
     lines.append(f"- Season plan (charts): [reports/plan-gw{report.gameweek}.md](plan-gw{report.gameweek}.md)")
     return lines
 
@@ -1881,9 +1901,12 @@ def write_daily_artifact(report: DailyReport, root: Path = Path("reports")) -> P
     path.write_text(text, encoding="utf-8")
     json_path = path.with_suffix(".json")
     json_path.write_text(json.dumps(asdict(report), indent=2, default=str), encoding="utf-8")
+    from fpl_agent.evaluation.plan_store import save_weekly_plan
     from fpl_agent.reporting.plan_doc import write_plan_doc
 
     write_plan_doc(report, root=root)
+    if isinstance(report.weekly_plan, dict):
+        save_weekly_plan(report.gameweek, report.weekly_plan)
     _write_decision_ledger(report)
     return path
 

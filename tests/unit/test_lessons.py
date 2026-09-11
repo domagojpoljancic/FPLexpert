@@ -328,14 +328,10 @@ def test_format_lessons_section_labels_not_applied() -> None:
     ]
     lines = format_lessons_section([lesson], obs, as_of_gameweek=5)
     text = "\n".join(lines)
-    assert "not applied automatically" in text
-    assert "Not yet applied" in text
-    assert "applied" in text.lower()
-    assert "Observation only" in text
+    assert "applied to live projections when backtested_pass and enabled" in text
+    assert "apply_backtested_lessons is true" in text
+    assert "Observation only" in text or "too little history" in text
     assert "false" not in text  # sanity
-    # Never claim applied:
-    assert "has been applied" not in text.lower()
-    assert "now applied" not in text.lower()
 
 
 def test_render_reflection_includes_lessons_section(tmp_path: Path) -> None:
@@ -369,6 +365,5 @@ def test_render_reflection_includes_lessons_section(tmp_path: Path) -> None:
         reflection=reflection,
     )
     text = render_daily_text(report, evaluation_dir=evaluation)
-    assert "Suggested adjustments for future reports (not applied automatically)" in text
-    assert "Not yet applied" in text
-    assert "has been applied" not in text.lower()
+    assert "Suggested adjustments (applied to live projections when backtested_pass and enabled)" in text
+    assert "apply_backtested_lessons is true" in text

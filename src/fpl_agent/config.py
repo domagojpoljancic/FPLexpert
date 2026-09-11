@@ -179,7 +179,7 @@ class CadenceSettings(BaseModel):
 
 
 class ReflectionSettings(BaseModel):
-    """Sample gates for proposal-only calibration lessons (reflection-v1)."""
+    """Sample gates + live application switches for reflection learning."""
 
     min_sample: int = Field(default=20, ge=1)
     min_distinct_gws: int = Field(default=4, ge=1)
@@ -187,6 +187,10 @@ class ReflectionSettings(BaseModel):
     min_adjustment_factor: float = Field(default=0.85, ge=0.5, lt=1.0)
     review_after_gws: int = Field(default=3, ge=1)
     expires_after_gws: int = Field(default=8, ge=1)
+    # When true, backtested_pass lessons multiply live projections by segment.
+    apply_backtested_lessons: bool = True
+    # When true, last GW transfer beaters/misses bias this week's player projections.
+    apply_prior_transfer_outcomes: bool = True
 
 
 class ProjectionsSettings(BaseModel):
