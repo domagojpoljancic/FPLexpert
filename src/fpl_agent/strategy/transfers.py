@@ -843,6 +843,9 @@ class TransferDecision:
     sequence_roll_to_2ft_ev: float | None = None
     sequence_hit_ev: float | None = None
     sequence_recommendation: str | None = None
+    # Points hit if the evaluated plan is made now (0 when covered by FTs).
+    # free_transfers_if_* are next-GW balances after the usual +1 accrual — not "FT left today".
+    hit_points_if_transfer: int = 0
 
     def as_payload(self) -> dict[str, Any]:
         return {
@@ -851,6 +854,7 @@ class TransferDecision:
             "free_transfers_now": self.free_transfers_now,
             "free_transfers_if_roll": self.free_transfers_if_roll,
             "free_transfers_if_transfer": self.free_transfers_if_transfer,
+            "hit_points_if_transfer": int(self.hit_points_if_transfer),
             "horizon_delta": round(self.horizon_delta, 3),
             "ft_banking_penalty": round(self.ft_banking_penalty, 3),
             "net_value_after_ft_penalty": round(self.net_value_after_ft_penalty, 3),
@@ -980,27 +984,43 @@ def compare_roll_vs_transfer(
     ft_after_roll, _ = free_transfer_rollover(
         previous_ft=free_transfers, transfers_made=0, rules=rules
     )
-    moves = len(best_plan.moves) if best_plan else 0
-    ft_after_transfer, _ = free_transfer_rollover(
-        previous_ft=free_transfers, transfers_made=moves, rules=rules
+    plan_for_ft = best_plan or hit_plan
+    moves = len(plan_for_ft.moves) if plan_for_ft else 0
+    # Next-GW FT if we make this plan now (0 moves → still model a 1-transfer for hit display).
+    xfer_count = moves if moves > 0 else 1
+    ft_after_transfer, hit_from_rules = free_transfer_rollover(
+        previous_ft=free_transfers, transfers_made=xfer_count, rules=rules
     )
+    if best_plan is not None:
+        hit_points = int(best_plan.hit_cost)
+    elif hit_plan is not None:
+        hit_points = int(hit_plan.hit_cost)
+    else:
+        hit_points = int(hit_from_rules)
+
     extra_ft_from_rolling = max(0, ft_after_roll - ft_after_transfer)
     ft_penalty = extra_ft_from_rolling * ft_bank_option_value
     min_to_spend = margin * 0.5 + min_horizon_delta_to_spend_ft + ft_penalty
     horizon_delta = best_plan.delta_weighted_xp if best_plan else 0.0
-    net_after_penalty = horizon_delta - ft_penalty
+    # When the evaluated plan is a hit, net value must subtract the −4/−8 so LLM
+    # copy cannot treat gross +2.2 as free value (FT=0 case).
+    hit_for_net = hit_points if (best_plan is not None and best_plan.hit_cost > 0) else 0
+    net_after_penalty = horizon_delta - ft_penalty - hit_for_net
 
     sequence = evaluate_bank_vs_spend_sequence(
         free_transfers=free_transfers,
         act_now_plan=best_plan if best_plan and best_plan.hit_cost == 0 else None,
         roll_dual_plan=roll_dual_plan,
-        hit_plan=hit_plan,
+        hit_plan=hit_plan if hit_plan is not None else (
+            best_plan if best_plan and best_plan.hit_cost > 0 else None
+        ),
     )
 
     base = dict(
         free_transfers_now=free_transfers,
         free_transfers_if_roll=ft_after_roll,
         free_transfers_if_transfer=ft_after_transfer,
+        hit_points_if_transfer=hit_points,
         horizon_delta=horizon_delta,
         ft_banking_penalty=ft_penalty,
         net_value_after_ft_penalty=net_after_penalty,
@@ -1013,29 +1033,39 @@ def compare_roll_vs_transfer(
     )
 
     if best_plan is None:
-        return TransferDecision(
-            action="roll",
-            reason=roll_recommendation_reason(
+        if free_transfers <= 0 and hit_points > 0:
+            reason = (
+                f"No free transfer available. Any single swap costs a −{hit_points} hit; "
+                f"next GW you get {ft_after_roll} FT either way. Wait unless a hit clears the bar."
+            )
+        else:
+            reason = roll_recommendation_reason(
                 free_transfers=free_transfers, best_plan=None, margin=margin
-            ),
-            **base,
-        )
+            )
+        return TransferDecision(action="roll", reason=reason, **base)
 
     if best_plan.hit_cost > 0:
         if hit_clears_horizon_bar(best_plan, margin=margin):
             reason = (
                 f"Take the {best_plan.hit_cost}-point hit: +{best_plan.delta_weighted_xp:.1f} "
-                f"horizon xP clears the risk bar (+{best_plan.net_gw_xp:.1f} net this GW)."
+                f"horizon xP clears the risk bar ({best_plan.net_gw_xp:+.1f} net this GW after the hit)."
             )
             return TransferDecision(action="transfer", reason=reason, **base)
-        return TransferDecision(
-            action="roll",
-            reason=(
+        if free_transfers <= 0:
+            reason = (
+                f"You have 0 FT, so {best_plan.moves[0].out_name}→{best_plan.moves[0].in_name} "
+                f"costs a −{best_plan.hit_cost} hit. Gross +{best_plan.delta_gw_xp:.1f} this GW "
+                f"is {best_plan.net_gw_xp:+.1f} net after the hit; "
+                f"+{best_plan.delta_weighted_xp:.1f} horizon xP does not clear the bar. "
+                f"Next GW you get {ft_after_roll} FT either way — wait."
+            )
+        else:
+            reason = (
                 f"Hit does not clear the horizon bar (+{best_plan.delta_weighted_xp:.1f} "
-                f"horizon xP for a {best_plan.hit_cost}-point hit); bank the FT."
-            ),
-            **base,
-        )
+                f"horizon xP for a {best_plan.hit_cost}-point hit; "
+                f"{best_plan.net_gw_xp:+.1f} net this GW). Bank the FT."
+            )
+        return TransferDecision(action="roll", reason=reason, **base)
 
     # Sequence EV: strong dual next week beats a weaker single now (replaces flat-only banking).
     if (

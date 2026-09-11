@@ -387,7 +387,9 @@ def run_predeadline(
     weekly_plan["best_hit"] = hit_plans[0].as_payload() if hit_plans else None
 
     free_hit_plans = [p for p in transfer_plans if p.hit_cost == 0]
-    best_plan_obj = free_hit_plans[0] if free_hit_plans else None
+    # When FT=0 every 1-swap has a hit — still evaluate that hit plan (do not drop to
+    # best_plan=None, which hides the −4 from transfer_decision).
+    best_plan_obj = free_hit_plans[0] if free_hit_plans else (hit_plans[0] if hit_plans else None)
     hit_margin = hit_horizon_margin(
         risk_profile=settings.manager.risk_profile,
         gameweek=gw,
@@ -909,13 +911,18 @@ def reconcile_transfer_advice(
     weights: list[float],
     season_rules: SeasonRules,
 ) -> DailyAdvice:
-    """Keep Do this and This week on the engine 1-FT pick.
+    """Keep Do this and This week consistent with the engine FT decision.
 
-    Near-tied defender upgrades (Ajayi / Egan / De Cuyper) previously flipped
-    whenever the model preferred a different legal starter buy. The named
-    transfer is now always ``weekly_plan.best_affordable``; the model may only
-    explain it, not replace it.
+    When ``transfer_decision.action`` is ``transfer``, the named swap is always
+    ``weekly_plan.best_affordable``. When the decision is ``roll`` (including
+    0-FT / −4-hit rejects), Do this must lead with hold — never a transfer that
+    omits the hit cost.
     """
+    decision = weekly_plan.get("transfer_decision") or {}
+    action = str(decision.get("action") or "").lower()
+    if action == "roll":
+        return _reconcile_roll_advice(advice, weekly_plan, decision)
+
     engine_raw = weekly_plan.get("best_affordable") or {}
     engine_pick: TransferCandidate | None = None
     if engine_raw.get("out_id") is not None and engine_raw.get("in_id") is not None:
@@ -952,6 +959,139 @@ def reconcile_transfer_advice(
     return advice
 
 
+def _reconcile_roll_advice(
+    advice: DailyAdvice,
+    weekly_plan: dict[str, Any],
+    decision: dict[str, Any],
+) -> DailyAdvice:
+    """When banking / rejecting a hit, strip transfer moves and lead with hold."""
+    from fpl_agent.llm.client import PlanAction
+
+    best = weekly_plan.get("best_affordable") or {}
+    hit = int(decision.get("hit_points_if_transfer") or 0)
+    reason = str(decision.get("reason") or "").strip()
+    out_name = str(best.get("out_name") or "").strip()
+    in_name = str(best.get("in_name") or "").strip()
+    gw_delta = float(best.get("delta_gw_xp") or 0.0)
+    player_ids: list[int] = []
+    if best.get("out_id") is not None and best.get("in_id") is not None:
+        player_ids = [int(best["out_id"]), int(best["in_id"])]
+    in_id = player_ids[1] if len(player_ids) == 2 else None
+
+    if hit > 0 and out_name and in_name:
+        net = gw_delta - hit
+        hold_why = (
+            f"{in_name} is about {gw_delta:+.1f} pts vs {out_name} this week before the hit, "
+            f"but you have 0 FT — the move costs −{hit} pts (net {net:+.1f} this week). "
+            f"{reason}"
+        ).strip()
+        hold_summary = (
+            f"Hold the transfer — {out_name} → {in_name} would cost −{hit} "
+            f"(net {net:+.1f} this week)"
+        )
+    elif out_name and in_name:
+        hold_why = reason or (
+            f"Bank the FT instead of {out_name} → {in_name}; the horizon edge does not clear the bar."
+        )
+        hold_summary = f"Bank the FT instead of {out_name} → {in_name}"
+    else:
+        hold_why = reason or "Bank the FT; no move clears the horizon bar."
+        hold_summary = "Bank the transfer"
+
+    new_moves: list[DailyMove] = []
+    saw_hold = False
+    for move in advice.suggested_moves:
+        if move.move_type == MoveType.TRANSFER:
+            continue
+        # Drop lineup advice that starts the rejected buy (e.g. "Start Tavernier").
+        if move.move_type == MoveType.LINEUP and in_name:
+            blob = f"{move.summary} {move.why}".lower()
+            if in_name.lower() in blob or (in_id is not None and in_id in move.player_ids):
+                continue
+        if move.move_type == MoveType.HOLD:
+            if saw_hold:
+                continue
+            saw_hold = True
+            new_moves.append(
+                move.model_copy(
+                    update={
+                        "summary": hold_summary,
+                        "why": hold_why,
+                        "player_ids": player_ids or list(move.player_ids),
+                        "urgency": "medium",
+                    }
+                )
+            )
+            continue
+        new_moves.append(move)
+
+    if not saw_hold:
+        new_moves.insert(
+            0,
+            DailyMove(
+                move_type=MoveType.HOLD,
+                summary=hold_summary,
+                why=hold_why,
+                player_ids=player_ids,
+                urgency="medium",
+            ),
+        )
+
+    warnings = list(advice.warnings)
+    if "aligned_roll_decision_no_transfer" not in warnings:
+        warnings.append("aligned_roll_decision_no_transfer")
+
+    has_other_change = any(
+        m.move_type in {MoveType.CAPTAIN, MoveType.VICE, MoveType.CHIP, MoveType.LINEUP}
+        for m in new_moves
+    )
+    # Keep REVISE when captain/lineup still change; otherwise downgrade transfer-only revise.
+    if has_other_change:
+        plan_action = (
+            PlanAction.REVISE
+            if advice.plan_action == PlanAction.REVISE
+            else advice.plan_action
+        )
+    elif advice.plan_action == PlanAction.WATCH:
+        plan_action = PlanAction.WATCH
+    else:
+        plan_action = PlanAction.KEEP
+
+    updates: dict[str, Any] = {
+        "suggested_moves": new_moves,
+        "warnings": warnings,
+        "plan_action": plan_action,
+    }
+    cap_bit = ""
+    for move in new_moves:
+        if move.move_type == MoveType.CAPTAIN and move.summary:
+            cap_bit = f"; {move.summary[0].lower() + move.summary[1:]}" if move.summary else ""
+            break
+    if hit > 0 and out_name and in_name:
+        updates["headline"] = (
+            f"Hold transfer — {out_name}→{in_name} costs −{hit} with 0 FT "
+            f"(net {gw_delta - hit:+.1f} this week){cap_bit}."
+        )
+    elif not advice.headline or "sell" in advice.headline.lower() or "transfer" in advice.headline.lower():
+        updates["headline"] = (
+            f"Hold the transfer; banking beats the available swap this week{cap_bit}."
+        )
+
+    # Drop TLDR bullets that still push the rejected transfer without the hit.
+    if advice.tldr and (hit > 0 or out_name):
+        scrubbed: list[str] = []
+        for bullet in advice.tldr:
+            low = bullet.lower()
+            if hit > 0 and ("sell" in low or "transfer" in low) and (
+                (out_name and out_name.lower() in low) or (in_name and in_name.lower() in low)
+            ):
+                if "−" not in bullet and "-4" not in bullet and "hit" not in low:
+                    continue
+            scrubbed.append(bullet)
+        updates["tldr"] = scrubbed
+    return advice.model_copy(update=updates)
+
+
 def _scrub_false_bench_claims(text: str, xi_names: set[str]) -> str:
     """Remove 'X drops to the bench' clauses when X is still in the after XI."""
     out = text
@@ -984,6 +1124,10 @@ def _scrub_false_bench_claims(text: str, xi_names: set[str]) -> str:
 
 def align_advice_to_after_transfer(advice: DailyAdvice, weekly_plan: dict[str, Any]) -> DailyAdvice:
     """Force Do this lineup / why / detail to match after_transfer XI and bench."""
+    decision = weekly_plan.get("transfer_decision") or {}
+    if str(decision.get("action") or "").lower() == "roll":
+        # Hold path: do not rewrite advice onto the rejected after_transfer XI.
+        return advice
     after = weekly_plan.get("after_transfer") or {}
     xi_rows = [row for row in (after.get("xi") or []) if isinstance(row, dict)]
     bench_rows = [row for row in (after.get("bench") or []) if isinstance(row, dict)]
@@ -1237,17 +1381,32 @@ def _weekly_plan_section(report: DailyReport) -> list[str]:
     plan = report.weekly_plan or {}
     if not plan.get("ok"):
         return []
+    decision = plan.get("transfer_decision") or {}
+    rolling = str(decision.get("action") or "").lower() == "roll"
     after = plan.get("after_transfer") or {}
-    using = after if after.get("xi") else plan
+    # When banking / rejecting a hit, show the hold XI — not the after_transfer XI.
+    using = plan if rolling else (after if after.get("xi") else plan)
     cap = using.get("model_captain") or plan.get("model_captain") or {}
     vice = using.get("model_vice") or plan.get("model_vice") or {}
     xi = using.get("xi") or []
     bench = using.get("bench") or []
     lines = ["## This week", ""]
     best = plan.get("best_affordable")
-    # Prefer after_transfer labels so Do this / This week cannot name different swaps.
     label = after if after.get("out_name") and after.get("in_name") else best
-    if after.get("xi") and label:
+    hit = int(decision.get("hit_points_if_transfer") or 0)
+    if rolling and isinstance(best, dict) and best.get("out_name") and best.get("in_name"):
+        gw_delta = float(best.get("delta_gw_xp") or 0.0)
+        if hit > 0:
+            lines.append(
+                f"Hold path (skip **{best.get('out_name')} → {best.get('in_name')}**, "
+                f"which would cost −{hit} pts / net {gw_delta - hit:+.1f} this week):"
+            )
+        else:
+            lines.append(
+                f"Hold path (bank FT instead of **{best.get('out_name')} → {best.get('in_name')}**):"
+            )
+        lines.append("")
+    elif not rolling and after.get("xi") and label:
         drop = after.get("xi_drop_name") or (best or {}).get("xi_drop_name")
         xi_names = {
             str(player.get("web_name") or "")
@@ -1283,11 +1442,19 @@ def _weekly_plan_section(report: DailyReport) -> list[str]:
         xi=[row for row in xi if isinstance(row, dict)],
         bench=[row for row in bench if isinstance(row, dict)],
         formation=str(using.get("formation") or plan.get("formation") or "") or None,
-        in_name=str(label.get("in_name") or "") if isinstance(label, dict) else None,
+        in_name=(
+            None
+            if rolling
+            else (str(label.get("in_name") or "") if isinstance(label, dict) else None)
+        ),
         drop_name=(
-            str(after.get("xi_drop_name") or (best or {}).get("xi_drop_name") or "") or None
-            if after or best
-            else None
+            None
+            if rolling
+            else (
+                str(after.get("xi_drop_name") or (best or {}).get("xi_drop_name") or "") or None
+                if after or best
+                else None
+            )
         ),
     )
     if xi_why:
@@ -1303,7 +1470,7 @@ def _weekly_plan_section(report: DailyReport) -> list[str]:
                 f"- Why captain: **{cap_name}** has the best projected score among likely starters this week."
             )
     also = [row for row in (plan.get("also_considered") or []) if row.get("in_name")]
-    if also:
+    if also and not rolling:
         pos_n = int(also[0].get("element_type") or 0)
         pos = POSITION_LABEL.get(pos_n, "player")
         if len(also) == 1:
@@ -1317,6 +1484,15 @@ def _weekly_plan_section(report: DailyReport) -> list[str]:
                 reason = str(row.get("reason") or "").strip()
                 bit = f": {reason}" if reason else ""
                 lines.append(f"  - **{row.get('in_name')}** ({tag}){bit}")
+    elif also and rolling and hit > 0:
+        # Still name the rejected alternative with the hit, so it is not silent.
+        top = also[0] if also[0].get("picked") else next((r for r in also if r.get("picked")), also[0])
+        gw = float(top.get("delta_gw_xp") or best.get("delta_gw_xp") or 0.0) if isinstance(best, dict) else 0.0
+        lines.append(
+            f"- Rejected alternative: **{top.get('out_name') or (best or {}).get('out_name')} → "
+            f"{top.get('in_name')}** would be {gw:+.1f} pts this week before a −{hit} hit "
+            f"(net {gw - hit:+.1f})."
+        )
     chips = plan.get("chips") or []
     play = [c for c in chips if c.get("action") == "play" and c.get("available")]
     if play:
@@ -1340,7 +1516,7 @@ def _weekly_plan_section(report: DailyReport) -> list[str]:
         [row for row in (impact.get("by_gw") or []) if row.get("gw") is not None],
         key=lambda row: int(row["gw"]),
     )
-    if impact_rows:
+    if impact_rows and not rolling:
         bits = " · ".join(
             f"GW{row.get('gw')} {float(row.get('delta_xp') or 0):+.1f}" for row in impact_rows
         )
@@ -1348,7 +1524,6 @@ def _weekly_plan_section(report: DailyReport) -> list[str]:
         reason = str(impact.get("reason") or "").strip()
         if reason:
             lines.append(f"- Future weeks: {reason}")
-    decision = plan.get("transfer_decision") or {}
     decision_reason = str(decision.get("reason") or "").strip()
     if decision_reason:
         action = str(decision.get("action") or "").lower()
@@ -1357,15 +1532,21 @@ def _weekly_plan_section(report: DailyReport) -> list[str]:
     bank_after = label.get("bank_after_tenths") if isinstance(label, dict) else None
     if bank_after is None and isinstance(best, dict):
         bank_after = best.get("bank_after_tenths")
-    if bank_after is not None:
+    if bank_after is not None and not rolling:
         lines.append(f"- Bank after move: £{float(bank_after) / 10:.1f}m")
     ft_now = decision.get("free_transfers_now")
     ft_xfer = decision.get("free_transfers_if_transfer")
     ft_roll = decision.get("free_transfers_if_roll")
     if ft_now is not None and (ft_xfer is not None or ft_roll is not None):
-        lines.append(
-            f"- FT after: {ft_xfer} if transfer · {ft_roll} if roll (now {ft_now})"
-        )
+        if hit > 0:
+            lines.append(
+                f"- FT after: next GW {ft_xfer} if transfer · {ft_roll} if roll "
+                f"(now {ft_now}); transfer costs −{hit} pts now"
+            )
+        else:
+            lines.append(
+                f"- FT after: {ft_xfer} if transfer · {ft_roll} if roll (now {ft_now})"
+            )
     calendar = sorted(
         [row for row in (plan.get("fixture_calendar") or []) if row.get("gameweek") is not None],
         key=lambda row: int(row["gameweek"]),
@@ -1420,7 +1601,11 @@ def render_daily_text(
         return "\n".join(lines)
 
     hide = {"private squad stale", "notify_dry_run", "news_search_empty"}
-    warnings = [w for w in _unique_texts(report.warnings) if w not in hide]
+    warnings = [
+        w
+        for w in _unique_texts(report.warnings)
+        if w not in hide and not str(w).startswith("aligned_")
+    ]
     tldr = [item for item in report.tldr if item][:5] or ([report.headline] if report.headline else [])
     lines = [
         f"# Pre-deadline FPL review — Gameweek {report.gameweek}",
