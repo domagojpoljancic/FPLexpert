@@ -20,23 +20,17 @@ Overnight **price watch** runs on GitHub (15:00 Zagreb target; Actions often run
 <!-- recent-runs:start -->
 ## Latest results
 
-**Price watch** (GitHub, 15:00 Zagreb target — last 7 days)
+**Price watch** (GitHub, 18:00 Zagreb target — last 7 days)
+- [11 Sep 18:56 CEST](reports/prices-gw4-20260911T165652Z.md) · GW4 · **WATCH** — Watch list only — do not churn for £0.1m.
 - [10 Sep 20:51 CEST](reports/prices-gw4-20260910T185113Z.md) · GW4 · **WATCH** — Watch list only — do not churn for £0.1m.
 - [09 Sep 20:58 CEST](reports/prices-gw4-20260909T185807Z.md) · GW4 · **WATCH** — Watch list only — do not churn for £0.1m.
 - [08 Sep 21:09 CEST](reports/prices-gw4-20260908T190943Z.md) · GW4 · **WATCH** — Watch list only — do not churn for £0.1m.
 - [07 Sep 23:56 CEST](reports/prices-gw4-20260907T215644Z.md) · GW4 · **NO ACTION** — No price action tonight.
 - [06 Sep 23:10 CEST](reports/prices-gw4-20260906T211037Z.md) · GW4 · **NO ACTION** — No price action tonight.
 - [05 Sep 23:03 CEST](reports/prices-gw4-20260905T210341Z.md) · GW4 · **NO ACTION** — No price action tonight.
-- [04 Sep 23:19 CEST](reports/prices-gw4-20260904T211945Z.md) · GW4 · **NO ACTION** — No price action tonight.
 
 **Squad news** (pre-deadline — last 7 days)
 - [04 Sep 20:11 CEST](reports/predeadline-gw3-20260904T181140Z.md) · GW3 · **REVISE** — Sell Shaw for De Cuyper, start De Cuyper (bench Virgil), and captain B.Fernandes.
-- [04 Sep 18:36 CEST](reports/predeadline-gw3-20260904T163607Z.md) · GW3 · **REVISE** — Sell Shaw for De Cuyper, start De Cuyper (bench Virgil), and captain B.Fernandes.
-- [04 Sep 17:25 CEST](reports/predeadline-gw3-20260904T152555Z.md) · GW3 · **REVISE** — Sell Shaw for De Cuyper, start De Cuyper (bench Virgil), and captain B.Fernandes.
-- [04 Sep 17:08 CEST](reports/predeadline-gw3-20260904T150826Z.md) · GW3 · **REVISE** — Sell O'Nien for Ajayi, start Ajayi (bench Virgil), and captain B.Fernandes.
-- [04 Sep 16:55 CEST](reports/predeadline-gw3-20260904T145522Z.md) · GW3 · **REVISE** — Sell O'Nien for Egan, start Egan (bench Virgil), and captain B.Fernandes.
-- [04 Sep 16:13 CEST](reports/predeadline-gw3-20260904T141311Z.md) · GW3 · **REVISE** — Sell O'Nien for Egan, start Egan (bench Virgil), and captain B.Fernandes.
-- [04 Sep 15:59 CEST](reports/predeadline-gw3-20260904T135930Z.md) · GW3 · **REVISE** — Sell O'Nien for Egan, start Egan over Tzolis and captain Bruno Fernandes.
 
 **Season plan** (horizon charts)
 - [reports/plan-gw3.md](reports/plan-gw3.md)
