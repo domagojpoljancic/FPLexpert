@@ -12,6 +12,7 @@ from typing import Any
 
 _LOG = logging.getLogger(__name__)
 
+from fpl_agent.advice_lint import format_lint_warnings, lint_predeadline_advice
 from fpl_agent.cadence import hours_until, next_deadline, predeadline_gate
 from fpl_agent.config import Settings, load_settings
 from fpl_agent.domain.models import SeasonId
@@ -558,6 +559,7 @@ def run_predeadline(
         season_rules=season_rules,
     )
     advice = align_advice_to_after_transfer(advice, weekly_plan)
+    advice = _apply_advice_lint(advice, weekly_plan, free_transfers=int(private.free_transfers))
 
     if private.applies_before_gameweek != gw:
         advice.warnings.append(
@@ -898,6 +900,42 @@ def _snap_advice_to_pick(advice: DailyAdvice, pick: TransferCandidate) -> DailyA
     )
 
 
+def _apply_advice_lint(
+    advice: DailyAdvice,
+    weekly_plan: dict[str, Any],
+    *,
+    free_transfers: int,
+) -> DailyAdvice:
+    """Fail soft: record invariant breaches so bad reports are obvious and CI-testable."""
+    issues = lint_predeadline_advice(
+        weekly_plan=weekly_plan,
+        suggested_moves=advice.suggested_moves,
+        free_transfers=free_transfers,
+    )
+    if not issues:
+        return advice
+    warnings = list(advice.warnings)
+    for line in format_lint_warnings(issues):
+        if line not in warnings:
+            warnings.append(line)
+    # Last-resort repair if roll still has a transfer after reconcile.
+    decision = weekly_plan.get("transfer_decision") or {}
+    if str(decision.get("action") or "").lower() == "roll" and any(
+        i.code == "roll_with_transfer_move" for i in issues
+    ):
+        advice = _reconcile_roll_advice(advice, weekly_plan, decision)
+        issues = lint_predeadline_advice(
+            weekly_plan=weekly_plan,
+            suggested_moves=advice.suggested_moves,
+            free_transfers=free_transfers,
+        )
+        warnings = list(advice.warnings)
+        for line in format_lint_warnings(issues):
+            if line not in warnings:
+                warnings.append(line)
+    return advice.model_copy(update={"warnings": warnings})
+
+
 def reconcile_transfer_advice(
     advice: DailyAdvice,
     weekly_plan: dict[str, Any],
@@ -934,14 +972,14 @@ def reconcile_transfer_advice(
 
     pair = _advice_transfer_pair(advice, affordable_transfers)
     if engine_pick is None:
-        return advice
+        return _finalize_transfer_action_advice(advice, weekly_plan, decision, pick=None)
 
     if pair is not None:
         out_id, in_id = pair
         advice = _coerce_mislabeled_transfer_moves(advice, out_id=out_id, in_id=in_id)
 
     if pair is not None and pair[0] == engine_pick.out_id and pair[1] == engine_pick.in_id:
-        return advice
+        return _finalize_transfer_action_advice(advice, weekly_plan, decision, pick=engine_pick)
 
     advice = _snap_advice_to_pick(advice, engine_pick)
     apply_transfer_pick_to_weekly_plan(
@@ -956,6 +994,52 @@ def reconcile_transfer_advice(
         season_rules=season_rules,
         affordable_transfers=affordable_transfers,
     )
+    return _finalize_transfer_action_advice(advice, weekly_plan, decision, pick=engine_pick)
+
+
+def _finalize_transfer_action_advice(
+    advice: DailyAdvice,
+    weekly_plan: dict[str, Any],
+    decision: dict[str, Any],
+    *,
+    pick: TransferCandidate | None,
+) -> DailyAdvice:
+    """When spending an FT/hit, strip competing roll-holds and disclose −N."""
+    hit = int(decision.get("hit_points_if_transfer") or 0)
+    best = weekly_plan.get("best_affordable") or {}
+    out_name = str((pick.out_name if pick else best.get("out_name")) or "").strip()
+    in_name = str((pick.in_name if pick else best.get("in_name")) or "").strip()
+    gw_delta = float(pick.delta_gw_xp if pick is not None else (best.get("delta_gw_xp") or 0.0))
+
+    new_moves: list[DailyMove] = []
+    for move in advice.suggested_moves:
+        if move.move_type == MoveType.HOLD:
+            blob = f"{move.summary} {move.why}".lower()
+            if any(tok in blob for tok in ("roll", "bank the ft", "bank the transfer", "hold the transfer")):
+                continue
+        if move.move_type == MoveType.TRANSFER and hit > 0:
+            blob = f"{move.summary} {move.why}"
+            if not re.search(r"(?:−|-|–)\s*\d|\bhit\b|\bnet\b", blob, flags=re.IGNORECASE):
+                net = gw_delta - hit
+                summary = move.summary
+                if out_name and in_name and "−" not in summary and "-4" not in summary and "-8" not in summary:
+                    summary = f"Sell {out_name} for {in_name} (−{hit} hit)"
+                why = (
+                    f"{in_name or 'The inbound'} is about {gw_delta:+.1f} pts vs "
+                    f"{out_name or 'the outbound'} this week before the hit; "
+                    f"paying −{hit} leaves net {net:+.1f} this week. {move.why}"
+                ).strip()
+                new_moves.append(
+                    move.model_copy(update={"summary": summary, "why": why, "urgency": move.urgency or "high"})
+                )
+                continue
+        new_moves.append(move)
+
+    warnings = list(advice.warnings)
+    if hit > 0 and "aligned_transfer_hit_disclosure" not in warnings:
+        warnings.append("aligned_transfer_hit_disclosure")
+    if new_moves != list(advice.suggested_moves) or warnings != list(advice.warnings):
+        return advice.model_copy(update={"suggested_moves": new_moves, "warnings": warnings})
     return advice
 
 
@@ -1777,7 +1861,24 @@ def write_daily_artifact(report: DailyReport, root: Path = Path("reports")) -> P
     root.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     path = root / f"predeadline-gw{report.gameweek}-{stamp}.md"
-    path.write_text(render_daily_text(report), encoding="utf-8")
+    text = render_daily_text(report)
+    # Second-pass lint on the rendered markdown (catches FT-after / sell copy issues).
+    ft_now = None
+    decision = (report.weekly_plan or {}).get("transfer_decision") or {}
+    if decision.get("free_transfers_now") is not None:
+        ft_now = int(decision["free_transfers_now"])
+    text_issues = lint_predeadline_advice(
+        weekly_plan=report.weekly_plan,
+        suggested_moves=report.suggested_moves,
+        report_text=text,
+        free_transfers=ft_now,
+    )
+    if text_issues:
+        extra = format_lint_warnings(text_issues)
+        report.warnings = list(report.warnings) + [w for w in extra if w not in report.warnings]
+        # Re-render so Watch surfaces the lint lines.
+        text = render_daily_text(report)
+    path.write_text(text, encoding="utf-8")
     json_path = path.with_suffix(".json")
     json_path.write_text(json.dumps(asdict(report), indent=2, default=str), encoding="utf-8")
     from fpl_agent.reporting.plan_doc import write_plan_doc
