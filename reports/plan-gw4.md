@@ -1,38 +1,38 @@
 # Season plan — Gameweek 4
 
-Locked move: **Tzolis → Ødegaard** (plan **REVISE**).
+Locked move: **Anderson → Tavernier** (plan **REVISE**).
 
 ## Why this move over the next weeks
 
-Selling **Tzolis** for **Ødegaard** changes the XI projection across the planning horizon (GW4 +2.5, GW5 +0.7, GW6 +1.1, GW7 +0.6, GW8 +1.1, GW9 +0.8; +5.4 weighted overall). Adds +2.5 pts to the XI this GW and keeps paying later (GW5 +0.7, GW6 +1.1, GW7 +0.6; +5.4 weighted overall).
+Selling **Anderson** for **Tavernier** changes the XI projection across the planning horizon (GW4 +2.2, GW5 -0.5, GW6 +0.0, GW7 +0.0, GW8 +0.0, GW9 +0.0; +1.8 weighted overall). Mainly a this-week fix (+2.2 pts now; +1.8 weighted overall).
 
 | GW | Hold XI xP | After XI xP | Delta |
 | --- | ---: | ---: | ---: |
-| 4 | 41.73 | 44.29 | +2.55 |
-| 5 | 26.20 | 26.89 | +0.69 |
-| 6 | 26.77 | 27.92 | +1.15 |
-| 7 | 26.44 | 26.99 | +0.55 |
-| 8 | 26.93 | 28.02 | +1.09 |
-| 9 | 24.70 | 25.49 | +0.78 |
+| 4 | 41.20 | 43.36 | +2.16 |
+| 5 | 25.91 | 25.45 | -0.46 |
+| 6 | 26.85 | 26.85 | +0.00 |
+| 7 | 25.91 | 25.91 | +0.00 |
+| 8 | 26.95 | 26.96 | +0.00 |
+| 9 | 24.60 | 24.60 | +0.00 |
 
 ```mermaid
 xychart-beta
-    title "XI xP: hold vs Tzolis to Ødegaard"
+    title "XI xP: hold vs Anderson to Tavernier"
     x-axis [GW4, GW5, GW6, GW7, GW8, GW9]
-    y-axis "XI xP" 22 --> 46
-    line [41.7, 26.2, 26.8, 26.4, 26.9, 24.7]
-    line [44.3, 26.9, 27.9, 27.0, 28.0, 25.5]
+    y-axis "XI xP" 22 --> 45
+    line [41.2, 25.9, 26.9, 25.9, 26.9, 24.6]
+    line [43.4, 25.4, 26.9, 25.9, 27.0, 24.6]
 ```
 
 ## Spend now vs bank the free transfer
 
-**Bank vs spend verdict: Bank the FT.** Bank the FT (1→2 next GW). Bank for 2 FT: dual-move horizon EV 7.4 beats act-now 4.1 (delta +3.2). (FT now 1 → 1 if you transfer, 2 if you roll; sequence bank_for_2ft (act-now 4.147, roll-to-2FT 7.364, hit None); deferred dual-move upside +3.22; net after FT penalty +3.80; locked pick Tzolis→Ødegaard.)
+**Bank vs spend verdict: Bank the FT.** No affordable move clears the horizon EV bar; banking FT preserves optionality. (FT now 0 → 1 if you transfer, 1 if you roll; sequence bank_for_2ft (act-now 0.0, roll-to-2FT 5.08, hit None); net after FT penalty +0.00; locked pick Anderson→Tavernier.)
 
 ```mermaid
 flowchart LR
-    A["GW4 locked: Tzolis to Ødegaard"]
+    A["GW4 locked: Anderson to Tavernier"]
     B["Bank FT"]
-    C["Next GW: 2 FT if rolled"]
+    C["Next GW: 1 FT if rolled"]
     D["Chips: hold chips"]
     A --> B
     B --> C
@@ -41,13 +41,13 @@ flowchart LR
 
 ## Bank and value after the move
 
-The locked swap sells at £6.4m and buys at £6.7m, leaving **£0.0m** in the bank. Free transfers after acting: 1; after rolling: 2. Future affordability is this residual bank plus selling prices — not a forecast of price changes.
+The locked swap sells at £6.3m and buys at £6.0m, leaving **£0.3m** in the bank. Free transfers after acting: 1; after rolling: 1. Future affordability is this residual bank plus selling prices — not a forecast of price changes.
 
 ```mermaid
 flowchart TD
-    N0["FT now: 1"]
-    N1["If transfer: FT 1 / £0.0m after move"]
-    N2["If roll: FT 2"]
+    N0["FT now: 0"]
+    N1["If transfer: FT 1 / £0.3m after move"]
+    N2["If roll: FT 1"]
     N0 --> N1
     N0 --> N2
 ```
@@ -77,6 +77,6 @@ No labelled DGW/BGW priors on this report (none invented by default).
 
 ## Chip timing
 
-**3xc**: hold (available) — Captain mean xP 5.98 lacks ceiling for TC (haul proxy 0.00, need ≥0.25); hold until a genuine haul week (DGW detection pending). **bboost**: hold (available) — Bench xP 2.82 (need ≥8) or outfield start risk (min 10%) is not enough to spend Bench Boost. **freehit**: hold (available) — This week's XI xP 41.7 is close enough to the horizon median 26.4; hold Free Hit. **wildcard**: hold (available) — Only 0 XI player(s) have start chance below 40%; keep Wildcard.
+**3xc**: hold (available) — Captain mean xP 4.82 lacks ceiling for TC (haul proxy 0.00, need ≥0.25); hold until a genuine haul week (DGW detection pending). **bboost**: hold (available) — Bench xP 2.70 (need ≥8) or outfield start risk (min 10%) is not enough to spend Bench Boost. **freehit**: hold (available) — This week's XI xP 41.2 is close enough to the horizon median 25.9; hold Free Hit. **wildcard**: hold (available) — Squad health (0 of 11 starters below 40% start chance), fixture trend (26.4 avg pts near-term vs 25.8 avg further out), and transfer-plan value (best plan nets +0.0 horizon pts after hits) all look fine; keep Wildcard.
 
 _Recommend only — you make all FPL changes. Numbers from the locked weekly primary; no second ranking._
