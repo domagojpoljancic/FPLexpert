@@ -424,11 +424,19 @@ def run_prices(
                 configure_from_settings(settings)
                 weights = list(settings.planning.weights)
                 gameweeks = list(range(gw, gw + len(weights)))
+                recent_points = None
+                try:
+                    from fpl_agent.projections.live_form import load_recent_points_by_player
+
+                    recent_points = load_recent_points_by_player(bootstrap) or None
+                except Exception:  # noqa: BLE001
+                    recent_points = None
                 proj_list = project_all(
                     bootstrap=bootstrap,
                     fixtures=fixtures,
                     gameweeks=gameweeks,
                     weights=weights,
+                    recent_points_by_player=recent_points,
                 )
                 upgrade_verdicts = evaluate_market_upgrades(
                     market=market,

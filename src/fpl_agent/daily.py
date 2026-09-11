@@ -255,11 +255,20 @@ def run_predeadline(
 
     weights = settings.planning.weights
     gameweeks = list(range(gw, gw + len(weights)))
+    recent_points: dict[int, list[float]] = {}
+    if not offline:
+        try:
+            from fpl_agent.projections.live_form import load_recent_points_by_player
+
+            recent_points = load_recent_points_by_player(bootstrap, offline=offline)
+        except Exception:  # noqa: BLE001 — projections continue without winsorized form
+            recent_points = {}
     all_proj = project_all(
         bootstrap=bootstrap,
         fixtures=fixtures,
         gameweeks=gameweeks,
         weights=weights,
+        recent_points_by_player=recent_points or None,
     )
     proj_by_id = {p.player_id: p for p in all_proj}
 

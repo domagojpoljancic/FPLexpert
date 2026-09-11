@@ -82,6 +82,7 @@ def projections_for_horizon(
     bootstrap: dict[str, Any],
     fixtures: list[dict[str, Any]],
     weights: list[float],
+    recent_points_by_player: dict[int, list[float]] | None = None,
 ) -> tuple[list[PlayerProjection], list[int]]:
     start = next_gameweek(bootstrap)
     gameweeks = list(range(start, start + len(weights)))
@@ -90,5 +91,6 @@ def projections_for_horizon(
         fixtures=fixtures,
         gameweeks=gameweeks,
         weights=weights,
+        recent_points_by_player=recent_points_by_player,
     )
     return projections, gameweeks

@@ -27,7 +27,7 @@
 
 - Ownership / EO.
 
-## Preseason / in-season variant (`xp-v2`)
+## Preseason / in-season variant (`xp-v2.2`)
 
 `projections/preseason.py` is used for both preseason and the live pre-deadline path.
 
@@ -48,10 +48,17 @@
 1. Start probability uses `starts / finished_gameweeks`, not `/ 38`. A GK who started
    every finished GW is 0.95; a GK with 0 minutes after two GWs is treated as a backup.
    Outfielders with 0 minutes after two GWs are capped at 0.10.
-2. xG/xA from bootstrap shift pp90 toward underlying chance (capped), so finishing
-   droughts are not treated as true skill. `penalties_order == 1` adds a small prior
-   when minutes are missing.
-3. `ep_next` blend weight is 0.45.
+2. **Haul-resistant form (xp-v2.2):** while `finished` &lt; 6, the pipeline loads each
+   finished GW's `/event/{gw}/live/` feed (one call per finished GW) and builds per-player
+   recent point lists. Form uses a **winsorized mean** (outfield cap 12, GK 9) so a
+   single 20+ haul cannot reset the mean — standard robust pooling for heavy-tailed FPL
+   returns. That winsorized form also replaces haul-inflated early `ep_next` (which often
+   equals raw `points_per_game`) before the usual blend.
+3. Fallback when live points are unavailable: finished points/90 are mildly blended with an
+   xGI-implied rate; premium shrinkage reduction is deferred until GW6+.
+4. xG/xA from bootstrap still shift pp90 toward underlying chance (capped).
+   `penalties_order == 1` adds a small prior when minutes are missing.
+5. `ep_next` blend weight remains 0.45 in-season (0.35 preseason).
 
 Blank and double gameweeks fall out of the fixture list naturally.
 
@@ -59,7 +66,8 @@ Blank and double gameweeks fall out of the fixture list naturally.
 
 Premium attackers can still be compressed versus a full Poisson/xG chain. Treat
 "premium not selected" as a model property to challenge, not as proven advice.
-Ownership is still unused in base xP.
+Ownership is still unused in base xP. Winsor caps are transparent defaults, not fitted
+on holdout; revisit after ≥8 finished GWs.
 
 ## Validation status
 

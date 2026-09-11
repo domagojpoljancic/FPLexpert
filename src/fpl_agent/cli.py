@@ -696,6 +696,7 @@ def suggest_squad(
     """Suggest a legal initial 15-player squad for the next gameweek."""
     from fpl_agent.strategy.draft import optimise_initial_squad
     from fpl_agent.suggest import load_public_data, projections_for_horizon
+    from fpl_agent.projections.live_form import load_recent_points_by_player
 
     settings = load_settings(path or default_settings_path())
     from fpl_agent.rules.season import load_season_rules_2026_27
@@ -707,10 +708,12 @@ def suggest_squad(
         typer.echo(f"FAILED: {exc}", err=True)
         _exit(exc.exit_code)
 
+    recent = load_recent_points_by_player(bootstrap, offline=offline) if not offline else {}
     projections, gameweeks = projections_for_horizon(
         bootstrap=bootstrap,
         fixtures=fixtures,
         weights=settings.planning.weights,
+        recent_points_by_player=recent or None,
     )
     squad = optimise_initial_squad(projections, rules, budget_tenths=int(round(budget * 10)))
 

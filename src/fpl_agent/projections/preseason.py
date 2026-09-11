@@ -3,6 +3,11 @@
 Preseason uses last-season minutes/starts. After GW1 lockdown it switches to
 starts / finished gameweeks and an xG/xA adjustment. Constants are transparent
 defaults, not validated football truth. See docs/projection-methodology.md.
+
+xp-v2.2 adds early-season haul resistance: when per-GW live points are available,
+form is a winsorized mean (single 20+ hauls cannot dominate). Without live points,
+finished rates are mildly blended toward xGI and premium shrinkage reduction is
+deferred until enough gameweeks have finished.
 """
 
 from __future__ import annotations
@@ -10,7 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-PRESEASON_MODEL_VERSION = "xp-v2.1"
+PRESEASON_MODEL_VERSION = "xp-v2.2"
 
 # DEFCON thresholds (2026/27): DEF 10 CBIT, MID/FWD 12 CBIRT, +2 capped per match.
 DEFCON_THRESHOLDS: dict[int, int] = {2: 10, 3: 12, 4: 12}
@@ -33,6 +38,14 @@ PRICE_PRIOR_SLOPE_PER_TENTH: dict[int, float] = {1: 0.024, 2: 0.030, 3: 0.036, 4
 
 # Shrinkage strength (in "90s played") toward the price prior.
 SHRINKAGE_90S = 12.0
+# Below this many finished GWs, prefer winsorized live form and defer premium pooling cuts.
+EARLY_SEASON_GWS = 6
+# Fallback (no live GW points): mild blend of finished points/90 toward xGI.
+XGI_BLEND_PSEUDO_90S = 2.0
+# Appearance / CS baseline folded into the xGI-implied rate (not full Poisson CS).
+XGI_APPEARANCE_PP90: dict[int, float] = {1: 2.0, 2: 2.2, 3: 1.6, 4: 1.4}
+# Per-GW point caps for winsorized form (haul resistance without crushing 8–10 returns).
+WINSOR_CAP_BY_POS: dict[int, float] = {1: 9.0, 2: 12.0, 3: 12.0, 4: 12.0}
 
 # Weight given to FPL's published ep_next for the next gameweek.
 EP_NEXT_BLEND = 0.35
@@ -123,13 +136,32 @@ def expected_defcon_pp90(element: dict[str, Any]) -> tuple[float, tuple[str, ...
     return min(DEFCON_POINTS_PER_HIT, p_hit * DEFCON_POINTS_PER_HIT), warnings
 
 
-def _effective_shrinkage(price_tenths: int) -> float:
-    """Slightly less shrinkage for premiums so elite attackers are not flattened."""
+def _effective_shrinkage(price_tenths: int, *, games_played: int = 0) -> float:
+    """Shrinkage toward the price prior.
+
+    Premiums get slightly less pooling once the season has enough GWs; early on we
+    keep full shrinkage so a single haul cannot inflate elite prices.
+    """
+    if games_played > 0 and games_played < EARLY_SEASON_GWS:
+        return SHRINKAGE_90S
     if price_tenths >= 100:
         return SHRINKAGE_90S * 0.70
     if price_tenths >= 85:
         return SHRINKAGE_90S * 0.85
     return SHRINKAGE_90S
+
+
+def winsorize_points(points: list[float], element_type: int) -> list[float]:
+    """Cap per-GW scores so one haul cannot dominate the mean."""
+    cap = WINSOR_CAP_BY_POS.get(element_type, 12.0)
+    return [min(float(p), cap) for p in points]
+
+
+def winsorized_mean(points: list[float], element_type: int) -> float:
+    if not points:
+        return 0.0
+    capped = winsorize_points(points, element_type)
+    return sum(capped) / len(capped)
 
 
 def availability_factor(element: dict[str, Any]) -> tuple[float, str]:
@@ -164,6 +196,12 @@ def finished_gameweeks(bootstrap: dict[str, Any]) -> int:
     return sum(1 for event in (bootstrap.get("events") or []) if event.get("finished"))
 
 
+def finished_event_ids(bootstrap: dict[str, Any]) -> list[int]:
+    """Finished event ids in ascending order (for live-points fetches)."""
+    ids = [int(event["id"]) for event in (bootstrap.get("events") or []) if event.get("finished")]
+    return sorted(ids)
+
+
 def apply_xg_adjustment(element: dict[str, Any], pp90: float) -> tuple[float, tuple[str, ...]]:
     """Move pp90 toward xGI when finishing has diverged from underlying chance."""
     warnings: list[str] = []
@@ -194,8 +232,55 @@ def apply_xg_adjustment(element: dict[str, Any], pp90: float) -> tuple[float, tu
     return pp90 + adj, tuple(warnings)
 
 
-def points_per_90_estimate(element: dict[str, Any]) -> tuple[float, tuple[str, ...]]:
-    """Shrink observed per-90 scoring toward a price prior, then apply xGI."""
+def xgi_implied_pp90(element: dict[str, Any]) -> float | None:
+    """Appearance baseline + xG/xA converted to FPL points (haul-resistant signal)."""
+    minutes = _f(element.get("minutes"))
+    if minutes < 45:
+        return None
+    nineties = minutes / 90.0
+    element_type = int(element.get("element_type", 3))
+    xg = _f(element.get("expected_goals"))
+    xa = _f(element.get("expected_assists"))
+    if xg + xa <= 0:
+        return None
+    goal_pts = GOAL_POINTS.get(element_type, 4.0)
+    appearance = XGI_APPEARANCE_PP90.get(element_type, 1.5)
+    return appearance + (xg * goal_pts + xa * 3.0) / nineties
+
+
+def robust_observed_pp90(
+    element: dict[str, Any],
+    *,
+    nineties: float,
+    finished_pp90: float,
+    recent_points: list[float] | None = None,
+) -> tuple[float, tuple[str, ...]]:
+    """Prefer winsorized live GW form; else mildly blend finished points with xGI."""
+    element_type = int(element.get("element_type", 3))
+    if recent_points:
+        wmean = winsorized_mean(recent_points, element_type)
+        raw_mean = sum(recent_points) / len(recent_points)
+        warnings: tuple[str, ...] = ("winsorized_form",) if wmean < raw_mean - 0.05 else ()
+        # Starters' winsorized PPG ≈ pp90 when minutes ≈ 90.
+        return wmean, warnings
+
+    xgi = xgi_implied_pp90(element)
+    if xgi is None or nineties <= 0:
+        return finished_pp90, ()
+    w_finished = nineties / (nineties + XGI_BLEND_PSEUDO_90S)
+    blended = w_finished * finished_pp90 + (1.0 - w_finished) * xgi
+    if abs(blended - finished_pp90) >= 0.15:
+        return blended, ("xgi_anchored_rate",)
+    return blended, ()
+
+
+def points_per_90_estimate(
+    element: dict[str, Any],
+    *,
+    games_played: int = 0,
+    recent_points: list[float] | None = None,
+) -> tuple[float, tuple[str, ...]]:
+    """Shrink a haul-resistant per-90 rate toward a price prior, then apply xGI."""
     warnings: list[str] = []
     minutes = _f(element.get("minutes"))
     total_points = _f(element.get("total_points"))
@@ -204,15 +289,25 @@ def points_per_90_estimate(element: dict[str, Any]) -> tuple[float, tuple[str, .
 
     prior = price_prior_per_90(element_type, price)
     nineties = minutes / 90.0
-    if nineties <= 0:
+    if nineties <= 0 and not recent_points:
         warnings.append("no minutes; price prior only")
         pp90 = prior
     else:
-        observed = total_points / nineties
-        shrinkage = _effective_shrinkage(price)
-        pp90 = (nineties * observed + shrinkage * prior) / (nineties + shrinkage)
-        if nineties < 10:
+        finished = total_points / nineties if nineties > 0 else prior
+        observed, rob_warn = robust_observed_pp90(
+            element,
+            nineties=max(nineties, float(len(recent_points or [])) or 1.0),
+            finished_pp90=finished,
+            recent_points=recent_points,
+        )
+        warnings.extend(rob_warn)
+        sample_n = float(len(recent_points)) if recent_points else nineties
+        shrinkage = _effective_shrinkage(price, games_played=games_played)
+        pp90 = (sample_n * observed + shrinkage * prior) / (sample_n + shrinkage)
+        if sample_n < 10:
             warnings.append("small minutes sample")
+        if games_played > 0 and games_played < EARLY_SEASON_GWS:
+            warnings.append("early_season_shrinkage")
     adjusted, xg_warn = apply_xg_adjustment(element, pp90)
     defcon_pp90, defcon_warn = expected_defcon_pp90(element)
     return adjusted + defcon_pp90, tuple(warnings) + xg_warn + defcon_warn
@@ -295,6 +390,24 @@ def _defensive_share(element_type: int) -> float:
     return {1: 0.75, 2: 0.55, 3: 0.20, 4: 0.05}.get(element_type, 0.2)
 
 
+def _ep_next_target(
+    element: dict[str, Any],
+    *,
+    ep_next: float,
+    recent_points: list[float] | None,
+    games_played: int,
+) -> tuple[float, tuple[str, ...]]:
+    """Replace haul-inflated early ``ep_next`` with winsorized live form when available."""
+    if not recent_points or games_played <= 0 or games_played >= EARLY_SEASON_GWS:
+        return ep_next, ()
+    element_type = int(element.get("element_type", 3))
+    wmean = winsorized_mean(recent_points, element_type)
+    raw_mean = sum(recent_points) / len(recent_points)
+    if wmean < min(ep_next, raw_mean) - 0.05:
+        return wmean, ("ep_next_winsorized",)
+    return ep_next, ()
+
+
 def project_player(
     element: dict[str, Any],
     *,
@@ -302,13 +415,16 @@ def project_player(
     gameweeks: list[int],
     weights: list[float],
     games_played: int = 0,
+    recent_points: list[float] | None = None,
 ) -> PlayerProjection:
     element_type = int(element.get("element_type", 3))
     price = int(element.get("now_cost", 45))
     team_id = int(element.get("team", 0))
 
     avail, note = availability_factor(element)
-    per_90, warn_pts = points_per_90_estimate(element)
+    per_90, warn_pts = points_per_90_estimate(
+        element, games_played=games_played, recent_points=recent_points
+    )
     p_start, warn_min = start_probability(element, games_played=games_played)
     p_start *= avail
 
@@ -319,6 +435,7 @@ def project_player(
     att_share = 1.0 - def_share
 
     xp_by_gw: list[float] = []
+    blend_warnings: list[str] = []
     for gw in gameweeks:
         gw_total = 0.0
         for difficulty, is_home in fixtures_by_gw.get(gw, []):
@@ -332,7 +449,14 @@ def project_player(
     ep_next = _f(element.get("ep_next"))
     if xp_by_gw and ep_next > 0 and avail > 0:
         blend = EP_NEXT_BLEND_IN_SEASON if games_played >= 1 else EP_NEXT_BLEND
-        xp_by_gw[0] = (1 - blend) * xp_by_gw[0] + blend * ep_next
+        target, ep_warn = _ep_next_target(
+            element,
+            ep_next=ep_next,
+            recent_points=recent_points,
+            games_played=games_played,
+        )
+        blend_warnings.extend(ep_warn)
+        xp_by_gw[0] = (1 - blend) * xp_by_gw[0] + blend * target
 
     weighted = sum(w * x for w, x in zip(weights, xp_by_gw, strict=True))
     return PlayerProjection(
@@ -347,7 +471,7 @@ def project_player(
         xp_by_gw=tuple(xp_by_gw),
         weighted_xp=weighted,
         availability_note=note,
-        warnings=tuple(warn_pts) + tuple(warn_min),
+        warnings=tuple(warn_pts) + tuple(warn_min) + tuple(blend_warnings),
     )
 
 
@@ -364,13 +488,16 @@ def project_all(
     fixtures: list[dict[str, Any]],
     gameweeks: list[int],
     weights: list[float],
+    recent_points_by_player: dict[int, list[float]] | None = None,
 ) -> list[PlayerProjection]:
     by_team = team_fixtures_by_gw(fixtures, gameweeks)
     played = finished_gameweeks(bootstrap)
+    recent = recent_points_by_player or {}
     out: list[PlayerProjection] = []
     for element in bootstrap.get("elements") or []:
         if element.get("removed"):
             continue
+        pid = int(element.get("id") or 0)
         team_fixtures = by_team.get(int(element.get("team", 0)), {})
         out.append(
             project_player(
@@ -379,7 +506,19 @@ def project_all(
                 gameweeks=gameweeks,
                 weights=weights,
                 games_played=played,
+                recent_points=recent.get(pid),
             )
         )
     out.sort(key=lambda p: (-p.weighted_xp, p.player_id))
+    return out
+
+
+def merge_live_points_by_gw(
+    live_by_gw: dict[int, dict[int, int | float]],
+) -> dict[int, list[float]]:
+    """Collapse per-GW live maps into ordered recent point lists per player."""
+    out: dict[int, list[float]] = {}
+    for gw in sorted(live_by_gw):
+        for pid, pts in live_by_gw[gw].items():
+            out.setdefault(int(pid), []).append(float(pts))
     return out
