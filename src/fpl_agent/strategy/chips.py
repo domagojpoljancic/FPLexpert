@@ -392,6 +392,23 @@ def _wildcard(
 
     metric = float(len(low)) + float(fixture_flag) + float(plan_flag)
 
+    # Start-chance risk alone is a *transfer* problem (replace the risky names), not a
+    # Wildcard trigger. WC play needs fixture swing and/or a fat multi-transfer plan edge —
+    # optionally combined with squad-health risk.
+    if health_flag and not fixture_flag and not plan_flag:
+        names = ", ".join(str(p.get("web_name") or p.get("player_id")) for p in low[:5])
+        return ChipAdvice(
+            kind=ChipKind.WILDCARD.value,
+            action="hold",
+            available=True,
+            reason=(
+                f"{len(low)} modelled starters are below {WC_LOW_P_START:.0%} start chance ({names}), "
+                "but fixtures and transfer-plan value do not yet justify burning Wildcard — "
+                "prefer targeted transfers for the risky names."
+            ),
+            metric=metric,
+        )
+
     if health_flag or fixture_flag or plan_flag:
         triggers: list[str] = []
         if health_flag:
@@ -400,7 +417,7 @@ def _wildcard(
         if fixture_flag:
             triggers.append(
                 f"the squad's own fixtures get {swing_drop:.0%} harder later in the horizon "
-                f"({near_avg:.1f} avg pts in the next few GWs vs {far_avg:.1f} avg further out)"
+                f"({near_avg:.1f} projected XI pts in the next few GWs vs {far_avg:.1f} further out)"
             )
         if plan_flag:
             triggers.append(
@@ -417,7 +434,7 @@ def _wildcard(
             metric=metric,
         )
     fixture_bit = (
-        f"fixture trend ({near_avg:.1f} avg pts near-term vs {far_avg:.1f} avg further out)"
+        f"fixture trend ({near_avg:.1f} projected XI pts near-term vs {far_avg:.1f} further out)"
         if len(future_xp) >= WC_MIN_FUTURE_WEEKS_FOR_SWING
         else "fixture trend (not enough horizon weeks to judge)"
     )

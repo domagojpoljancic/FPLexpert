@@ -50,12 +50,15 @@ def test_free_hit_play_on_blank_week() -> None:
     assert next(r for r in rows if r.kind == "freehit").action == "play"
 
 
-def test_wildcard_play_when_several_starters_look_benched() -> None:
+def test_wildcard_holds_when_only_start_chance_is_weak() -> None:
+    """Start-chance risk alone is a transfer problem — not enough to burn WC."""
     rows = recommend_chips(
         gameweek=5,
         weekly_plan=_plan(captain_xp=5.0, bench_xp=4.0, this_xi=40.0, other_xi=42.0, low_starts=3),
     )
-    assert next(r for r in rows if r.kind == "wildcard").action == "play"
+    wc = next(r for r in rows if r.kind == "wildcard")
+    assert wc.action == "hold"
+    assert "targeted transfers" in wc.reason.lower() or "prefer" in wc.reason.lower()
 
 
 def test_wildcard_hold_reason_cites_multiple_factors() -> None:
