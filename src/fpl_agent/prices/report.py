@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from fpl_agent.prices.external import MarketMover
+from fpl_agent.prices.transfer_check import UpgradeVerdict
 from fpl_agent.prices.types import (
     ActionClass,
     LikelihoodBand,
@@ -69,7 +70,75 @@ def _fmt_mover(m: MarketMover) -> str:
     )
 
 
-def _transfer_advice_lines(market: list[MarketMover], actions: list[PriceAction]) -> list[str]:
+def _fmt_delta(value: float) -> str:
+    sign = "+" if value >= 0 else ""
+    return f"{sign}{value:.1f}"
+
+
+def _band_label(band: LikelihoodBand) -> str:
+    return "likely rise" if band == LikelihoodBand.LIKELY_NEXT_WINDOW else "watch rise"
+
+
+def _riser_advice_line(v: UpgradeVerdict) -> str:
+    cost = f"£{v.cost:.1f}m" if v.cost is not None else "?"
+    band = _band_label(v.band) if v.kind == "riser" else (
+        "likely fall" if v.band == LikelihoodBand.LIKELY_NEXT_WINDOW else "watch fall"
+    )
+    name = escape_md(v.in_name)
+    if v.kind == "faller":
+        out = escape_md(v.out_name or "?")
+        buy = escape_md(v.in_name)
+        if v.is_upgrade and v.affordable:
+            return (
+                f"- Owned **{out}** ({band}): affordable upgrade **{buy}** "
+                f"({_fmt_delta(v.delta_gw_xp)} pts this GW, {_fmt_delta(v.delta_weighted_xp)} "
+                "over the horizon). Only move if you already want them out for football — "
+                "confirm in the pre-deadline review."
+            )
+        if v.is_upgrade:
+            short = v.bank_shortfall_tenths / 10.0
+            return (
+                f"- Owned **{out}** ({band}): **{buy}** would upgrade "
+                f"({_fmt_delta(v.delta_weighted_xp)} over the horizon) but you'd need "
+                f"£{short:.1f}m more in the bank."
+            )
+        return (
+            f"- Owned **{out}** ({band}): no affordable same-position upgrade found. "
+            "Only sell if you already want them out for football reasons."
+        )
+
+    if v.out_name is None:
+        return (
+            f"- **{name}** ({cost}, {band}): rising, but no legal same-position swap "
+            "against your squad right now. No reason to buy for price alone."
+        )
+    out = escape_md(v.out_name)
+    if v.is_upgrade and v.affordable:
+        return (
+            f"- **{name}** ({cost}, {band}) would upgrade **{out}** "
+            f"({_fmt_delta(v.delta_gw_xp)} pts this GW, {_fmt_delta(v.delta_weighted_xp)} "
+            "over the next horizon). Affordable now — buying before the rise saves £0.1m. "
+            "Confirm in the pre-deadline review."
+        )
+    if v.is_upgrade:
+        short = v.bank_shortfall_tenths / 10.0
+        return (
+            f"- **{name}** ({cost}, {band}) would upgrade **{out}** "
+            f"({_fmt_delta(v.delta_gw_xp)} pts this GW, {_fmt_delta(v.delta_weighted_xp)} "
+            f"over the next horizon). You'd need £{short:.1f}m more in the bank "
+            "(future-planning target, not tonight)."
+        )
+    return (
+        f"- **{name}** ({cost}, {band}): rising, but not an upgrade on your squad right now "
+        f"(best swap {_fmt_delta(v.delta_weighted_xp)} pts). No reason to buy."
+    )
+
+
+def _transfer_advice_lines(
+    market: list[MarketMover],
+    actions: list[PriceAction],
+    upgrade_verdicts: list[UpgradeVerdict] | None = None,
+) -> list[str]:
     lines: list[str] = []
     unowned_likely_rises = [
         m
@@ -95,22 +164,51 @@ def _transfer_advice_lines(market: list[MarketMover], actions: list[PriceAction]
             "- Plan-gated act-now items are listed under **Act tonight** — those are the only "
             "price-timing moves this job may recommend."
         )
-    if unowned_likely_rises:
-        names = ", ".join(escape_md(m.web_name) for m in unowned_likely_rises[:8])
-        lines.append(
-            f"- Likely **rises** not in your squad ({names}): interesting for *who* may tick up, "
-            "not an automatic buy."
-        )
-        lines.append(f"- {PREDICTOR_HINT}")
-    elif any(m.direction == PriceDirection.RISE and not m.owned for m in market):
-        lines.append(f"- {PREDICTOR_HINT}")
-    if owned_likely_falls:
-        names = ", ".join(escape_md(m.web_name) for m in owned_likely_falls[:8])
-        lines.append(
-            f"- Owned players likely to **fall** ({names}): only sell if you already want them "
-            "out for football reasons (or a planned transfer). Re-check with the GW predictor "
-            "before spending a free transfer just to protect £0.1m."
-        )
+
+    if upgrade_verdicts is not None:
+        riser_verdicts = [v for v in upgrade_verdicts if v.kind == "riser"]
+        faller_verdicts = [v for v in upgrade_verdicts if v.kind == "faller"]
+        # Prefer likely-band lines; keep watch-band if no likely risers.
+        primary = [v for v in riser_verdicts if v.likely] or riser_verdicts
+        for v in primary[:8]:
+            lines.append(_riser_advice_line(v))
+        if primary:
+            lines.append(f"- {PREDICTOR_HINT}")
+        elif any(m.direction == PriceDirection.RISE and not m.owned for m in market):
+            lines.append(f"- {PREDICTOR_HINT}")
+        for v in faller_verdicts[:6]:
+            lines.append(_riser_advice_line(v))
+        owned_fall_names = [
+            m.web_name
+            for m in owned_likely_falls
+            if m.player_id not in {v.out_id for v in faller_verdicts}
+        ]
+        if owned_fall_names and not faller_verdicts:
+            names = ", ".join(escape_md(n) for n in owned_fall_names[:8])
+            lines.append(
+                f"- Owned players likely to **fall** ({names}): only sell if you already want them "
+                "out for football reasons (or a planned transfer). Re-check with the GW predictor "
+                "before spending a free transfer just to protect £0.1m."
+            )
+    else:
+        # Fallback when projections/fixtures unavailable.
+        if unowned_likely_rises:
+            names = ", ".join(escape_md(m.web_name) for m in unowned_likely_rises[:8])
+            lines.append(
+                f"- Likely **rises** not in your squad ({names}): interesting for *who* may tick up, "
+                "not an automatic buy."
+            )
+            lines.append(f"- {PREDICTOR_HINT}")
+        elif any(m.direction == PriceDirection.RISE and not m.owned for m in market):
+            lines.append(f"- {PREDICTOR_HINT}")
+        if owned_likely_falls:
+            names = ", ".join(escape_md(m.web_name) for m in owned_likely_falls[:8])
+            lines.append(
+                f"- Owned players likely to **fall** ({names}): only sell if you already want them "
+                "out for football reasons (or a planned transfer). Re-check with the GW predictor "
+                "before spending a free transfer just to protect £0.1m."
+            )
+
     if not lines:
         lines.append(
             "- No market-driven transfer check tonight. Keep free transfers for football moves."
@@ -131,6 +229,7 @@ def render_prices_markdown(
     executability: str,
     market: list[MarketMover] | None = None,
     external_source: str | None = None,
+    upgrade_verdicts: list[UpgradeVerdict] | None = None,
 ) -> str:
     pred_by_id = {p.player_id: p for p in predictions}
     market = market or []
@@ -175,7 +274,11 @@ def render_prices_markdown(
             "It never overrides official `now_cost` and never alone triggers act-now._"
         )
 
-    lines += ["", "## Should you transfer?", *_transfer_advice_lines(market, actions)]
+    lines += [
+        "",
+        "## Should you transfer?",
+        *_transfer_advice_lines(market, actions, upgrade_verdicts=upgrade_verdicts),
+    ]
 
     lines += ["", "## Act tonight (plan-gated)"]
     if act_now:
