@@ -30,6 +30,7 @@ Overnight **price watch** runs on GitHub (15:00 Zagreb target; Actions often run
 - [05 Sep 23:03 CEST](reports/prices-gw4-20260905T210341Z.md) · GW4 · **NO ACTION** — No price action tonight.
 
 **Squad news** (pre-deadline — last 7 days)
+- [12 Sep 07:53 CEST](reports/predeadline-gw4-20260912T055335Z.md) · GW4 · **KEEP** — Hold transfer — Anderson→Tavernier costs −4 with 0 FT (net -1.8 this week); captain Ødega…
 - [11 Sep 22:09 CEST](reports/predeadline-gw4-20260911T200922Z.md) · GW4 · **REVISE** — Hold the transfer; banking beats the available swap this week; captain B.Fernandes.
 - [11 Sep 20:40 CEST](reports/predeadline-gw4-20260911T184044Z.md) · GW4 · **REVISE** — Sell Anderson for Tavernier, start Tavernier, and captain Ødegaard.
 - [11 Sep 19:55 CEST](reports/predeadline-gw4-20260911T175513Z.md) · GW4 · **REVISE** — Sell Tzolis for Ødegaard, start Ødegaard, and captain B.Fernandes.
