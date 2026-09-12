@@ -21,13 +21,13 @@ Overnight **price watch** runs on GitHub (15:00 Zagreb target; Actions often run
 ## Latest results
 
 **Price watch** (GitHub, 18:00 Zagreb target — last 7 days)
+- [12 Sep 18:05 CEST](reports/prices-gw5-20260912T160517Z.md) · GW5 · **WATCH** — Watch list only — do not churn for £0.1m.
 - [11 Sep 18:56 CEST](reports/prices-gw4-20260911T165652Z.md) · GW4 · **WATCH** — Watch list only — do not churn for £0.1m.
 - [10 Sep 20:51 CEST](reports/prices-gw4-20260910T185113Z.md) · GW4 · **WATCH** — Watch list only — do not churn for £0.1m.
 - [09 Sep 20:58 CEST](reports/prices-gw4-20260909T185807Z.md) · GW4 · **WATCH** — Watch list only — do not churn for £0.1m.
 - [08 Sep 21:09 CEST](reports/prices-gw4-20260908T190943Z.md) · GW4 · **WATCH** — Watch list only — do not churn for £0.1m.
 - [07 Sep 23:56 CEST](reports/prices-gw4-20260907T215644Z.md) · GW4 · **NO ACTION** — No price action tonight.
 - [06 Sep 23:10 CEST](reports/prices-gw4-20260906T211037Z.md) · GW4 · **NO ACTION** — No price action tonight.
-- [05 Sep 23:03 CEST](reports/prices-gw4-20260905T210341Z.md) · GW4 · **NO ACTION** — No price action tonight.
 
 **Squad news** (pre-deadline — last 7 days)
 - [12 Sep 07:53 CEST](reports/predeadline-gw4-20260912T055335Z.md) · GW4 · **KEEP** — Hold transfer — Anderson→Tavernier costs −4 with 0 FT (net -1.8 this week); captain Ødega…
