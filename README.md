@@ -30,13 +30,14 @@ Overnight **price watch** runs on GitHub (15:00 Zagreb target; Actions often run
 - [08 Sep 21:09 CEST](reports/prices-gw4-20260908T190943Z.md) · GW4 · **WATCH** — Watch list only — do not churn for £0.1m.
 
 **Squad news** (pre-deadline — last 7 days)
+- [15 Sep 07:30 CEST](reports/predeadline-gw5-20260915T053044Z.md) · GW5 · **KEEP** — Hold the transfer; banking beats the available swap this week.
 - [12 Sep 07:53 CEST](reports/predeadline-gw4-20260912T055335Z.md) · GW4 · **KEEP** — Hold transfer — Anderson→Tavernier costs −4 with 0 FT (net -1.8 this week); captain Ødega…
 - [11 Sep 22:09 CEST](reports/predeadline-gw4-20260911T200922Z.md) · GW4 · **REVISE** — Hold the transfer; banking beats the available swap this week; captain B.Fernandes.
 - [11 Sep 20:40 CEST](reports/predeadline-gw4-20260911T184044Z.md) · GW4 · **REVISE** — Sell Anderson for Tavernier, start Tavernier, and captain Ødegaard.
 - [11 Sep 19:55 CEST](reports/predeadline-gw4-20260911T175513Z.md) · GW4 · **REVISE** — Sell Tzolis for Ødegaard, start Ødegaard, and captain B.Fernandes.
 
 **Season plan** (horizon charts)
-- [reports/plan-gw4.md](reports/plan-gw4.md)
+- [reports/plan-gw5.md](reports/plan-gw5.md)
 <!-- recent-runs:end -->
 
 ---
