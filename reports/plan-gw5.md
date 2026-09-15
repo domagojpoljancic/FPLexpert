@@ -1,32 +1,32 @@
 # Season plan — Gameweek 5
 
-Locked move: **Anderson → Tavernier** (plan **KEEP**).
+Locked move: **Anderson → Tavernier** (plan **REVISE**).
 
 ## Why this move over the next weeks
 
-Selling **Anderson** for **Tavernier** changes the XI projection across the planning horizon (GW5 +1.5, GW6 -0.1, GW7 -0.1, GW8 -0.1, GW9 -0.1, GW10 +0.1; +1.4 weighted overall). Mainly a this-week fix (+1.5 pts now; +1.4 weighted overall).
+Selling **Anderson** for **Tavernier** changes the XI projection across the planning horizon (GW5 +1.6, GW6 +0.0, GW7 +0.1, GW8 +0.0, GW9 +0.1, GW10 +0.3; +1.8 weighted overall). Adds +1.6 pts to the XI this GW and keeps paying later (GW6 +0.0, GW7 +0.1, GW8 +0.0; +1.8 weighted overall).
 
 | GW | Hold XI xP | After XI xP | Delta |
 | --- | ---: | ---: | ---: |
-| 5 | 42.91 | 44.44 | +1.52 |
-| 6 | 26.95 | 26.89 | -0.06 |
-| 7 | 25.95 | 25.87 | -0.08 |
-| 8 | 27.04 | 26.98 | -0.06 |
-| 9 | 24.58 | 24.50 | -0.08 |
-| 10 | 27.40 | 27.53 | +0.12 |
+| 5 | 44.16 | 45.71 | +1.55 |
+| 6 | 29.40 | 29.44 | +0.04 |
+| 7 | 28.33 | 28.38 | +0.05 |
+| 8 | 29.48 | 29.52 | +0.04 |
+| 9 | 26.85 | 26.91 | +0.05 |
+| 10 | 29.85 | 30.12 | +0.27 |
 
 ```mermaid
 xychart-beta
     title "XI xP: hold vs Anderson to Tavernier"
     x-axis [GW5, GW6, GW7, GW8, GW9, GW10]
-    y-axis "XI xP" 22 --> 46
-    line [42.9, 26.9, 25.9, 27.0, 24.6, 27.4]
-    line [44.4, 26.9, 25.9, 27.0, 24.5, 27.5]
+    y-axis "XI xP" 24 --> 47
+    line [44.2, 29.4, 28.3, 29.5, 26.9, 29.9]
+    line [45.7, 29.4, 28.4, 29.5, 26.9, 30.1]
 ```
 
 ## Spend now vs bank the free transfer
 
-**Bank vs spend verdict: Bank the FT.** Bank the FT (1→2 next GW). Bank for 2 FT: dual-move horizon EV 5.3 beats act-now 2.0 (delta +3.3). (FT now 1 → 1 if you transfer, 2 if you roll; sequence bank_for_2ft (act-now 1.973, roll-to-2FT 5.306, hit None); deferred dual-move upside +3.33; net after FT penalty +1.62; locked pick Anderson→Tavernier.)
+**Bank vs spend verdict: Bank the FT.** Bank the FT (1→2 next GW). Bank for 2 FT: dual-move horizon EV 3.0 beats act-now 1.8 (delta +1.1). (FT now 1 → 1 if you transfer, 2 if you roll; sequence bank_for_2ft (act-now 1.806, roll-to-2FT 2.954, hit None); deferred dual-move upside +1.15; net after FT penalty +1.46; locked pick Anderson→Tavernier.)
 
 ```mermaid
 flowchart LR
@@ -77,6 +77,6 @@ No labelled DGW/BGW priors on this report (none invented by default).
 
 ## Chip timing
 
-**3xc**: hold (available) — Captain mean xP 4.59 lacks ceiling for TC (haul proxy 0.00, need ≥0.25); hold until a genuine haul week (DGW detection pending). **bboost**: hold (available) — Bench xP 2.56 (need ≥8) or outfield start risk (min 10%) is not enough to spend Bench Boost. **freehit**: hold (available) — This week's XI xP 42.9 is close enough to the horizon median 26.9; hold Free Hit. **wildcard**: hold (available) — Squad health (0 of 11 starters below 40% start chance), fixture trend (26.4 projected XI pts near-term vs 26.3 further out), and transfer-plan value (best plan nets +2.0 horizon pts after hits) all look fine; keep Wildcard.
+**3xc**: hold (available) — Captain mean xP 4.84 lacks ceiling for TC (haul proxy 0.00, need ≥0.25); hold until a genuine haul week (DGW detection pending). **bboost**: hold (available) — Bench xP 2.50 (need ≥8) or outfield start risk (min 10%) is not enough to spend Bench Boost. **freehit**: hold (available) — This week's XI xP 44.2 is close enough to the horizon median 29.4; hold Free Hit. **wildcard**: hold (available) — Squad health (0 of 11 starters below 40% start chance), fixture trend (28.9 projected XI pts near-term vs 28.7 further out), and transfer-plan value (best plan nets +1.8 horizon pts after hits) all look fine; keep Wildcard.
 
 _Recommend only — you make all FPL changes. Numbers from the locked weekly primary; no second ranking._

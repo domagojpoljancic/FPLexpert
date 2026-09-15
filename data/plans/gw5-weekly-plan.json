@@ -9,52 +9,52 @@
           "player_id": 497,
           "position": "GKP",
           "web_name": "Dubravka",
-          "weighted_xp": 0.75,
-          "xp_next": 0.18
+          "weighted_xp": 0.7,
+          "xp_next": 0.17
         },
         {
-          "p_start": 0.925,
+          "p_start": 0.95,
           "player_id": 106,
           "position": "FWD",
           "web_name": "Thiago",
-          "weighted_xp": 10.8,
+          "weighted_xp": 10.82,
           "xp_next": 1.97
         },
         {
-          "p_start": 0.342,
+          "p_start": 0.283,
           "player_id": 539,
           "position": "DEF",
           "web_name": "O'Nien",
-          "weighted_xp": 1.87,
-          "xp_next": 0.27
+          "weighted_xp": 1.53,
+          "xp_next": 0.23
         },
         {
           "p_start": 0.1,
           "player_id": 272,
           "position": "FWD",
           "web_name": "Kusi-Asare",
-          "weighted_xp": 0.66,
-          "xp_next": 0.14
+          "weighted_xp": 0.62,
+          "xp_next": 0.13
         }
       ],
       "formation": "4-5-1",
       "in_id": 68,
       "in_name": "Tavernier",
       "model_captain": {
-        "p_start": 0.925,
+        "p_start": 0.95,
         "player_id": 165,
         "position": "FWD",
         "web_name": "Jo\u00e3o Pedro",
-        "weighted_xp": 10.31,
-        "xp_next": 4.59
+        "weighted_xp": 12.19,
+        "xp_next": 4.84
       },
       "model_vice": {
         "p_start": 0.95,
-        "player_id": 1,
-        "position": "GKP",
-        "web_name": "Raya",
-        "weighted_xp": 12.1,
-        "xp_next": 4.39
+        "player_id": 4,
+        "position": "DEF",
+        "web_name": "Gabriel",
+        "weighted_xp": 15.72,
+        "xp_next": 4.4
       },
       "out_id": 481,
       "out_name": "Anderson",
@@ -64,51 +64,59 @@
           "player_id": 1,
           "position": "GKP",
           "web_name": "Raya",
-          "weighted_xp": 12.1,
-          "xp_next": 4.39
+          "weighted_xp": 12.88,
+          "xp_next": 4.02
         },
         {
-          "p_start": 0.842,
+          "p_start": 0.894,
           "player_id": 388,
           "position": "DEF",
           "web_name": "Gu\u00e9hi",
-          "weighted_xp": 11.89,
-          "xp_next": 4.4
+          "weighted_xp": 12.98,
+          "xp_next": 4.58
         },
         {
-          "p_start": 0.925,
+          "p_start": 0.95,
           "player_id": 4,
           "position": "DEF",
           "web_name": "Gabriel",
-          "weighted_xp": 14.23,
-          "xp_next": 4.2
+          "weighted_xp": 15.72,
+          "xp_next": 4.4
         },
         {
-          "p_start": 0.8,
+          "p_start": 0.828,
           "player_id": 115,
           "position": "DEF",
           "web_name": "De Cuyper",
-          "weighted_xp": 7.09,
-          "xp_next": 3.06
+          "weighted_xp": 9.27,
+          "xp_next": 3.91
         },
         {
-          "p_start": 0.883,
+          "p_start": 0.922,
           "player_id": 356,
           "position": "DEF",
           "web_name": "Virgil",
-          "weighted_xp": 9.56,
-          "xp_next": 2.95
+          "weighted_xp": 10.95,
+          "xp_next": 3.13
         },
         {
-          "p_start": 0.9,
+          "p_start": 0.933,
           "player_id": 15,
           "position": "MID",
           "web_name": "\u00d8degaard",
-          "weighted_xp": 13.05,
-          "xp_next": 4.37
+          "weighted_xp": 13.33,
+          "xp_next": 4.4
         },
         {
-          "p_start": 0.925,
+          "p_start": 0.9,
+          "player_id": 68,
+          "position": "MID",
+          "web_name": "Tavernier",
+          "weighted_xp": 11.6,
+          "xp_next": 4.35
+        },
+        {
+          "p_start": 0.95,
           "player_id": 427,
           "position": "MID",
           "web_name": "Mbeumo",
@@ -116,36 +124,28 @@
           "xp_next": 4.22
         },
         {
-          "p_start": 0.85,
-          "player_id": 68,
-          "position": "MID",
-          "web_name": "Tavernier",
-          "weighted_xp": 10.26,
-          "xp_next": 4.18
-        },
-        {
-          "p_start": 0.925,
-          "player_id": 426,
-          "position": "MID",
-          "web_name": "B.Fernandes",
-          "weighted_xp": 14.56,
-          "xp_next": 4.06
-        },
-        {
-          "p_start": 0.925,
+          "p_start": 0.95,
           "player_id": 40,
           "position": "MID",
           "web_name": "Rogers",
-          "weighted_xp": 10.22,
-          "xp_next": 4.03
+          "weighted_xp": 11.33,
+          "xp_next": 4.18
         },
         {
-          "p_start": 0.925,
+          "p_start": 0.95,
+          "player_id": 426,
+          "position": "MID",
+          "web_name": "B.Fernandes",
+          "weighted_xp": 14.03,
+          "xp_next": 3.66
+        },
+        {
+          "p_start": 0.95,
           "player_id": 165,
           "position": "FWD",
           "web_name": "Jo\u00e3o Pedro",
-          "weighted_xp": 10.31,
-          "xp_next": 4.59
+          "weighted_xp": 12.19,
+          "xp_next": 4.84
         }
       ],
       "xi_drop_name": "Anderson"
@@ -156,69 +156,69 @@
         "bank_after_tenths": 2,
         "bank_shortfall_tenths": 0,
         "buy_tenths": 61,
-        "delta_gw_xp": 1.524,
-        "delta_weighted_xp": 1.38,
+        "delta_gw_xp": 1.554,
+        "delta_weighted_xp": 1.806,
         "element_type": 3,
         "in_id": 68,
         "in_name": "Tavernier",
-        "in_p_start": 0.85,
+        "in_p_start": 0.9,
         "in_starts": true,
-        "in_xp_next": 4.18,
+        "in_xp_next": 4.35,
         "out_id": 481,
         "out_name": "Anderson",
-        "out_p_start": 0.867,
-        "out_xp_next": 2.65,
+        "out_p_start": 0.911,
+        "out_xp_next": 2.8,
         "picked": true,
-        "reason": "Sell Anderson for Tavernier to raise projected points this week (4.2 vs 2.7 pts). Bank left: \u00a30.2m. (+1.5 pts this week; +1.4 over the next few GWs).",
+        "reason": "Sell Anderson for Tavernier to raise projected points this week (4.4 vs 2.8 pts). Bank left: \u00a30.2m. (+1.6 pts this week; +1.8 over the next few GWs).",
         "sell_tenths": 63,
         "xi_drop_name": "Anderson",
-        "xi_drop_xp_next": 2.65
+        "xi_drop_xp_next": 2.8
       },
       {
         "affordable": true,
         "bank_after_tenths": 2,
         "bank_shortfall_tenths": 0,
         "buy_tenths": 61,
-        "delta_gw_xp": 1.355,
-        "delta_weighted_xp": 0.698,
+        "delta_gw_xp": 1.275,
+        "delta_weighted_xp": 0.296,
         "element_type": 3,
         "in_id": 69,
         "in_name": "Scott",
-        "in_p_start": 0.85,
+        "in_p_start": 0.9,
         "in_starts": true,
-        "in_xp_next": 4.01,
+        "in_xp_next": 4.07,
         "out_id": 481,
         "out_name": "Anderson",
-        "out_p_start": 0.867,
-        "out_xp_next": 2.65,
+        "out_p_start": 0.911,
+        "out_xp_next": 2.8,
         "picked": false,
-        "reason": "projects fewer points this week than Tavernier but looks weaker over the next few gameweeks. (Scott 4.0 pts vs Tavernier 4.2). (+1.4 pts this week; +0.7 over the next few GWs).",
+        "reason": "projects fewer points this week than Tavernier but looks weaker over the next few gameweeks. (Scott 4.1 pts vs Tavernier 4.4). (+1.3 pts this week; +0.3 over the next few GWs).",
         "sell_tenths": 63,
         "xi_drop_name": "Anderson",
-        "xi_drop_xp_next": 2.65
+        "xi_drop_xp_next": 2.8
       },
       {
         "affordable": true,
-        "bank_after_tenths": 4,
+        "bank_after_tenths": 6,
         "bank_shortfall_tenths": 0,
-        "buy_tenths": 72,
-        "delta_gw_xp": 0.28,
-        "delta_weighted_xp": 0.859,
+        "buy_tenths": 70,
+        "delta_gw_xp": -0.728,
+        "delta_weighted_xp": 1.148,
         "element_type": 3,
-        "in_id": 367,
-        "in_name": "Gakpo",
-        "in_p_start": 0.925,
+        "in_id": 368,
+        "in_name": "Szoboszlai",
+        "in_p_start": 0.95,
         "in_starts": true,
-        "in_xp_next": 4.31,
+        "in_xp_next": 3.46,
         "out_id": 40,
         "out_name": "Rogers",
-        "out_p_start": 0.925,
-        "out_xp_next": 4.03,
+        "out_p_start": 0.95,
+        "out_xp_next": 4.18,
         "picked": false,
-        "reason": "projects fewer points this week than Tavernier but looks weaker over the next few gameweeks. It would sell Rogers instead of Anderson. (Gakpo 4.3 pts vs Tavernier 4.2). (+0.3 pts this week; +0.9 over the next few GWs).",
+        "reason": "projects fewer points this week than Tavernier but looks weaker over the next few gameweeks. It would sell Rogers instead of Anderson. (Szoboszlai 3.5 pts vs Tavernier 4.4). (-0.7 pts this week; +1.1 over the next few GWs).",
         "sell_tenths": 76,
         "xi_drop_name": "Rogers",
-        "xi_drop_xp_next": 4.03
+        "xi_drop_xp_next": 4.18
       }
     ],
     "best_affordable": {
@@ -226,128 +226,128 @@
       "bank_after_tenths": 2,
       "bank_shortfall_tenths": 0,
       "buy_tenths": 61,
-      "delta_gw_xp": 1.524,
-      "delta_weighted_xp": 1.38,
+      "delta_gw_xp": 1.554,
+      "delta_weighted_xp": 1.806,
       "element_type": 3,
       "in_id": 68,
       "in_name": "Tavernier",
-      "in_p_start": 0.85,
+      "in_p_start": 0.9,
       "in_starts": true,
-      "in_xp_next": 4.18,
+      "in_xp_next": 4.35,
       "out_id": 481,
       "out_name": "Anderson",
-      "out_p_start": 0.867,
-      "out_xp_next": 2.65,
-      "reason": "Sell Anderson for Tavernier to raise projected points this week (4.2 vs 2.7 pts). Bank left: \u00a30.2m. (+1.5 pts this week; +1.4 over the next few GWs).",
+      "out_p_start": 0.911,
+      "out_xp_next": 2.8,
+      "reason": "Sell Anderson for Tavernier to raise projected points this week (4.4 vs 2.8 pts). Bank left: \u00a30.2m. (+1.6 pts this week; +1.8 over the next few GWs).",
       "sell_tenths": 63,
       "xi_drop_name": "Anderson",
-      "xi_drop_xp_next": 2.65
+      "xi_drop_xp_next": 2.8
     },
     "horizon": [
       {
         "captain": "Jo\u00e3o Pedro",
         "captain_rationale": {
-          "captain_score": 4.382,
-          "ceiling": 4.588,
-          "floor": 4.416,
+          "captain_score": 4.699,
+          "ceiling": 4.845,
+          "floor": 4.724,
           "haul_proxy": 0.0,
-          "mean_xp": 4.588,
-          "p_start": 0.925,
+          "mean_xp": 4.845,
+          "p_start": 0.95,
           "player_id": 165,
           "web_name": "Jo\u00e3o Pedro"
         },
-        "captain_xp": 4.59,
+        "captain_xp": 4.84,
         "gw": 5,
-        "xi_xp": 42.91
+        "xi_xp": 44.16
       },
       {
-        "captain": "B.Fernandes",
+        "captain": "Gabriel",
         "captain_rationale": {
-          "captain_score": 3.468,
-          "ceiling": 4.158,
-          "floor": 3.201,
-          "haul_proxy": 0.25,
-          "mean_xp": 3.326,
-          "p_start": 0.925,
-          "player_id": 426,
-          "web_name": "B.Fernandes"
+          "captain_score": 3.729,
+          "ceiling": 3.845,
+          "floor": 3.749,
+          "haul_proxy": 0.0,
+          "mean_xp": 3.845,
+          "p_start": 0.95,
+          "player_id": 4,
+          "web_name": "Gabriel"
         },
-        "captain_xp": 3.33,
+        "captain_xp": 3.84,
         "gw": 6,
-        "xi_xp": 26.95
+        "xi_xp": 29.4
       },
       {
         "captain": "B.Fernandes",
         "captain_rationale": {
-          "captain_score": 3.137,
-          "ceiling": 3.762,
-          "floor": 2.897,
+          "captain_score": 3.141,
+          "ceiling": 3.713,
+          "floor": 2.896,
           "haul_proxy": 0.25,
-          "mean_xp": 3.009,
-          "p_start": 0.925,
+          "mean_xp": 2.97,
+          "p_start": 0.95,
           "player_id": 426,
           "web_name": "B.Fernandes"
         },
-        "captain_xp": 3.01,
+        "captain_xp": 2.97,
         "gw": 7,
-        "xi_xp": 25.95
+        "xi_xp": 28.33
       },
       {
         "captain": "B.Fernandes",
         "captain_rationale": {
-          "captain_score": 3.468,
-          "ceiling": 4.158,
+          "captain_score": 3.472,
+          "ceiling": 4.104,
           "floor": 3.201,
           "haul_proxy": 0.25,
-          "mean_xp": 3.326,
-          "p_start": 0.925,
+          "mean_xp": 3.283,
+          "p_start": 0.95,
           "player_id": 426,
           "web_name": "B.Fernandes"
         },
-        "captain_xp": 3.33,
+        "captain_xp": 3.28,
         "gw": 8,
-        "xi_xp": 27.04
+        "xi_xp": 29.48
       },
       {
-        "captain": "B.Fernandes",
+        "captain": "Gu\u00e9hi",
         "captain_rationale": {
-          "captain_score": 2.792,
-          "ceiling": 3.348,
-          "floor": 2.578,
-          "haul_proxy": 0.25,
-          "mean_xp": 2.678,
-          "p_start": 0.925,
-          "player_id": 426,
-          "web_name": "B.Fernandes"
+          "captain_score": 2.825,
+          "ceiling": 3.016,
+          "floor": 2.857,
+          "haul_proxy": 0.0,
+          "mean_xp": 3.016,
+          "p_start": 0.894,
+          "player_id": 388,
+          "web_name": "Gu\u00e9hi"
         },
-        "captain_xp": 2.68,
+        "captain_xp": 3.02,
         "gw": 9,
-        "xi_xp": 24.58
+        "xi_xp": 26.85
       },
       {
-        "captain": "B.Fernandes",
+        "captain": "Gabriel",
         "captain_rationale": {
-          "captain_score": 3.468,
-          "ceiling": 4.158,
-          "floor": 3.201,
-          "haul_proxy": 0.25,
-          "mean_xp": 3.326,
-          "p_start": 0.925,
-          "player_id": 426,
-          "web_name": "B.Fernandes"
+          "captain_score": 3.729,
+          "ceiling": 3.845,
+          "floor": 3.749,
+          "haul_proxy": 0.0,
+          "mean_xp": 3.845,
+          "p_start": 0.95,
+          "player_id": 4,
+          "web_name": "Gabriel"
         },
-        "captain_xp": 3.33,
+        "captain_xp": 3.84,
         "gw": 10,
-        "xi_xp": 27.4
+        "xi_xp": 29.85
       }
     ],
     "model_captain": {
-      "p_start": 0.925,
+      "p_start": 0.95,
       "player_id": 165,
       "position": "FWD",
       "web_name": "Jo\u00e3o Pedro",
-      "weighted_xp": 10.31,
-      "xp_next": 4.59
+      "weighted_xp": 12.19,
+      "xp_next": 4.84
     },
     "ok": true,
     "saved_captain_id": 426,
@@ -357,51 +357,51 @@
         "player_id": 1,
         "position": "GKP",
         "web_name": "Raya",
-        "weighted_xp": 12.1,
-        "xp_next": 4.39
+        "weighted_xp": 12.88,
+        "xp_next": 4.02
       },
       {
-        "p_start": 0.842,
+        "p_start": 0.894,
         "player_id": 388,
         "position": "DEF",
         "web_name": "Gu\u00e9hi",
-        "weighted_xp": 11.89,
-        "xp_next": 4.4
+        "weighted_xp": 12.98,
+        "xp_next": 4.58
       },
       {
-        "p_start": 0.925,
+        "p_start": 0.95,
         "player_id": 4,
         "position": "DEF",
         "web_name": "Gabriel",
-        "weighted_xp": 14.23,
-        "xp_next": 4.2
+        "weighted_xp": 15.72,
+        "xp_next": 4.4
       },
       {
-        "p_start": 0.8,
+        "p_start": 0.828,
         "player_id": 115,
         "position": "DEF",
         "web_name": "De Cuyper",
-        "weighted_xp": 7.09,
-        "xp_next": 3.06
+        "weighted_xp": 9.27,
+        "xp_next": 3.91
       },
       {
-        "p_start": 0.883,
+        "p_start": 0.922,
         "player_id": 356,
         "position": "DEF",
         "web_name": "Virgil",
-        "weighted_xp": 9.56,
-        "xp_next": 2.95
+        "weighted_xp": 10.95,
+        "xp_next": 3.13
       },
       {
-        "p_start": 0.9,
+        "p_start": 0.933,
         "player_id": 15,
         "position": "MID",
         "web_name": "\u00d8degaard",
-        "weighted_xp": 13.05,
-        "xp_next": 4.37
+        "weighted_xp": 13.33,
+        "xp_next": 4.4
       },
       {
-        "p_start": 0.925,
+        "p_start": 0.95,
         "player_id": 427,
         "position": "MID",
         "web_name": "Mbeumo",
@@ -409,36 +409,36 @@
         "xp_next": 4.22
       },
       {
-        "p_start": 0.925,
-        "player_id": 426,
-        "position": "MID",
-        "web_name": "B.Fernandes",
-        "weighted_xp": 14.56,
-        "xp_next": 4.06
-      },
-      {
-        "p_start": 0.925,
+        "p_start": 0.95,
         "player_id": 40,
         "position": "MID",
         "web_name": "Rogers",
-        "weighted_xp": 10.22,
-        "xp_next": 4.03
+        "weighted_xp": 11.33,
+        "xp_next": 4.18
       },
       {
-        "p_start": 0.867,
+        "p_start": 0.95,
+        "player_id": 426,
+        "position": "MID",
+        "web_name": "B.Fernandes",
+        "weighted_xp": 14.03,
+        "xp_next": 3.66
+      },
+      {
+        "p_start": 0.911,
         "player_id": 481,
         "position": "MID",
         "web_name": "Anderson",
-        "weighted_xp": 8.88,
-        "xp_next": 2.65
+        "weighted_xp": 9.79,
+        "xp_next": 2.8
       },
       {
-        "p_start": 0.925,
+        "p_start": 0.95,
         "player_id": 165,
         "position": "FWD",
         "web_name": "Jo\u00e3o Pedro",
-        "weighted_xp": 10.31,
-        "xp_next": 4.59
+        "weighted_xp": 12.19,
+        "xp_next": 4.84
       }
     ]
   }
