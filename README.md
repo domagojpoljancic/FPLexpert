@@ -21,13 +21,13 @@ Overnight **price watch** runs on GitHub (15:00 Zagreb target; Actions often run
 ## Latest results
 
 **Price watch** (GitHub, 18:00 Zagreb target — last 7 days)
+- [17 Sep 19:31 CEST](reports/prices-gw5-20260917T173155Z.md) · GW5 · **WATCH** — Watch list only — do not churn for £0.1m.
 - [16 Sep 19:32 CEST](reports/prices-gw5-20260916T173222Z.md) · GW5 · **WATCH** — Watch list only — do not churn for £0.1m.
 - [15 Sep 19:32 CEST](reports/prices-gw5-20260915T173221Z.md) · GW5 · **WATCH** — Watch list only — do not churn for £0.1m.
 - [14 Sep 20:25 CEST](reports/prices-gw5-20260914T182541Z.md) · GW5 · **WATCH** — Watch list only — do not churn for £0.1m.
 - [13 Sep 18:53 CEST](reports/prices-gw5-20260913T165313Z.md) · GW5 · **WATCH** — Watch list only — do not churn for £0.1m.
 - [12 Sep 18:05 CEST](reports/prices-gw5-20260912T160517Z.md) · GW5 · **WATCH** — Watch list only — do not churn for £0.1m.
 - [11 Sep 18:56 CEST](reports/prices-gw4-20260911T165652Z.md) · GW4 · **WATCH** — Watch list only — do not churn for £0.1m.
-- [10 Sep 20:51 CEST](reports/prices-gw4-20260910T185113Z.md) · GW4 · **WATCH** — Watch list only — do not churn for £0.1m.
 
 **Squad news** (pre-deadline — last 7 days)
 - [15 Sep 16:09 CEST](reports/predeadline-gw5-20260915T140952Z.md) · GW5 · **REVISE** — Hold the transfer; banking beats the available swap this week; captain João Pedro.
