@@ -30,6 +30,7 @@ Overnight **price watch** runs on GitHub (15:00 Zagreb target; Actions often run
 - [11 Sep 18:56 CEST](reports/prices-gw4-20260911T165652Z.md) · GW4 · **WATCH** — Watch list only — do not churn for £0.1m.
 
 **Squad news** (pre-deadline — last 7 days)
+- [18 Sep 07:11 CEST](reports/predeadline-gw5-20260918T051149Z.md) · GW5 · **WATCH** — Hold the transfer; banking beats the available swap this week; captain Guéhi.
 - [15 Sep 16:09 CEST](reports/predeadline-gw5-20260915T140952Z.md) · GW5 · **REVISE** — Hold the transfer; banking beats the available swap this week; captain João Pedro.
 - [15 Sep 07:30 CEST](reports/predeadline-gw5-20260915T053044Z.md) · GW5 · **KEEP** — Hold the transfer; banking beats the available swap this week.
 - [12 Sep 07:53 CEST](reports/predeadline-gw4-20260912T055335Z.md) · GW4 · **KEEP** — Hold transfer — Anderson→Tavernier costs −4 with 0 FT (net -1.8 this week); captain Ødega…
