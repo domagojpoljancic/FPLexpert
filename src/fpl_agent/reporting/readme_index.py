@@ -226,6 +226,7 @@ def _headline_from_md(text: str) -> str:
         "sources checked",
         "tldr",
         "do this",
+        "summary",
         "why",
         "notes",
         "model decisions",

@@ -1691,6 +1691,57 @@ def _weekly_plan_section(report: DailyReport) -> list[str]:
     return lines
 
 
+def _reflection_wrapup_lines(reflection: dict[str, Any]) -> list[str]:
+    """One or two short lines for the report top — not the full reflection section."""
+    lines: list[str] = []
+    short = str(reflection.get("short_summary") or "").strip()
+    if short:
+        lines.append(short)
+    bits: list[str] = []
+    pred_xi = reflection.get("predicted_xi_xp")
+    act_xi = reflection.get("actual_xi_points")
+    if pred_xi is not None and act_xi is not None:
+        bits.append(f"XI {_fmt_num(pred_xi)}→{_fmt_num(act_xi)}")
+    cap_name = reflection.get("model_captain_name")
+    pred_cap = reflection.get("predicted_captain_xp")
+    act_cap = reflection.get("model_captain_points")
+    if cap_name and pred_cap is not None and act_cap is not None:
+        bits.append(f"C {cap_name} {_fmt_num(pred_cap)}→{_fmt_num(act_cap)}")
+    out_name = reflection.get("transfer_out_name")
+    in_name = reflection.get("transfer_in_name")
+    pred_xfer = reflection.get("transfer_predicted_delta")
+    act_xfer = reflection.get("transfer_actual_delta")
+    if out_name and in_name and act_xfer is not None:
+        bits.append(
+            f"{out_name}→{in_name} {_fmt_signed(pred_xfer)}→{_fmt_signed(act_xfer)}"
+        )
+    if bits:
+        lines.append(" · ".join(bits))
+    return lines
+
+
+def _summary_action_bullets(report: DailyReport) -> list[str]:
+    """Short action list for the top wrapup (summaries only — no nested Why)."""
+    bullets: list[str] = []
+    if report.suggested_moves:
+        for move in report.suggested_moves:
+            summary = str(move.get("summary") or "").strip()
+            if not summary:
+                continue
+            mtype = str(move.get("move_type") or "").strip()
+            bullets.append(f"- {mtype}: {summary}" if mtype else f"- {summary}")
+    else:
+        tldr = [item for item in report.tldr if item][:5]
+        if tldr:
+            bullets.extend(f"- {item}" for item in tldr)
+        else:
+            bullets.append("- Hold.")
+    if any(w == "news_search_empty" for w in report.warnings):
+        bullets.append("- News search returned no pages — treat injury claims as unverified.")
+    bullets.append(f"- {_act_tldr_bullet(report)}")
+    return bullets
+
+
 def render_daily_text(
     report: DailyReport,
     *,
@@ -1720,37 +1771,35 @@ def render_daily_text(
         for w in _unique_texts(report.warnings)
         if w not in hide and not str(w).startswith("aligned_")
     ]
-    tldr = [item for item in report.tldr if item][:5] or ([report.headline] if report.headline else [])
+    # Compact top wrapup: verdict + reflection + actions (no nested Why).
     lines = [
         f"# Pre-deadline FPL review — Gameweek {report.gameweek}",
         "",
         f"Plan: **{report.plan_action.upper()}** — {report.headline}",
-        _ai_line(report),
     ]
     if report.price_status and report.price_status not in {"NO ACTION", "no action"}:
         lines.append(f"Price: **{report.price_status}**")
-    if report.reflection and report.reflection.get("short_summary"):
-        lines.append(report.reflection["short_summary"])
-    lines += ["", "## Do this", ""]
-    if report.suggested_moves:
-        for move in report.suggested_moves:
-            lines.append(f"- {move.get('move_type')}: {move.get('summary')}")
-            why = str(move.get("why") or "").strip()
-            if why:
-                lines.append(f"  - {why}")
-    else:
-        if tldr:
-            lines.extend(f"- {item}" for item in tldr)
-        else:
-            lines.append("- Hold.")
-    if any(w == "news_search_empty" for w in report.warnings):
-        lines.append("- News search returned no pages — treat injury claims as unverified.")
-    lines.append(f"- {_act_tldr_bullet(report)}")
+    if report.reflection:
+        lines.extend(_reflection_wrapup_lines(report.reflection))
+    lines += ["", "## Summary", ""]
+    lines.extend(_summary_action_bullets(report))
+    lines.append("")
+    lines.append(_ai_line(report))
     plan_lines = _weekly_plan_section(report)
     if plan_lines:
         lines += ["", *plan_lines]
     detail = report.detail.strip() or report.headline
     lines += ["", "## Why", "", detail]
+    move_whys: list[str] = []
+    for move in report.suggested_moves:
+        why = str(move.get("why") or "").strip()
+        if not why:
+            continue
+        mtype = str(move.get("move_type") or "").strip()
+        label = f"{mtype}: {why}" if mtype else why
+        move_whys.append(f"- {label}")
+    if move_whys:
+        lines += ["", *move_whys]
     watch = _unique_texts(
         list(report.attention_triggers[:4])
         + [u for u in report.uncertainty if "weekly_plan" not in u.lower() and "weekly-plan" not in u.lower()][:2]

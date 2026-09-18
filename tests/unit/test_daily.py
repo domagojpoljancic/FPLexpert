@@ -105,7 +105,7 @@ def test_predeadline_report_explains_insufficient() -> None:
     assert text.count("private squad stale") == 0
     assert "keep FT" in text
     assert "## TLDR" not in text
-    assert "## Do this" in text
+    assert "## Summary" in text
     assert datetime.now(UTC) - report.squad_as_of > timedelta(hours=24)
 
 
@@ -141,7 +141,7 @@ def test_report_lists_openai_pages_and_hubs() -> None:
         ],
     )
     text = render_daily_text(report)
-    assert text.index("## Do this") < text.index("## Why")
+    assert text.index("## Summary") < text.index("## Why")
     assert text.index("## Why") < text.index("## Sources")
     assert "Injuries and bans" in text
     assert "fantasyfootballscout.co.uk/injuries" in text
@@ -298,7 +298,7 @@ def test_report_includes_weekly_model_decisions() -> None:
     # Report honesty: locked primary OUT/IN only.
     assert "O'Nien → Egan" in text
     assert "Shaw → De Cuyper" not in text
-    assert text.index("## Do this") < text.index("## This week")
+    assert text.index("## Summary") < text.index("## This week")
     assert text.index("## This week") < text.index("## Why")
 
 
@@ -1173,7 +1173,7 @@ def test_render_omits_reflection_when_absent() -> None:
 
     text = render_daily_text(_base_report(reflection=None))
     assert "Reflection" not in text
-    assert "## Do this" in text
+    assert "## Summary" in text
     assert "## Why" in text
     assert "## Sources" in text
 
@@ -1200,7 +1200,13 @@ def test_render_includes_short_and_detail_reflection() -> None:
     }
     text = render_daily_text(_base_report(reflection=reflection))
     assert "Last week (GW2): good process, positive outcome — Raya → Sels was +4 pts." in text
+    assert "XI 16.0→16" in text
+    assert "C Haaland 16.0→20" in text
+    assert "Raya→Sels +1.2→+4" in text
+    assert "## Summary" in text
     assert "## Reflection: how last week's advice did" in text
+    # Nested move whys belong below Summary, not in the wrapup bullets.
+    assert "  - Because the numbers say so." not in text.split("## Why")[0]
     assert "| XI points | 16.0 | 16 |" in text
     assert "| Captain (Haaland) | 16.0 | 20 |" in text
     assert "| Raya → Sels | +1.2 | +4 |" in text
@@ -1208,7 +1214,7 @@ def test_render_includes_short_and_detail_reflection() -> None:
     assert "normal week-to-week variance" in text
     assert "No recorded alternative would have done better." in text
     # Strictly additive: existing sections still present and in order.
-    assert text.index("## Do this") < text.index("## Why")
+    assert text.index("## Summary") < text.index("## Why")
     assert text.index("## Why") < text.index("## Reflection")
     assert text.index("## Reflection") < text.index("## Sources")
 
@@ -1425,7 +1431,7 @@ def test_run_predeadline_keeps_going_when_reflection_raises(tmp_path, monkeypatc
     assert report.reflection is None
     text = render_daily_text(report)
     assert "Reflection" not in text
-    assert "## Do this" in text
+    assert "## Summary" in text
     assert "## Why" in text
 
 
