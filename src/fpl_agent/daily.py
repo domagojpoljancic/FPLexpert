@@ -257,13 +257,21 @@ def run_predeadline(
     weights = settings.planning.weights
     gameweeks = list(range(gw, gw + len(weights)))
     recent_points: dict[int, list[float]] = {}
-    if not offline:
-        try:
-            from fpl_agent.projections.live_form import load_recent_points_by_player
+    try:
+        from fpl_agent.projections.live_form import load_recent_points_by_player
 
-            recent_points = load_recent_points_by_player(bootstrap, offline=offline)
-        except Exception:  # noqa: BLE001 — projections continue without winsorized form
-            recent_points = {}
+        # Offline uses data/cache/live-gw-points.json when present (haul resistance).
+        recent_points = load_recent_points_by_player(bootstrap, offline=offline)
+    except Exception:  # noqa: BLE001 — projections continue without winsorized form
+        recent_points = {}
+    from fpl_agent.projections.preseason import EARLY_SEASON_GWS, finished_gameweeks
+
+    haul_warnings: list[str] = []
+    played = finished_gameweeks(bootstrap)
+    if 0 < played < EARLY_SEASON_GWS and not recent_points:
+        haul_warnings.append(
+            "early_season_haul_resistance_skipped_no_live_gw_points"
+        )
     all_proj = project_all(
         bootstrap=bootstrap,
         fixtures=fixtures,
@@ -602,6 +610,8 @@ def run_predeadline(
     extra_warnings = _unique_texts(list(team.warnings))
     if override_result.warnings:
         extra_warnings = _unique_texts(extra_warnings + list(override_result.warnings))
+    if haul_warnings:
+        extra_warnings = _unique_texts(extra_warnings + haul_warnings)
     if price_report is not None:
         extra_warnings = _unique_texts(extra_warnings + list(price_report.warnings))
 
