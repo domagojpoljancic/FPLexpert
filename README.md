@@ -21,13 +21,13 @@ Overnight **price watch** runs on GitHub (15:00 Zagreb target; Actions often run
 ## Latest results
 
 **Price watch** (GitHub, 18:00 Zagreb target — last 7 days)
+- [19 Sep 18:17 CEST](reports/prices-gw6-20260919T161756Z.md) · GW6 · **WATCH** — Watch list only — do not churn for £0.1m.
 - [18 Sep 18:58 CEST](reports/prices-gw5-20260918T165841Z.md) · GW5 · **WATCH** — Watch list only — do not churn for £0.1m.
 - [17 Sep 19:31 CEST](reports/prices-gw5-20260917T173155Z.md) · GW5 · **WATCH** — Watch list only — do not churn for £0.1m.
 - [16 Sep 19:32 CEST](reports/prices-gw5-20260916T173222Z.md) · GW5 · **WATCH** — Watch list only — do not churn for £0.1m.
 - [15 Sep 19:32 CEST](reports/prices-gw5-20260915T173221Z.md) · GW5 · **WATCH** — Watch list only — do not churn for £0.1m.
 - [14 Sep 20:25 CEST](reports/prices-gw5-20260914T182541Z.md) · GW5 · **WATCH** — Watch list only — do not churn for £0.1m.
 - [13 Sep 18:53 CEST](reports/prices-gw5-20260913T165313Z.md) · GW5 · **WATCH** — Watch list only — do not churn for £0.1m.
-- [12 Sep 18:05 CEST](reports/prices-gw5-20260912T160517Z.md) · GW5 · **WATCH** — Watch list only — do not churn for £0.1m.
 
 **Squad news** (pre-deadline — last 7 days)
 - [18 Sep 07:31 CEST](reports/predeadline-gw5-20260918T053155Z.md) · GW5 · **WATCH** — Hold transfer — Virgil→Tarkowski costs −4 with 0 FT (net -2.5 this week); captain Guéhi.
@@ -35,8 +35,6 @@ Overnight **price watch** runs on GitHub (15:00 Zagreb target; Actions often run
 - [18 Sep 07:11 CEST](reports/predeadline-gw5-20260918T051149Z.md) · GW5 · **WATCH** — Hold the transfer; banking beats the available swap this week; captain Guéhi.
 - [15 Sep 16:09 CEST](reports/predeadline-gw5-20260915T140952Z.md) · GW5 · **REVISE** — Hold the transfer; banking beats the available swap this week; captain João Pedro.
 - [15 Sep 07:30 CEST](reports/predeadline-gw5-20260915T053044Z.md) · GW5 · **KEEP** — Hold the transfer; banking beats the available swap this week.
-- [12 Sep 07:53 CEST](reports/predeadline-gw4-20260912T055335Z.md) · GW4 · **KEEP** — Hold transfer — Anderson→Tavernier costs −4 with 0 FT (net -1.8 this week); captain Ødega…
-- [11 Sep 22:09 CEST](reports/predeadline-gw4-20260911T200922Z.md) · GW4 · **REVISE** — Hold the transfer; banking beats the available swap this week; captain B.Fernandes.
 
 **Season plan** (horizon charts)
 - [reports/plan-gw5.md](reports/plan-gw5.md)
