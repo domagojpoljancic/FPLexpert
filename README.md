@@ -21,13 +21,13 @@ Overnight **price watch** runs on GitHub (15:00 Zagreb target; Actions often run
 ## Latest results
 
 **Price watch** (GitHub, 18:00 Zagreb target — last 7 days)
+- [29 Sep 20:29 CEST](reports/prices-gw6-20260929T182952Z.md) · GW6 · **WATCH** — Watch list only — do not churn for £0.1m.
 - [28 Sep 22:02 CEST](reports/prices-gw6-20260928T200209Z.md) · GW6 · **WATCH** — Watch list only — do not churn for £0.1m.
 - [27 Sep 19:35 CEST](reports/prices-gw6-20260927T173511Z.md) · GW6 · **WATCH** — Watch list only — do not churn for £0.1m.
 - [26 Sep 18:55 CEST](reports/prices-gw6-20260926T165539Z.md) · GW6 · **WATCH** — Watch list only — do not churn for £0.1m.
 - [25 Sep 19:48 CEST](reports/prices-gw6-20260925T174856Z.md) · GW6 · **WATCH** — Watch list only — do not churn for £0.1m.
 - [24 Sep 19:47 CEST](reports/prices-gw6-20260924T174711Z.md) · GW6 · **WATCH** — Watch list only — do not churn for £0.1m.
 - [23 Sep 19:45 CEST](reports/prices-gw6-20260923T174524Z.md) · GW6 · **WATCH** — Watch list only — do not churn for £0.1m.
-- [22 Sep 19:33 CEST](reports/prices-gw6-20260922T173329Z.md) · GW6 · **WATCH** — Watch list only — do not churn for £0.1m.
 
 **Squad news** (pre-deadline — last 7 days)
 - [18 Sep 07:31 CEST](reports/predeadline-gw5-20260918T053155Z.md) · GW5 · **WATCH** — Hold transfer — Virgil→Tarkowski costs −4 with 0 FT (net -2.5 this week); captain Guéhi.
