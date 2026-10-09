@@ -708,7 +708,8 @@ def suggest_squad(
         typer.echo(f"FAILED: {exc}", err=True)
         _exit(exc.exit_code)
 
-    recent = load_recent_points_by_player(bootstrap, offline=offline) if not offline else {}
+    # Offline uses data/cache/live-gw-points.json when present (haul resistance).
+    recent = load_recent_points_by_player(bootstrap, offline=offline)
     projections, gameweeks = projections_for_horizon(
         bootstrap=bootstrap,
         fixtures=fixtures,
