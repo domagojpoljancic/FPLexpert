@@ -21,13 +21,13 @@ Overnight **price watch** runs on GitHub (15:00 Zagreb target; Actions often run
 ## Latest results
 
 **Price watch** (GitHub, 18:00 Zagreb target — last 7 days)
+- [18 Oct 18:24 CEST](reports/prices-gw8-20261018T162425Z.md) · GW8 · **WATCH** — Watch list only — do not churn for £0.1m.
 - [17 Oct 18:10 CEST](reports/prices-gw8-20261017T161037Z.md) · GW8 · **WATCH** — Watch list only — do not churn for £0.1m.
 - [16 Oct 19:12 CEST](reports/prices-gw7-20261016T171246Z.md) · GW7 · **WATCH** — Watch list only — do not churn for £0.1m.
 - [15 Oct 19:39 CEST](reports/prices-gw7-20261015T173951Z.md) · GW7 · **WATCH** — Watch list only — do not churn for £0.1m.
 - [14 Oct 19:50 CEST](reports/prices-gw7-20261014T175020Z.md) · GW7 · **WATCH** — Watch list only — do not churn for £0.1m.
 - [13 Oct 21:47 CEST](run-log.md) · GW7 · **WATCH** — Watch list only — do not churn for £0.1m.
 - [13 Oct 21:46 CEST](reports/prices-gw7-20261013T194659Z.md) · GW7 · **WATCH** — Watch list only — do not churn for £0.1m.
-- [12 Oct 23:37 CEST](reports/prices-gw7-20261012T213749Z.md) · GW7 · **WATCH** — Watch list only — do not churn for £0.1m.
 
 **Squad news** (pre-deadline — last 7 days)
 - [09 Oct 15:34 CEST](reports/predeadline-gw6-20261009T133415Z.md) · GW6 · **WATCH** — Hold the transfer; banking beats the available swap this week; captain Virgil
