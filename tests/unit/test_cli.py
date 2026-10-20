@@ -153,10 +153,10 @@ def test_prices_workflow_wired() -> None:
     assert "fpl-agent prices" in text
     assert "FPL_PRIVATE_STATE_B64" in text
     assert "materialize-from-env" in text
-    assert "cron:" in text
-    assert "0 13 * * *" in text
-    assert "0 16 * * *" not in text
-    assert "*/2" not in text
+    assert "workflow_dispatch" in text
+    # Overnight cron intentionally disabled; keep schedule off.
+    assert "\ncron:" not in text and "\n    - cron:" not in text
+    assert "schedule:" not in text
     assert "run-log.md" in text
     assert "README.md" in text
     assert "reports/" in text
@@ -211,5 +211,8 @@ def test_prices_watchdog_workflow_wired() -> None:
 
     text = Path(".github/workflows/fpl-prices-watchdog.yml").read_text(encoding="utf-8")
     assert "fpl-agent prices-watchdog" in text
-    assert "cron:" in text
+    assert "workflow_dispatch" in text
+    # Schedule off while overnight price watch is disabled.
+    assert "schedule:" not in text
+    assert "\ncron:" not in text and "\n    - cron:" not in text
     assert "FPL price watchdog" in text or "issue_title" in text
