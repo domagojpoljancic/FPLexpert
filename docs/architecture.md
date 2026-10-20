@@ -23,7 +23,7 @@ We use **uv** + **hatchling** with a `src/` layout and `uv.lock`.
 
 ## Runtime shape
 
-No always-on app server. **Price watch** is scheduled GitHub Actions (`fpl-prices.yml`). **Pre-deadline** is a manual Cloud Agent / local CLI run. Laptop is required only for Cursor implementation work.
+No always-on app server. **Price watch** is manual GitHub Actions / CLI (`fpl-prices.yml` schedule currently off). **Pre-deadline** is a manual Cloud Agent / local CLI run. Laptop is required only for Cursor implementation work.
 
 ## Modules
 

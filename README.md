@@ -15,7 +15,7 @@ Read-only co-pilot. It recommends transfers, captain, bench, and price moves fro
 | **Too early / late?** | Add `--force` |
 | **FPL API down?** | Add `--offline` |
 
-Overnight **price watch** runs on GitHub (15:00 Zagreb target; Actions often runs later). **Squad news** runs when you trigger the agent ~24h before the deadline. Reports are linked below.
+Overnight **price watch** is **off** (no GitHub cron). Run it manually via Actions `fpl-prices` or `uv run fpl-agent prices` when you want it. **Squad news** runs when you trigger the agent ~24h before the deadline. Reports are linked below.
 
 <!-- recent-runs:start -->
 ## Latest results
@@ -71,7 +71,7 @@ Fixtures still matter as colour in the Why text; they do not override the points
 
 Cloud needs `OPENAI_API_KEY` and `FPL_PRIVATE_STATE_B64`. The agent publishes reports to `main` so the links above work from your phone.
 
-For **price alerts**, open the repo’s **FPL price alerts** issue and click **Subscribe** / Watch — GitHub emails you when the overnight job comments (act-now **or** likely market movers). Optional: set `prices.webhook_url` to a Discord/Slack incoming webhook for a push ping. You can also enable GitHub **Actions** workflow notification emails for `fpl-prices`.
+For **price alerts** (when you re-enable or manually run `fpl-prices`), open the repo’s **FPL price alerts** issue and click **Subscribe** / Watch — GitHub emails you when the job comments (act-now **or** likely market movers). Optional: set `prices.webhook_url` to a Discord/Slack incoming webhook for a push ping.
 
 ### After you change your squad
 
@@ -104,5 +104,5 @@ Reports live in `reports/`. Private squad files stay in `data/private-state/` (g
 
 ### Automation
 
-- **Prices:** GitHub Actions `fpl-prices.yml` at 15:00 Zagreb daily (UTC cron `0 13 * * *`; GitHub may delay 1–3h).
-- **Watchdog:** `fpl-prices-watchdog.yml` comments if the price job is more than 26 hours late.
+- **Prices:** overnight schedule **disabled**. Manual only: Actions → `fpl-prices` → Run workflow, or `uv run fpl-agent prices`.
+- **Watchdog:** schedule **disabled** (same reason). Manual: Actions → `fpl-prices-watchdog`, or `uv run fpl-agent prices-watchdog`.
